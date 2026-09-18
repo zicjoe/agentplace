@@ -1,0 +1,63 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..700;1,14..32,300..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --color-bg: #07070f;
+  --color-surface: #0b0b18;
+  --color-panel: #0f0f1e;
+  --color-panel-raised: #141428;
+  --color-border: #1c1c30;
+  --color-border-dim: #121220;
+
+  --color-primary: #4c82f5;
+  --color-primary-hover: #6394f7;
+  --color-primary-dim: #1a3169;
+  --color-accent: #30c47e;
+  --color-accent-dim: #124d34;
+  --color-warn: #e49444;
+  --color-danger: #df5555;
+  --color-danger-dim: #5c1a1a;
+
+  --color-text: #dde0ef;
+  --color-text-sub: #8888a8;
+  --color-text-muted: #4e4e68;
+  --color-text-dim: #28283c;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+html,
+body {
+  background-color: #07070f;
+  color: #dde0ef;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  height: 100%;
+}
+
+#root {
+  height: 100%;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #1c1c30;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2c2c44;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1c1c30 transparent;
+}

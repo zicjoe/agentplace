@@ -1,0 +1,29 @@
+{
+  "name": "agent-place",
+  "version": "0.2.0",
+  "private": true,
+  "description": "AgentPlace \u2014 multichain operating system and economic coordination layer for autonomous crypto Workers.",
+  "type": "module",
+  "packageManager": "pnpm@10.15.1",
+  "engines": {
+    "node": ">=22.12 <25"
+  },
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "pnpm --filter @agent-place/web dev",
+    "dev:api": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/api build && pnpm --filter @agent-place/api start",
+    "format:check": "node scripts/format-check.mjs",
+    "lint": "node scripts/lint.mjs",
+    "typecheck": "node scripts/typecheck.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "verify:repo": "node scripts/verify-repository-foundation.mjs",
+    "verify:milestone-1": "node scripts/verify-milestone-1.mjs",
+    "check": "pnpm clean && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm verify:repo && pnpm verify:milestone-1"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "typescript": "5.9.3"
+  }
+}

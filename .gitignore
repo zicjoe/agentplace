@@ -1,0 +1,27 @@
+node_modules/
+dist/
+**/dist/
+coverage/
+.tmp/
+.DS_Store
+*.log
+
+# Environment files: examples are allowed; real env files are not.
+.env
+.env.*
+!.env.example
+!config/environments/*.env.example
+
+# Secrets / signing material
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.mnemonic
+*.seed
+
+# Local databases / caches
+*.sqlite
+*.sqlite3
+.redis/
