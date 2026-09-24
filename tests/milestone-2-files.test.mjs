@@ -53,3 +53,14 @@ test('deployment guide keeps Railway Postgres private by default', async () => {
   assert.match(deployment, /DATABASE_URL=\$\{\{Postgres\.DATABASE_URL\}\}/);
   assert.match(deployment, /Pre-Deploy Command: pnpm migrate/);
 });
+
+test('Better Auth singleton uses a portable public instance type while retaining SIWE at runtime', async () => {
+  const auth = await readFile('packages/auth/src/index.ts', 'utf8');
+  assert.match(auth, /type AgentPlaceAuth = ReturnType<typeof betterAuth>/);
+  assert.match(auth, /function createAuth\(\): AgentPlaceAuth/);
+  assert.match(auth, /siwe\(\{/);
+  assert.match(auth, /as unknown as AgentPlaceAuth/);
+  assert.match(auth, /let authInstance: AgentPlaceAuth \| undefined/);
+  assert.match(auth, /export function getAuth\(\): AgentPlaceAuth/);
+  assert.doesNotMatch(auth, /type AgentPlaceAuth = ReturnType<typeof createAuth>/);
+});

@@ -28,8 +28,6 @@ export interface AgentPlaceIdentity {
   readonly image: string | null;
 }
 
-let authInstance: ReturnType<typeof betterAuth> | null = null;
-
 function requireValue(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required for AgentPlace authentication.`);
@@ -52,9 +50,9 @@ export function getAuthAvailability(): AuthAvailability {
   };
 }
 
-export function getAuth(): ReturnType<typeof betterAuth> {
-  if (authInstance) return authInstance;
+type AgentPlaceAuth = ReturnType<typeof betterAuth>;
 
+function createAuth(): AgentPlaceAuth {
   const secret = requireValue('BETTER_AUTH_SECRET');
   if (secret.length < 32 || secret.includes('replace-with')) throw new Error('BETTER_AUTH_SECRET must be a real random secret with at least 32 characters.');
   const baseURL = requireValue('BETTER_AUTH_URL');
@@ -62,7 +60,7 @@ export function getAuth(): ReturnType<typeof betterAuth> {
   const googleClientId = process.env.GOOGLE_CLIENT_ID?.trim();
   const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
 
-  authInstance = betterAuth({
+  return betterAuth({
     appName: 'AgentPlace',
     baseURL,
     secret,
@@ -106,9 +104,16 @@ export function getAuth(): ReturnType<typeof betterAuth> {
         },
       }),
     ],
-  });
+  }) as unknown as AgentPlaceAuth;
+}
 
-  return authInstance;
+// Better Auth's plugin-specific inferred type currently captures transitive Zod
+// internals in declaration emit. AgentPlace exposes only Better Auth's stable public
+// instance surface from this package; SIWE remains configured on the runtime object.
+let authInstance: AgentPlaceAuth | undefined;
+
+export function getAuth(): AgentPlaceAuth {
+  return authInstance ?? (authInstance = createAuth());
 }
 
 export async function requireAgentPlaceIdentity(headers: Headers): Promise<AgentPlaceIdentity> {

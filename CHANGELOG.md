@@ -2,6 +2,8 @@
 
 ## 0.3.0 — Production Milestone 2
 
+- Build hotfix 2: make repository lint platform-independent and add regression coverage for prohibited source patterns.
+
 - Added self-hosted Better Auth with Railway/PostgreSQL-compatible storage.
 - Added Google OAuth and SIWE wallet identity without granting execution authority.
 - Added durable conversation/message/participant/object-link persistence.

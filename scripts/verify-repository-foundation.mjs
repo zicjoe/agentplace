@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 
@@ -41,12 +42,22 @@ const secretPatterns = [
   /(?:PRIVATE_KEY|SEED_PHRASE|MNEMONIC)\s*=\s*[^\s<>{}]{12,}/i,
 ];
 
-const ignored = new Set(["node_modules", "dist", ".git"]);
+const ignoredDirectories = new Set(["node_modules", "dist", ".git"]);
 const findings = [];
+
+function isGitIgnored(path) {
+  try {
+    execFileSync("git", ["check-ignore", "--quiet", "--", path], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function walk(dir) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
-    if (ignored.has(entry.name)) continue;
+    if (ignoredDirectories.has(entry.name)) continue;
+
     const path = join(dir, entry.name);
     const rel = relative(".", path).replaceAll("\\", "/");
 
@@ -54,6 +65,12 @@ async function walk(dir) {
       await walk(path);
       continue;
     }
+
+    // Local secret files such as .env are intentionally gitignored and may exist
+    // during development. They are not repository content and should not make the
+    // repository verifier fail. A force-tracked secret file is not reported as
+    // ignored by git check-ignore, so it is still rejected below.
+    if (isGitIgnored(rel)) continue;
 
     if (!rel.endsWith(".env.example") && forbiddenNames.some((pattern) => pattern.test(entry.name))) {
       findings.push(`${rel}: forbidden secret-file name`);

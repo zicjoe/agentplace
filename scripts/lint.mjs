@@ -5,6 +5,12 @@ const ignored = new Set(["node_modules", "dist", ".git"]);
 const checked = new Set([".ts", ".tsx", ".mjs", ".json", ".yml", ".yaml"]);
 const failures = [];
 
+// These expressions do not contain their own forbidden matches. Check this
+// script too instead of relying on a platform-dependent self-path exception.
+const mergeMarkers = /<{7}|={7}|>{7}/;
+const dynamicEvaluation = /\beval\s*\(/;
+const shellExecution = /child_process[^\n]*exec\s*\(/;
+
 async function walk(dir) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     if (ignored.has(entry.name)) continue;
@@ -15,19 +21,15 @@ async function walk(dir) {
     }
 
     if (!checked.has(extname(entry.name))) continue;
-    const text = await readFile(path, "utf8");
+    const source = await readFile(path, "utf8");
 
-    if (path !== "scripts/lint.mjs") {
-      if (/<<<<<<<|=======|>>>>>>>/.test(text)) failures.push(`${path}: merge-conflict marker`);
-      if (/\beval\s*\(/.test(text)) failures.push(`${path}: eval() is forbidden`);
-      if (/child_process[^\n]*exec\s*\(/.test(text)) {
-        failures.push(`${path}: shell exec() requires explicit security review`);
-      }
-    }
+    if (mergeMarkers.test(source)) failures.push(`${path}: merge-conflict marker`);
+    if (dynamicEvaluation.test(source)) failures.push(`${path}: dynamic evaluation is forbidden`);
+    if (shellExecution.test(source)) failures.push(`${path}: shell execution requires explicit security review`);
 
     if (entry.name.endsWith(".json")) {
       try {
-        JSON.parse(text);
+        JSON.parse(source);
       } catch (error) {
         failures.push(`${path}: invalid JSON: ${String(error)}`);
       }
