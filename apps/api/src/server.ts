@@ -1,5 +1,23 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import {
+  getAuthAvailability,
+  getAuthNodeHandler,
+  requireAgentPlaceIdentity,
+  toAuthHeaders,
+} from '@agent-place/auth';
+import {
+  addMessage,
+  createConversation,
+  getConversation,
+  importConversations,
+  listConversations,
+  patchConversation,
+  patchMessage,
+  type ConversationDraft,
+  type DurableConversationMessage,
+} from '@agent-place/context';
+import { checkDatabase } from '@agent-place/db';
+import {
   createRequestId,
   parseEnvironmentContract,
   type ApiHealthResponse,
@@ -8,8 +26,8 @@ import {
 import { service } from './index.js';
 
 const environment = parseEnvironmentContract(process.env);
-const host = process.env.API_HOST?.trim() || '127.0.0.1';
-const port = Number.parseInt(process.env.API_PORT ?? '8787', 10);
+const host = process.env.API_HOST?.trim() || (process.env.RAILWAY_ENVIRONMENT ? '0.0.0.0' : '127.0.0.1');
+const port = Number.parseInt(process.env.API_PORT ?? process.env.PORT ?? '8787', 10);
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error(`Invalid API_PORT: ${process.env.API_PORT ?? ''}`);
@@ -26,9 +44,10 @@ function writeCors(req: IncomingMessage, res: ServerResponse): void {
   const origin = req.headers.origin;
   if (origin && allowedOrigins.has(origin)) {
     res.setHeader('access-control-allow-origin', origin);
+    res.setHeader('access-control-allow-credentials', 'true');
     res.setHeader('vary', 'Origin');
   }
-  res.setHeader('access-control-allow-methods', 'GET,OPTIONS');
+  res.setHeader('access-control-allow-methods', 'GET,POST,PATCH,OPTIONS');
   res.setHeader('access-control-allow-headers', 'content-type,x-agent-place-trace-id');
 }
 
@@ -39,25 +58,71 @@ function writeJson(res: ServerResponse, statusCode: number, body: unknown): void
   res.end(`${JSON.stringify(body)}\n`);
 }
 
-const server = createServer((req, res) => {
-  const requestId = createRequestId();
-  res.setHeader('x-agent-place-request-id', requestId);
-  writeCors(req, res);
-
-  if (req.method === 'OPTIONS') {
-    res.statusCode = 204;
-    res.end();
-    return;
+async function readJson(req: IncomingMessage): Promise<unknown> {
+  let total = 0;
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buffer.length;
+    if (total > 2 * 1024 * 1024) throw new Error('PAYLOAD_TOO_LARGE');
+    chunks.push(buffer);
   }
+  if (chunks.length === 0) return {};
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+  } catch {
+    throw new Error('INVALID_JSON');
+  }
+}
 
-  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? `${host}:${port}`}`);
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('INVALID_BODY');
+  return value as Record<string, unknown>;
+}
 
+function isMessage(value: unknown): value is DurableConversationMessage {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.id === 'string'
+    && (v.role === 'user' || v.role === 'manager' || v.role === 'specialist')
+    && typeof v.content === 'string'
+    && typeof v.createdAt === 'string'
+    && typeof v.updatedAt === 'string';
+}
+
+function isConversationDraft(value: unknown): value is ConversationDraft {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.id === 'string'
+    && v.id.length <= 128
+    && (v.scope === 'manager' || v.scope === 'worker' || v.scope === 'job')
+    && typeof v.title === 'string'
+    && v.title.length > 0
+    && v.title.length <= 200
+    && (v.titleSource === 'auto' || v.titleSource === 'user')
+    && typeof v.pinned === 'boolean'
+    && typeof v.archived === 'boolean'
+    && typeof v.createdAt === 'string'
+    && (v.scope !== 'worker' || (typeof v.workerId === 'string' && v.workerId.length > 0 && v.workerId.length <= 128))
+    && (v.scope !== 'job' || (typeof v.jobId === 'string' && v.jobId.length > 0 && v.jobId.length <= 128))
+    && Array.isArray(v.messages)
+    && v.messages.length <= 500
+    && v.messages.every(isMessage);
+}
+
+async function requireIdentity(req: IncomingMessage) {
+  return requireAgentPlaceIdentity(toAuthHeaders(req.headers));
+}
+
+async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, requestId: string): Promise<void> {
   if (req.method === 'GET' && url.pathname === '/health') {
+    const auth = getAuthAvailability();
+    const dbOk = !process.env.DATABASE_URL?.trim() ? false : await checkDatabase();
     const body: ApiHealthResponse = {
       service: service.name,
       version: service.version,
       milestone: service.milestone,
-      status: 'ok',
+      status: auth.configured && !dbOk ? 'degraded' : 'ok',
       environment: environment.environment,
       timestamp: new Date().toISOString(),
     };
@@ -76,8 +141,113 @@ const server = createServer((req, res) => {
         mainnetEnabled: environment.mainnetExecutionEnabled,
         mainnetAutonomyEnabled: environment.mainnetAutonomyEnabled,
       },
+      auth: getAuthAvailability(),
     };
     writeJson(res, 200, body);
+    return;
+  }
+
+  if (url.pathname.startsWith('/api/auth/')) {
+    if (!getAuthAvailability().configured) {
+      writeJson(res, 503, { error: 'auth_not_configured', message: 'AgentPlace authentication is not configured.', requestId });
+      return;
+    }
+    await getAuthNodeHandler()(req, res);
+    return;
+  }
+
+  if (url.pathname === '/api/v1/me' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    writeJson(res, 200, { user: identity });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/conversations' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const query = url.searchParams.get('q')?.trim().slice(0, 200);
+    const conversations = await listConversations(identity.appUserId, query || undefined);
+    writeJson(res, 200, { conversations });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/conversations' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    if (!isConversationDraft(body.conversation)) throw new Error('INVALID_CONVERSATION');
+    const conversation = await createConversation(identity.appUserId, body.conversation);
+    writeJson(res, 201, { conversation });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/conversations/import' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    if (!Array.isArray(body.conversations) || body.conversations.length > 100 || !body.conversations.every(isConversationDraft)) {
+      throw new Error('INVALID_CONVERSATION_IMPORT');
+    }
+    const conversations = await importConversations(identity.appUserId, body.conversations);
+    writeJson(res, 200, { conversations });
+    return;
+  }
+
+  const conversationMatch = url.pathname.match(/^\/api\/v1\/conversations\/([^/]+)$/);
+  if (conversationMatch) {
+    const id = decodeURIComponent(conversationMatch[1] ?? '');
+    const identity = await requireIdentity(req);
+    if (req.method === 'GET') {
+      const conversation = await getConversation(identity.appUserId, id);
+      if (!conversation) return writeJson(res, 404, { error: 'not_found', message: 'Conversation not found.', requestId });
+      writeJson(res, 200, { conversation });
+      return;
+    }
+    if (req.method === 'PATCH') {
+      const body = asRecord(await readJson(req));
+      const patch: { title?: string; titleSource?: 'auto' | 'user'; pinned?: boolean; archived?: boolean } = {};
+      if (body.title !== undefined) {
+        if (typeof body.title !== 'string' || !body.title.trim() || body.title.length > 200) throw new Error('INVALID_TITLE');
+        patch.title = body.title.trim();
+      }
+      if (body.titleSource !== undefined) {
+        if (body.titleSource !== 'auto' && body.titleSource !== 'user') throw new Error('INVALID_TITLE_SOURCE');
+        patch.titleSource = body.titleSource;
+      }
+      if (body.pinned !== undefined) {
+        if (typeof body.pinned !== 'boolean') throw new Error('INVALID_PIN');
+        patch.pinned = body.pinned;
+      }
+      if (body.archived !== undefined) {
+        if (typeof body.archived !== 'boolean') throw new Error('INVALID_ARCHIVE');
+        patch.archived = body.archived;
+      }
+      const conversation = await patchConversation(identity.appUserId, id, patch);
+      if (!conversation) return writeJson(res, 404, { error: 'not_found', message: 'Conversation not found.', requestId });
+      writeJson(res, 200, { conversation });
+      return;
+    }
+  }
+
+  const messagesMatch = url.pathname.match(/^\/api\/v1\/conversations\/([^/]+)\/messages$/);
+  if (messagesMatch && req.method === 'POST') {
+    const conversationId = decodeURIComponent(messagesMatch[1] ?? '');
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    if (!isMessage(body.message)) throw new Error('INVALID_MESSAGE');
+    const message = await addMessage(identity.appUserId, conversationId, body.message);
+    if (!message) return writeJson(res, 404, { error: 'not_found', message: 'Conversation not found.', requestId });
+    writeJson(res, 201, { message });
+    return;
+  }
+
+  const messageMatch = url.pathname.match(/^\/api\/v1\/conversations\/([^/]+)\/messages\/([^/]+)$/);
+  if (messageMatch && req.method === 'PATCH') {
+    const conversationId = decodeURIComponent(messageMatch[1] ?? '');
+    const messageId = decodeURIComponent(messageMatch[2] ?? '');
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    if (typeof body.content !== 'string' || typeof body.updatedAt !== 'string') throw new Error('INVALID_MESSAGE_UPDATE');
+    const updated = await patchMessage(identity.appUserId, conversationId, messageId, { content: body.content, updatedAt: body.updatedAt });
+    if (!updated) return writeJson(res, 404, { error: 'not_found', message: 'Message not found.', requestId });
+    writeJson(res, 200, { ok: true });
     return;
   }
 
@@ -85,6 +255,41 @@ const server = createServer((req, res) => {
     error: 'not_found',
     message: 'The requested AgentPlace API resource does not exist.',
     requestId,
+  });
+}
+
+const server = createServer((req, res) => {
+  const requestId = createRequestId();
+  res.setHeader('x-agent-place-request-id', requestId);
+  writeCors(req, res);
+
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+
+  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? `${host}:${port}`}`);
+  void handleApi(req, res, url, requestId).catch((error: unknown) => {
+    if (res.headersSent) {
+      res.end();
+      return;
+    }
+    const code = error instanceof Error ? error.message : 'INTERNAL_ERROR';
+    if (code === 'UNAUTHENTICATED') {
+      writeJson(res, 401, { error: 'unauthenticated', message: 'Sign in to continue.', requestId });
+      return;
+    }
+    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE'].includes(code)) {
+      writeJson(res, 400, { error: 'invalid_request', message: code, requestId });
+      return;
+    }
+    if (code === 'PAYLOAD_TOO_LARGE') {
+      writeJson(res, 413, { error: 'payload_too_large', message: code, requestId });
+      return;
+    }
+    process.stderr.write(`${JSON.stringify({ level: 'error', service: service.name, requestId, message: 'Request failed', error: code })}\n`);
+    writeJson(res, 500, { error: 'internal_error', message: 'AgentPlace could not complete this request.', requestId });
   });
 });
 

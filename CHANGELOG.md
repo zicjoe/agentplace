@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 — Production Milestone 2
+
+- Added self-hosted Better Auth with Railway/PostgreSQL-compatible storage.
+- Added Google OAuth and SIWE wallet identity without granting execution authority.
+- Added durable conversation/message/participant/object-link persistence.
+- Added guest-to-account migration, account-backed rename/pin/archive/continuation, and PostgreSQL fuzzy search.
+- Added first-party-cookie-safe local/Vercel API proxying for a Railway backend.
+- Preserved Mainnet execution/autonomy off defaults and introduced no financial writes.
+
 ## 0.2.0 — Production Milestone 1
 
 - Integrated the approved AgentPlace UX Baseline v1 into the real web runtime.

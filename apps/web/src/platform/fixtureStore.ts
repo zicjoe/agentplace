@@ -1,9 +1,9 @@
 import type { AppState } from '../state/types';
 import { WEB_RUNTIME_SETTINGS } from './runtime';
 
-const STORAGE_KEY = 'agentplace.m1.fixture-state.v1';
+const STORAGE_KEY = 'agentplace.m2.guest-state.v2';
 const DATE_TAG = '__agentplaceDate';
-const PERSISTENCE_VERSION = 1;
+const PERSISTENCE_VERSION = 2;
 
 interface PersistedFixtureEnvelope {
   version: number;
@@ -51,7 +51,6 @@ function decode(value: unknown): unknown {
 export function restoreFixtureState(base: AppState): AppState {
   if (
     typeof window === 'undefined' ||
-    WEB_RUNTIME_SETTINGS.dataMode !== 'fixtures' ||
     !WEB_RUNTIME_SETTINGS.persistFixtureState
   ) {
     return base;
@@ -71,8 +70,8 @@ export function restoreFixtureState(base: AppState): AppState {
 export function persistFixtureState(state: AppState): void {
   if (
     typeof window === 'undefined' ||
-    WEB_RUNTIME_SETTINGS.dataMode !== 'fixtures' ||
-    !WEB_RUNTIME_SETTINGS.persistFixtureState
+    !WEB_RUNTIME_SETTINGS.persistFixtureState ||
+    (WEB_RUNTIME_SETTINGS.dataMode === 'api' && state.user !== null)
   ) {
     return;
   }

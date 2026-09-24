@@ -53,6 +53,9 @@ export interface ChatMessage {
 
 export interface Conversation {
   id: string;
+  scope?: 'manager' | 'worker' | 'job';
+  workerId?: string;
+  jobId?: string;
   title: string;
   manuallyRenamed: boolean;
   messages: ChatMessage[];

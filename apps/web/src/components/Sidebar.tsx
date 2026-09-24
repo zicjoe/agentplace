@@ -1,6 +1,8 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAppState, useDispatch, makeMemeScoutWorker } from '../state/AppContext';
 import type { Conversation } from '../state/types';
+import { fetchConversations } from '../platform/conversationApi';
+import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 
 function timeAgo(date: Date): string {
   const diff = Date.now() - date.getTime();
@@ -158,6 +160,7 @@ export function Sidebar({ isMobileDrawer = false, onCloseMobile }: SidebarProps)
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [logoClickCount, setLogoClickCount] = useState(0);
+  const [remoteSearchResults, setRemoteSearchResults] = useState<Conversation[] | null>(null);
 
   const [showArchived, setShowArchived] = useState(false);
   const allConvs = state.conversations;
@@ -166,17 +169,35 @@ export function Sidebar({ isMobileDrawer = false, onCloseMobile }: SidebarProps)
   const pinned = visibleConvs.filter((c) => c.pinned);
   const recent = visibleConvs.filter((c) => !c.pinned).slice(0, 8);
 
-  const searchResults = searchQuery
+  const localSearchResults = searchQuery
     ? allConvs.filter(
         (c) =>
           c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.messages.some((m) =>
-            m.content.toLowerCase().includes(searchQuery.toLowerCase())
-          )
+          c.messages.some((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase()))
       )
     : [];
+  const searchResults = remoteSearchResults ?? localSearchResults;
 
   const isAuthenticated = !!state.user;
+
+  useEffect(() => {
+    if (!searchQuery.trim() || !isAuthenticated || WEB_RUNTIME_SETTINGS.dataMode !== 'api') {
+      setRemoteSearchResults(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void fetchConversations(searchQuery).then((results) => {
+        if (!cancelled) setRemoteSearchResults(results);
+      }).catch(() => {
+        if (!cancelled) setRemoteSearchResults(null);
+      });
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery, isAuthenticated]);
 
   const navItems = [
     { id: 'home', label: 'Home', icon: HomeIcon },

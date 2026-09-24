@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/auth",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -14,6 +14,17 @@
   "scripts": {
     "clean": "node -e \"require(\\'node:fs\\').rmSync(\\'dist\\',{recursive:true,force:true})\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "migrate": "pnpm build && node --env-file-if-exists=../../.env dist/migrate.js"
+  },
+  "dependencies": {
+    "@agent-place/db": "workspace:*",
+    "better-auth": "1.7.5",
+    "kysely": "0.28.17",
+    "pg": "8.23.0",
+    "viem": "2.56.8"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1"
   }
 }

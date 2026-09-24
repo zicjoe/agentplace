@@ -27,3 +27,8 @@ Milestone 1 uses `fixtures` data mode to preserve the approved Figma UX while pr
 Network RPCs and credentials are injected through deployment/local secret stores. No private key, seed phrase, service API key or signing material belongs in ordinary environment example files, Worker memory or LLM context.
 
 A capability being Testnet-verified does not make it Mainnet-autonomy-eligible. Those statuses remain separate registry decisions in later milestones.
+
+
+## Milestone 2 identity/data configuration
+
+Production data mode is `api`. Better Auth uses `BETTER_AUTH_URL` as the public web origin and the web app keeps `/api/auth` same-origin through the local Vite proxy or the Vercel proxy. Railway hosts the core API/PostgreSQL path. `AGENT_PLACE_API_ORIGIN` belongs only in the Vercel server environment and must not be exposed as a `VITE_*` secret. Mainnet execution/autonomy remain disabled.

@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/api",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -18,6 +18,9 @@
     "start": "node --env-file-if-exists=../../.env dist/server.js"
   },
   "dependencies": {
+    "@agent-place/auth": "workspace:*",
+    "@agent-place/context": "workspace:*",
+    "@agent-place/db": "workspace:*",
     "@agent-place/shared": "workspace:*"
   }
 }

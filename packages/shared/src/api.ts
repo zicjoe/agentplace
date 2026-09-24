@@ -19,4 +19,9 @@ export interface PublicRuntimeConfig {
     readonly mainnetEnabled: boolean;
     readonly mainnetAutonomyEnabled: boolean;
   };
+  readonly auth: {
+    readonly configured: boolean;
+    readonly google: boolean;
+    readonly ethereumWallet: boolean;
+  };
 }

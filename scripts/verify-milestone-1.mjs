@@ -87,7 +87,6 @@ const env = await readFile(".env.example", "utf8");
 for (const expected of [
   "MAINNET_EXECUTION_ENABLED=false",
   "MAINNET_AUTONOMY_ENABLED=false",
-  "VITE_AGENT_PLACE_DATA_MODE=fixtures",
   "VITE_AGENT_PLACE_ENABLE_DEMO_CONTROLS=false",
 ]) {
   if (!env.includes(expected)) throw new Error(`Environment contract missing safe default: ${expected}`);

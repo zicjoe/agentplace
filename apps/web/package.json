@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/web",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,8 @@
   "dependencies": {
     "@agent-place/shared": "workspace:*",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "better-auth": "1.7.5"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.2.2",

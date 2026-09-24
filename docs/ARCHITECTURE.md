@@ -5,7 +5,7 @@ AgentPlace uses a strongly modular TypeScript/pnpm monorepo with a small number 
 ## Runtime classes
 
 - **Web** — React/Vite browser/PWA-ready interface based on the approved AgentPlace UX Baseline v1.
-- **API** — identity/session, configuration and application API boundary. Milestone 1 exposes only safe health/runtime-config endpoints.
+- **API** — identity/session, configuration and application API boundary. Milestone 2 adds self-hosted identity/session and durable Conversation APIs while preserving the same boundary.
 - **Worker** — long-running Jobs and Worker execution.
 - **Scheduler** — Routines, triggers and workflow scheduling.
 - **Signer** — future isolated trusted service; intentionally not implemented inside the general API process.
@@ -35,3 +35,8 @@ Every meaningful operation must carry a trace ID across API, planning, Worker, c
 ## Data direction
 
 PostgreSQL is the future transactional source of truth for durable production records. Redis/object storage/semantic retrieval are introduced only when a milestone needs them. Financial truth must never be sourced from semantic memory or Milestone 1 browser fixtures.
+
+
+## Milestone 2 identity and Conversation boundary
+
+Better Auth runs inside the AgentPlace API and uses the PostgreSQL `auth` schema. AgentPlace application identity is projected into `app_user`; Conversation access is always scoped by the authenticated `app_user.id`. The browser never receives database credentials. Authenticated Conversation state comes from PostgreSQL, while guest work remains temporary browser state until explicit persistence. Wallet identity signatures are not financial authority.

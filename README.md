@@ -6,86 +6,71 @@ AgentPlace is a multichain conversational operating system and economic coordina
 
 ## Current status
 
-**v0.2.0 — Production Milestone 1: Figma UX Integration + Production Foundation**
+**v0.3.0 — Production Milestone 2: Identity + Durable Conversations**
 
-The approved AgentPlace UX Baseline v1 is now integrated into the production monorepo. The product shell, responsive surfaces and approved prototype interactions are preserved while routing, runtime configuration, API boundaries, fixture isolation and local milestone-state persistence have production foundations underneath them.
+The approved AgentPlace UX Baseline v1 remains intact. Identity and conversation persistence are now wired to production architecture: self-hosted Better Auth in the AgentPlace API, PostgreSQL durable conversations, guest-to-account migration, account-backed rename/pin/archive/continuation and PostgreSQL exact/fuzzy history search.
 
-Milestone 1 does **not** make prototype balances, Jobs, conversations, quotes, authority decisions or financial execution real. Those remain isolated fixture behavior until their dedicated production milestones replace them.
+Milestone 2 performs **no financial execution**. Workers, Jobs, Wallets, Agent Accounts, Mandates, Authority, Routines and billing remain fixture-backed until their dedicated production milestones.
 
-## Locked product principles
-
-- Goal-first and crypto-native; users should not become systems integrators.
-- Multichain and chain-neutral in product identity and UX.
-- Arbitrum is a deeply integrated launch network, not the identity of the product.
-- Mainnet and Testnet are separate trust environments with stricter Mainnet gates.
-- AI proposes; deterministic systems enforce authority, budgets and financial safety.
-- Workers never receive unrestricted private keys.
-- Financial state comes from authoritative sources, not remembered chat.
-- Job completion means the intended outcome was verified, not merely submitted.
-- Onchain proof/attestation anchoring is asynchronous unless the chain action is itself part of the Job.
-
-## Repository shape
+## Architecture
 
 ```text
-apps/
-  web/          # approved AgentPlace UX running as the production React/Vite app
-  api/          # core API runtime; Milestone 1 exposes health + safe public runtime config
-  worker/       # long-running Worker runtime foundation
-  scheduler/    # Routine/workflow scheduling runtime foundation
-packages/
-  shared/       # environment, API, event, service and tracing contracts
-  db/           # PostgreSQL schema/migrations
-  auth/ workers/ jobs/ models/ context/
-  capabilities/ router/ authority/ risk/ execution/ verification/
-  wallets/ chains-evm/ chains-solana/
-  notifications/ billing/ marketplace/ creator-sdk/ observability/
+AgentPlace Web (Vite/React; Vercel-ready)
+        │ same-origin /api
+        ▼
+AgentPlace API (Railway)
+   ├─ Better Auth (Google + SIWE wallet identity)
+   ├─ durable Conversation API
+   └─ application authorization
+        │
+        ▼
+PostgreSQL (Railway-compatible)
+   ├─ auth.*              # Better Auth-owned schema
+   ├─ app_user            # AgentPlace application identity
+   ├─ conversation
+   ├─ conversation_message
+   ├─ conversation_participant
+   └─ conversation_object_link
 ```
 
-The approved Figma mock engine is intentionally isolated under `apps/web/src/fixtures/`. UI components import a state facade rather than the fixture implementation directly so later milestones can replace the fixture adapter without rebuilding the approved UX.
+A wallet used to sign in is **identity only**. It is not a Connected Wallet and grants no execution authority.
 
 ## Local setup
 
-Requirements: **Node.js 22.12+** and **pnpm 10.15.1**.
+Requirements: Node.js 22.12+ and pnpm 10.15.1.
 
-```bash
+```powershell
 corepack enable
 corepack prepare pnpm@10.15.1 --activate
-pnpm install --frozen-lockfile
-cp .env.example .env
+pnpm install --no-frozen-lockfile
+Copy-Item .env.example .env
+```
+
+Configure the Milestone 2 variables in `.env`, then run:
+
+```powershell
+pnpm migrate
 pnpm check
 pnpm dev
 ```
 
-On Windows PowerShell, use:
+Local endpoints:
 
-```powershell
-Copy-Item .env.example .env
-```
+- Web: `http://localhost:5173`
+- API (direct): `http://127.0.0.1:8787`
+- API through the web/same-origin proxy: `http://localhost:5173/api/v1/config`
+- API health (direct): `http://127.0.0.1:8787/health`
 
-`pnpm dev` starts:
+The first `pnpm install --no-frozen-lockfile` after upgrading from v0.2.0 intentionally refreshes `pnpm-lock.yaml` for the new Better Auth/PostgreSQL/SIWE dependencies. Commit the refreshed lockfile with the milestone.
 
-- AgentPlace web: `http://localhost:5173`
-- AgentPlace API: `http://127.0.0.1:8787`
-- API health: `http://127.0.0.1:8787/health`
+See `docs/MILESTONE-2-TESTING.md` for the acceptance checklist, `docs/MILESTONE-2-DEPLOYMENT.md` for the Railway/Vercel setup, and `.env.example` for all variables.
 
-The web app remains usable in Milestone 1 fixture mode if the API is temporarily unavailable because no approved production feature depends on real backend data yet.
+## Locked safety principles
 
-## Milestone 1 data mode
-
-`VITE_AGENT_PLACE_DATA_MODE=fixtures` is the only complete Milestone 1 UI data mode. Approved Figma state transitions are retained for product testing and are locally persisted by default so refreshes and real URL routes can preserve the working demo state.
-
-`VITE_AGENT_PLACE_ENABLE_DEMO_CONTROLS=false` keeps hidden prototype scenario controls out of the normal production UI. Set it to `true` only for internal UX/resilience testing.
-
-Do not interpret fixture screens as production financial functionality.
-
-## Environment safety
-
-Mainnet writes and Mainnet autonomy remain **off by default**. Browser-visible `VITE_*` settings are public configuration and must never contain API keys, private keys, secrets or signing material. See [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md).
-
-## Security
-
-See [`SECURITY.md`](SECURITY.md) and [`docs/SECURITY-BOUNDARIES.md`](docs/SECURITY-BOUNDARIES.md).
-
-## Production roadmap
-
-See [`docs/ROADMAP.md`](docs/ROADMAP.md). The next planned milestone after acceptance is **Production Milestone 2 — Identity + Durable Conversations**.
+- Goal-first, multichain and chain-neutral UX.
+- Conversation is history/context, never financial authority.
+- Mainnet and Testnet remain separate trust environments.
+- AI does not enforce financial authority.
+- Raw user signing secrets never enter model context.
+- Wallet login does not imply wallet execution access.
+- Financial truth comes from authoritative systems, not remembered chat.

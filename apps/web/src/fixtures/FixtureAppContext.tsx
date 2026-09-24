@@ -45,11 +45,16 @@ import {
   type RouteSelection,
 } from '../platform/routing';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { getAgentPlaceIdentity, getAuthenticatedUser, signOut as signOutAuth } from '../platform/authClient';
+import { addDurableMessage, createDurableConversation, fetchConversations, importGuestConversations, patchDurableConversation, updateDurableMessage } from '../platform/conversationApi';
+import { clearIdentityResume, readIdentityResume } from '../platform/identityResume';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 export function uid(): string {
-  return Math.random().toString(36).slice(2, 10);
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2, 10);
 }
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
@@ -911,6 +916,7 @@ const INITIAL_STATE: AppState = {
 
 export type Action =
   | { type: 'SET_USER'; user: User | null }
+  | { type: 'SET_CONVERSATIONS'; conversations: Conversation[] }
   | { type: 'SET_VIEW'; view: NavView }
   | { type: 'SET_ENV'; env: Environment }
   | { type: 'SET_ACTIVE_CONV'; id: string | null }
@@ -994,6 +1000,9 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'SET_USER':
       return { ...state, user: action.user, identityCheckpoint: null };
+
+    case 'SET_CONVERSATIONS':
+      return { ...state, conversations: action.conversations };
 
     case 'SET_VIEW':
       return {
@@ -1544,19 +1553,61 @@ function initializeState(base: AppState): AppState {
   return applyRouteSelection(restored, routeSelectionFromPath(window.location.pathname));
 }
 
+function userFromAuth(user: { id: string; name: string; email: string }): User {
+  const name = user.name || user.email.split('@')[0] || 'AgentPlace user';
+  const initials = name.split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'AP';
+  return { id: user.id, name, email: user.email, initials };
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, rawDispatch] = useReducer(reducer, INITIAL_STATE, initializeState);
   const stateRef = useRef(state);
   const pendingPathRef = useRef<string | null>(null);
   const routeFlushScheduledRef = useRef(false);
+  const apiBootstrapRef = useRef(false);
   stateRef.current = state;
 
+  const refreshDurableConversations = useCallback(async () => {
+    if (WEB_RUNTIME_SETTINGS.dataMode !== 'api') return;
+    const conversations = await fetchConversations();
+    rawDispatch({ type: 'SET_CONVERSATIONS', conversations });
+  }, []);
+
+  const syncConversationAction = useCallback((action: Action, before: AppState, after: AppState) => {
+    if (WEB_RUNTIME_SETTINGS.dataMode !== 'api' || !before.user) return;
+    let task: Promise<unknown> | null = null;
+    if (action.type === 'ADD_CONV') task = createDurableConversation(action.conv);
+    if (action.type === 'ADD_MSG') task = addDurableMessage(action.convId, action.msg);
+    if (action.type === 'UPDATE_MSG') {
+      const message = after.conversations.find((c) => c.id === action.convId)?.messages.find((m) => m.id === action.msgId);
+      if (message) task = updateDurableMessage(action.convId, message);
+    }
+    if (action.type === 'AUTO_TITLE') task = patchDurableConversation(action.convId, { title: action.title, titleSource: 'auto' });
+    if (action.type === 'RENAME_CONV') task = patchDurableConversation(action.convId, { title: action.title, titleSource: 'user' });
+    if (action.type === 'PIN_CONV') task = patchDurableConversation(action.convId, { pinned: action.pinned });
+    if (action.type === 'ARCHIVE_CONV') task = patchDurableConversation(action.convId, { archived: true });
+    if (action.type === 'UNARCHIVE_CONV') task = patchDurableConversation(action.convId, { archived: false });
+    if (task) task.catch(() => void refreshDurableConversations());
+  }, [refreshDurableConversations]);
+
   const dispatch = useCallback<React.Dispatch<Action>>((action) => {
-    const next = reducer(stateRef.current, action);
+    const before = stateRef.current;
+    if (action.type === 'SET_USER' && action.user === null && before.user && WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+      const guest = { ...INITIAL_STATE, environment: before.environment };
+      stateRef.current = guest;
+      rawDispatch({ type: 'RESET_GUEST' });
+      clearFixtureState();
+      void signOutAuth().catch(() => undefined);
+      if (typeof window !== 'undefined' && window.location.pathname !== '/') window.history.pushState(null, '', '/');
+      return;
+    }
+
+    const next = reducer(before, action);
     stateRef.current = next;
     rawDispatch(action);
 
     if (action.type === 'RESET_GUEST') clearFixtureState();
+    syncConversationAction(action, before, next);
 
     if (typeof window !== 'undefined' && action.type !== 'HYDRATE_ROUTE' && isNavigationAction(action.type)) {
       pendingPathRef.current = pathForState(next);
@@ -1566,17 +1617,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
           routeFlushScheduledRef.current = false;
           const path = pendingPathRef.current;
           pendingPathRef.current = null;
-          if (path && window.location.pathname !== path) {
-            window.history.pushState(null, '', path);
-          }
+          if (path && window.location.pathname !== path) window.history.pushState(null, '', path);
         });
       }
     }
-  }, []);
+  }, [syncConversationAction]);
 
   useEffect(() => {
     persistFixtureState(state);
   }, [state]);
+
+  useEffect(() => {
+    if (WEB_RUNTIME_SETTINGS.dataMode !== 'api' || apiBootstrapRef.current) return;
+    apiBootstrapRef.current = true;
+    void (async () => {
+      try {
+        const authUser = await getAuthenticatedUser();
+        if (!authUser) return;
+        const marker = readIdentityResume();
+        const guestConversation = marker?.persistOriginatingConversation && marker.conversationId
+          ? stateRef.current.conversations.find((c) => c.id === marker.conversationId)
+          : undefined;
+        if (guestConversation) await importGuestConversations([guestConversation]);
+        const [conversations, identity] = await Promise.all([fetchConversations(), getAgentPlaceIdentity()]);
+        const user = userFromAuth(identity);
+        const nextUser = reducer(stateRef.current, { type: 'SET_USER', user });
+        const next = reducer(nextUser, { type: 'SET_CONVERSATIONS', conversations });
+        stateRef.current = next;
+        rawDispatch({ type: 'SET_USER', user });
+        rawDispatch({ type: 'SET_CONVERSATIONS', conversations });
+        clearFixtureState();
+        clearIdentityResume();
+      } catch (error) {
+        console.error('AgentPlace identity bootstrap failed', error);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -1591,9 +1667,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!WEB_RUNTIME_SETTINGS.demoControlsEnabled && state.showDemoControls) {
-      rawDispatch({ type: 'TOGGLE_DEMO' });
-    }
+    if (!WEB_RUNTIME_SETTINGS.demoControlsEnabled && state.showDemoControls) rawDispatch({ type: 'TOGGLE_DEMO' });
   }, [state.showDemoControls]);
 
   return (
