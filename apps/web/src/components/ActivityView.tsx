@@ -29,7 +29,7 @@ function ActivityRow({ event }: { event: ActivityEvent }) {
   const linkedJob = event.jobId ? (state.jobs ?? []).find((j) => j.id === event.jobId) : null;
   const effectiveStatus = linkedJob ? linkedJob.status as string : event.status;
 
-  const isWorking = ['working', 'executing', 'settling', 'verifying', 'needs-approval'].includes(effectiveStatus);
+  const isWorking = ['planning', 'working', 'executing', 'settling', 'verifying', 'needs-approval'].includes(effectiveStatus);
   const isComplete = effectiveStatus === 'completed' || effectiveStatus === 'complete';
   const isBlocked = effectiveStatus === 'blocked';
   const isIssue = effectiveStatus === 'issue' || effectiveStatus === 'recovering' || effectiveStatus === 'unknown';
@@ -174,7 +174,7 @@ export function ActivityView() {
     const lj = e.jobId ? (state.jobs ?? []).find((j) => j.id === e.jobId) : null;
     const eff = lj ? (lj.status as string) : e.status;
     if (filter === 'all') return true;
-    if (filter === 'working') return ['working', 'needs-approval', 'executing', 'settling', 'verifying', 'recovering', 'needs-you', 'unknown'].includes(eff);
+    if (filter === 'working') return ['planning', 'working', 'needs-approval', 'executing', 'settling', 'verifying', 'recovering', 'needs-you', 'unknown'].includes(eff);
     if (filter === 'complete') return eff === 'complete' || eff === 'completed' || eff === 'blocked';
     if (filter === 'operational') return e.eventType === 'worker-added' || e.eventType === 'system' || e.eventType === 'authority' || e.eventType === 'wallet' || e.eventType === 'routine';
     return true;

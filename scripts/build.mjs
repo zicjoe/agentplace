@@ -13,7 +13,7 @@ const packageNames = (await readdir("packages", { withFileTypes: true }))
   .sort();
 
 // Build workspace dependency roots first so declaration files exist for consumers.
-const orderedFirst = ["shared", "db", "auth", "context"];
+const orderedFirst = ["shared", "db", "auth", "context", "workers", "jobs"];
 for (const name of orderedFirst) run("tsc", ["-p", join("packages", name, "tsconfig.json")]);
 for (const name of packageNames) {
   if (orderedFirst.includes(name)) continue;

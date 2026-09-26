@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/jobs",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -17,6 +17,6 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@agent-place/shared": "workspace:*"
+    "@agent-place/db": "workspace:*"
   }
 }

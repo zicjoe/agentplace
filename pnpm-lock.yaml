@@ -26,6 +26,12 @@ importers:
       '@agent-place/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
+      '@agent-place/workers':
+        specifier: workspace:*
+        version: link:../../packages/workers
       '@agent-place/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -133,9 +139,9 @@ importers:
 
   packages/jobs:
     dependencies:
-      '@agent-place/shared':
+      '@agent-place/db':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../db
 
   packages/marketplace: {}
 
@@ -159,7 +165,11 @@ importers:
 
   packages/wallets: {}
 
-  packages/workers: {}
+  packages/workers:
+    dependencies:
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
 
 packages:
 

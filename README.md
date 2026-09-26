@@ -6,11 +6,11 @@ AgentPlace is a multichain conversational operating system and economic coordina
 
 ## Current status
 
-**v0.3.0 — Production Milestone 2: Identity + Durable Conversations**
+**v0.4.0 — Production Milestone 3: Workers + Jobs**
 
-The approved AgentPlace UX Baseline v1 remains intact. Identity and conversation persistence are now wired to production architecture: self-hosted Better Auth in the AgentPlace API, PostgreSQL durable conversations, guest-to-account migration, account-backed rename/pin/archive/continuation and PostgreSQL exact/fuzzy history search.
+The approved AgentPlace UX Baseline v1 remains intact. Identity and durable Conversations from v0.3.0 are joined by PostgreSQL-backed Worker definitions/versions, per-user Worker installations, durable Jobs, Lead/Supporting Worker relationships, Worker/Job Conversations and factual Activity projection.
 
-Milestone 2 performs **no financial execution**. Workers, Jobs, Wallets, Agent Accounts, Mandates, Authority, Routines and billing remain fixture-backed until their dedicated production milestones.
+Milestone 3 performs **no financial execution** and adds **no wallet authority**. Wallets, Agent Accounts, Mandates, Authority, Routines, capability execution, model intelligence and billing remain outside this milestone.
 
 ## Architecture
 
@@ -21,6 +21,8 @@ AgentPlace Web (Vite/React; Vercel-ready)
 AgentPlace API (Railway)
    ├─ Better Auth (Google + SIWE wallet identity)
    ├─ durable Conversation API
+   ├─ Worker + Job APIs
+   ├─ factual Activity projection
    └─ application authorization
         │
         ▼
@@ -30,7 +32,11 @@ PostgreSQL (Railway-compatible)
    ├─ conversation
    ├─ conversation_message
    ├─ conversation_participant
-   └─ conversation_object_link
+   ├─ conversation_object_link
+   ├─ worker_definition / worker_version / job_contract
+   ├─ user_worker
+   ├─ job / job_worker / job_stage
+   └─ domain_event
 ```
 
 A wallet used to sign in is **identity only**. It is not a Connected Wallet and grants no execution authority.
@@ -46,7 +52,7 @@ pnpm install --no-frozen-lockfile
 Copy-Item .env.example .env
 ```
 
-Configure the Milestone 2 variables in `.env`, then run:
+Configure the production variables in `.env`, then run:
 
 ```powershell
 pnpm migrate
@@ -61,9 +67,9 @@ Local endpoints:
 - API through the web/same-origin proxy: `http://localhost:5173/api/v1/config`
 - API health (direct): `http://127.0.0.1:8787/health`
 
-The first `pnpm install --no-frozen-lockfile` after upgrading from v0.2.0 intentionally refreshes `pnpm-lock.yaml` for the new Better Auth/PostgreSQL/SIWE dependencies. Commit the refreshed lockfile with the milestone.
+For a clean v0.4.0 checkout, `pnpm install --frozen-lockfile` should be used.
 
-See `docs/MILESTONE-2-TESTING.md` for the acceptance checklist, `docs/MILESTONE-2-DEPLOYMENT.md` for the Railway/Vercel setup, and `.env.example` for all variables.
+See `docs/MILESTONE-3-TESTING.md` for the acceptance checklist, `docs/MILESTONE-3-DEPLOYMENT.md` for deployment, and `.env.example` for variables.
 
 ## Locked safety principles
 

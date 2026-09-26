@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 — Production Milestone 3
+
+- Added versioned Worker Definitions, Worker Versions and Job Contracts.
+- Seeded the first-party AgentPlace Originals as real catalog records.
+- Added per-user persistent Worker installations with truthful operational state and no implicit financial authority.
+- Added durable Jobs, stages and Lead/Supporting Worker relationships.
+- Added persistent Worker and Job Conversations linked to durable objects.
+- Added factual domain events and Activity projection instead of a competing activity state store.
+- Added authenticated Worker, Job, catalog and Activity APIs with owner isolation.
+- Preserved prototype financial/execution branches outside the Milestone 3 durable write path.
+- Reconciled the production roadmap so M4 is Capability Standard + Intelligence Foundation and M5 is Router v1.
+
 ## 0.3.0 — Production Milestone 2
 
 - Build hotfix 2: make repository lint platform-independent and add regression coverage for prohibited source patterns.

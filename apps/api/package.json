@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/api",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -21,6 +21,8 @@
     "@agent-place/auth": "workspace:*",
     "@agent-place/context": "workspace:*",
     "@agent-place/db": "workspace:*",
-    "@agent-place/shared": "workspace:*"
+    "@agent-place/shared": "workspace:*",
+    "@agent-place/workers": "workspace:*",
+    "@agent-place/jobs": "workspace:*"
   }
 }

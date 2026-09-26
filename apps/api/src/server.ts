@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import {
   getAuthAvailability,
@@ -17,6 +18,8 @@ import {
   type DurableConversationMessage,
 } from '@agent-place/context';
 import { checkDatabase } from '@agent-place/db';
+import { createJob, getJob, jobStatuses, listActivity, listJobs, setJobConversation, type JobDraft } from '@agent-place/jobs';
+import { getUserWorker, installWorker, listUserWorkers, listWorkerCatalog, updateUserWorker, type UserWorkerStatus } from '@agent-place/workers';
 import {
   createRequestId,
   parseEnvironmentContract,
@@ -110,6 +113,51 @@ function isConversationDraft(value: unknown): value is ConversationDraft {
     && v.messages.every(isMessage);
 }
 
+
+
+const workerStatuses = new Set<UserWorkerStatus>(['working','monitoring','standby','needs-you','paused','limited','blocked','issue','removed']);
+const jobStatusSet = new Set<string>(jobStatuses);
+
+function asOptionalString(value: unknown, max = 500): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string' || value.length > max) throw new Error('INVALID_STRING');
+  return value;
+}
+
+function isJobDraft(value: unknown): value is JobDraft {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v.id !== 'string' || !v.id || v.id.length > 128) return false;
+  if (typeof v.title !== 'string' || !v.title.trim() || v.title.length > 200) return false;
+  if (typeof v.goal !== 'string' || !v.goal.trim() || v.goal.length > 4000) return false;
+  if (typeof v.status !== 'string' || !jobStatusSet.has(v.status)) return false;
+  if (v.environment !== 'mainnet' && v.environment !== 'testnet') return false;
+  if (v.kind !== 'research' && v.kind !== 'operational' && v.kind !== 'financial') return false;
+  if (v.originType !== 'user' && v.originType !== 'worker' && v.originType !== 'routine' && v.originType !== 'agentplace') return false;
+  if (typeof v.leadWorkerId !== 'string' || !v.leadWorkerId || v.leadWorkerId.length > 128) return false;
+  if (!Array.isArray(v.supportingWorkerIds) || v.supportingWorkerIds.length > 16 || !v.supportingWorkerIds.every((x) => typeof x === 'string' && x.length > 0 && x.length <= 128)) return false;
+  if (typeof v.currentStage !== 'string' || !v.currentStage || v.currentStage.length > 200) return false;
+  if (!Array.isArray(v.stages) || v.stages.length > 64) return false;
+  if (!v.stages.every((stage) => {
+    if (!stage || typeof stage !== 'object' || Array.isArray(stage)) return false;
+    const row = stage as Record<string, unknown>;
+    return typeof row.id === 'string' && row.id.length > 0 && row.id.length <= 128
+      && typeof row.label === 'string' && row.label.length > 0 && row.label.length <= 200
+      && Number.isInteger(row.ordinal) && Number(row.ordinal) >= 0
+      && (row.status === 'done' || row.status === 'active' || row.status === 'pending');
+  })) return false;
+  for (const key of ['originWorkerId','originConversationId','jobConversationId','createdAt','updatedAt']) {
+    if (v[key] !== undefined && v[key] !== null && typeof v[key] !== 'string') return false;
+  }
+  return true;
+}
+
+
+function scopedId(prefix: string, ownerUserId: string, objectId: string): string {
+  const digest = createHash('sha256').update(`${ownerUserId}:${objectId}`).digest('hex').slice(0, 24);
+  return `${prefix}_${digest}`;
+}
+
 async function requireIdentity(req: IncomingMessage) {
   return requireAgentPlaceIdentity(toAuthHeaders(req.headers));
 }
@@ -159,6 +207,121 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
   if (url.pathname === '/api/v1/me' && req.method === 'GET') {
     const identity = await requireIdentity(req);
     writeJson(res, 200, { user: identity });
+    return;
+  }
+
+
+
+  if (url.pathname === '/api/v1/worker-catalog' && req.method === 'GET') {
+    await requireIdentity(req);
+    const workers = await listWorkerCatalog();
+    writeJson(res, 200, { workers });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/workers' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const workers = await listUserWorkers(identity.appUserId);
+    writeJson(res, 200, { workers });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/workers' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    if (typeof body.definitionId !== 'string' || !body.definitionId || body.definitionId.length > 128) throw new Error('INVALID_WORKER_DEFINITION');
+    let worker = await installWorker(identity.appUserId, body.definitionId);
+    const conversationId = scopedId('workerconv', identity.appUserId, worker.id);
+    await createConversation(identity.appUserId, {
+      id: conversationId,
+      scope: 'worker',
+      workerId: worker.id,
+      title: worker.name,
+      titleSource: 'auto',
+      pinned: false,
+      archived: false,
+      createdAt: new Date().toISOString(),
+      messages: [],
+    });
+    worker = (await updateUserWorker(identity.appUserId, worker.id, { primaryConversationId: conversationId })) ?? worker;
+    writeJson(res, 201, { worker });
+    return;
+  }
+
+  const workerMatch = url.pathname.match(/^\/api\/v1\/workers\/([^/]+)$/);
+  if (workerMatch) {
+    const workerId = decodeURIComponent(workerMatch[1] ?? '');
+    const identity = await requireIdentity(req);
+    if (req.method === 'GET') {
+      const worker = await getUserWorker(identity.appUserId, workerId);
+      if (!worker || worker.status === 'removed') return writeJson(res, 404, { error: 'not_found', message: 'Worker not found.', requestId });
+      writeJson(res, 200, { worker });
+      return;
+    }
+    if (req.method === 'PATCH') {
+      const body = asRecord(await readJson(req));
+      const patch: { status?: UserWorkerStatus; currentFocus?: string | null; currentJobId?: string | null } = {};
+      if (body.status !== undefined) {
+        if (typeof body.status !== 'string' || !workerStatuses.has(body.status as UserWorkerStatus)) throw new Error('INVALID_WORKER_STATUS');
+        patch.status = body.status as UserWorkerStatus;
+      }
+      if (body.currentFocus !== undefined) {
+        if (body.currentFocus === null) patch.currentFocus = null;
+        else { const value = asOptionalString(body.currentFocus, 1000); if (value !== undefined) patch.currentFocus = value; }
+      }
+      if (body.currentJobId !== undefined) {
+        if (body.currentJobId === null) patch.currentJobId = null;
+        else { const value = asOptionalString(body.currentJobId, 128); if (value !== undefined) patch.currentJobId = value; }
+      }
+      const worker = await updateUserWorker(identity.appUserId, workerId, patch);
+      if (!worker) return writeJson(res, 404, { error: 'not_found', message: 'Worker not found.', requestId });
+      writeJson(res, 200, { worker });
+      return;
+    }
+  }
+
+  if (url.pathname === '/api/v1/jobs' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const jobs = await listJobs(identity.appUserId);
+    writeJson(res, 200, { jobs });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/jobs' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    if (!isJobDraft(body.job)) throw new Error('INVALID_JOB');
+    let job = await createJob(identity.appUserId, body.job);
+    const conversationId = job.jobConversationId ?? `job-${job.id}`;
+    await createConversation(identity.appUserId, {
+      id: conversationId,
+      scope: 'job',
+      jobId: job.id,
+      title: job.title,
+      titleSource: 'auto',
+      pinned: false,
+      archived: false,
+      createdAt: job.createdAt,
+      messages: [],
+    });
+    job = (await setJobConversation(identity.appUserId, job.id, conversationId)) ?? job;
+    writeJson(res, 201, { job });
+    return;
+  }
+
+  const jobMatch = url.pathname.match(/^\/api\/v1\/jobs\/([^/]+)$/);
+  if (jobMatch && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const job = await getJob(identity.appUserId, decodeURIComponent(jobMatch[1] ?? ''));
+    if (!job) return writeJson(res, 404, { error: 'not_found', message: 'Job not found.', requestId });
+    writeJson(res, 200, { job });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/activity' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const activity = await listActivity(identity.appUserId);
+    writeJson(res, 200, { activity });
     return;
   }
 
@@ -280,7 +443,7 @@ const server = createServer((req, res) => {
       writeJson(res, 401, { error: 'unauthenticated', message: 'Sign in to continue.', requestId });
       return;
     }
-    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE'].includes(code)) {
+    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE','INVALID_WORKER_DEFINITION','INVALID_WORKER_STATUS','INVALID_JOB','INVALID_STRING','JOB_LEAD_REQUIRED','JOB_WORKER_NOT_AVAILABLE','WORKER_DEFINITION_NOT_FOUND'].includes(code)) {
       writeJson(res, 400, { error: 'invalid_request', message: code, requestId });
       return;
     }

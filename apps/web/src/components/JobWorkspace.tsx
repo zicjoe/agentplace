@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useAppState, useDispatch, uid } from '../state/AppContext';
 import { ExecutionTimeline } from './ExecutionTimeline';
 import type { ExecutionStatus } from '../state/types';
+import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 
 interface JobMessage {
   id: string;
@@ -85,6 +86,7 @@ function jobStatusLabel(status: string): string {
     'unknown': 'Confirming transaction status',
     'failed': 'Failed',
     'needs-you': 'Needs you',
+    'planning': 'Planning',
     'working': 'Working',
     'blocked': 'Blocked',
   };
@@ -450,6 +452,10 @@ export function JobWorkspace() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const job = (state.jobs ?? []).find((j) => j.id === state.activeJobId);
+  const durableConversation = job ? state.conversations.find((c) => c.scope === 'job' && c.jobId === job.id) : undefined;
+  const durableMessages: JobMessage[] = durableConversation?.messages.map((m) => ({ id: m.id, role: m.role === 'user' ? 'user' : 'manager', content: m.content })) ?? [];
+  const productionConversation = WEB_RUNTIME_SETTINGS.dataMode === 'api' && !!state.user;
+  const displayMessages = productionConversation ? durableMessages : messages;
 
   if (job?.kind === 'financial') {
     return <FinancialJobWorkspace />;
@@ -457,7 +463,7 @@ export function JobWorkspace() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+  }, [displayMessages.length]);
 
   if (!job) {
     return (
@@ -472,8 +478,25 @@ export function JobWorkspace() {
 
   function sendMessage() {
     if (!input.trim()) return;
+    if (!job) return;
     const text = input.trim();
     setInput('');
+
+    if (productionConversation && durableConversation) {
+      dispatch({ type: 'ADD_MSG', convId: durableConversation.id, msg: { id: uid(), role: 'user', content: text, timestamp: new Date() } });
+      dispatch({
+        type: 'ADD_MSG',
+        convId: durableConversation.id,
+        msg: {
+          id: uid(),
+          role: 'manager',
+          content: 'Your message is saved to this durable Job. The real AgentPlace Intelligence and capability runtime arrives in Production Milestone 4, so this Milestone 3 Job will not fabricate research or execution results.',
+          timestamp: new Date(),
+          jobId: job.id,
+        },
+      });
+      return;
+    }
 
     const userMsg: JobMessage = { id: uid(), role: 'user', content: text };
     setMessages((prev) => [...prev, userMsg]);
@@ -505,7 +528,7 @@ export function JobWorkspace() {
     }, 1200);
   }
 
-  const isStreaming = messages.some((m) => m.isStreaming);
+  const isStreaming = displayMessages.some((m) => m.isStreaming);
 
   return (
     <div className="h-full flex flex-col bg-bg overflow-hidden">
@@ -528,7 +551,7 @@ export function JobWorkspace() {
                   className={`w-1.5 h-1.5 rounded-full ${isComplete ? 'bg-accent' : 'bg-primary'}`}
                 />
                 <span className={`text-xs ${isComplete ? 'text-accent' : 'text-primary'}`}>
-                  {isComplete ? 'Research complete' : 'Working'}
+                  {isComplete ? 'Research complete' : job.status === 'planning' ? 'Planning' : 'Working'}
                 </span>
               </div>
             </div>
@@ -596,7 +619,7 @@ export function JobWorkspace() {
           <div className="h-full flex flex-col">
             <div className="flex-1 overflow-y-auto px-5 py-5">
               <div className="max-w-2xl mx-auto space-y-4">
-                {messages.length === 0 && (
+                {displayMessages.length === 0 && (
                   <div className="py-8 text-center">
                     <p className="text-sm text-text-sub mb-1">Ask questions about this job</p>
                     <p className="text-xs text-text-muted mb-5">
@@ -620,7 +643,7 @@ export function JobWorkspace() {
                   </div>
                 )}
 
-                {messages.map((msg) => {
+                {displayMessages.map((msg) => {
                   if (msg.role === 'user') {
                     return (
                       <div key={msg.id} className="flex justify-end">

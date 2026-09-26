@@ -1,8 +1,8 @@
 {
   "name": "agent-place",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "AgentPlace — multichain operating system and economic coordination layer for autonomous crypto Workers.",
+  "description": "AgentPlace \u2014 multichain operating system and economic coordination layer for autonomous crypto Workers.",
   "type": "module",
   "packageManager": "pnpm@10.15.1",
   "engines": {
@@ -12,22 +12,23 @@
     "clean": "node scripts/clean.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:web": "pnpm --filter @agent-place/web dev",
-    "dev:api": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db build && pnpm --filter @agent-place/auth build && pnpm --filter @agent-place/context build && pnpm --filter @agent-place/api build && pnpm --filter @agent-place/api start",
+    "dev:api": "pnpm build:api && pnpm --filter @agent-place/api start",
     "format:check": "node scripts/format-check.mjs",
     "lint": "node scripts/lint.mjs",
     "typecheck": "node scripts/typecheck.mjs",
     "build": "node scripts/build.mjs",
-    "build:api": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db build && pnpm --filter @agent-place/auth build && pnpm --filter @agent-place/context build && pnpm --filter @agent-place/api build",
+    "build:api": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db build && pnpm --filter @agent-place/auth build && pnpm --filter @agent-place/context build && pnpm --filter @agent-place/workers build && pnpm --filter @agent-place/jobs build && pnpm --filter @agent-place/api build",
     "build:web": "pnpm --filter @agent-place/web build",
     "start:api": "pnpm --filter @agent-place/api start",
     "test": "node --test tests/*.test.mjs",
     "verify:repo": "node scripts/verify-repository-foundation.mjs",
     "verify:milestone-1": "node scripts/verify-milestone-1.mjs",
-    "check": "pnpm clean && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm verify:repo && pnpm verify:milestone-1 && pnpm verify:milestone-2",
+    "check": "pnpm clean && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm verify:repo && pnpm verify:milestone-1 && pnpm verify:milestone-2 && pnpm verify:milestone-3",
     "db:migrate": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db migrate",
     "auth:migrate": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db build && pnpm --filter @agent-place/auth migrate",
     "migrate": "pnpm db:migrate && pnpm auth:migrate",
-    "verify:milestone-2": "node scripts/verify-milestone-2.mjs"
+    "verify:milestone-2": "node scripts/verify-milestone-2.mjs",
+    "verify:milestone-3": "node scripts/verify-milestone-3.mjs"
   },
   "devDependencies": {
     "@types/node": "22.19.17",

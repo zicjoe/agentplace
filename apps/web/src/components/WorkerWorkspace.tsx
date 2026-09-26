@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAppState, useDispatch, createComparisonJob, uid } from '../state/AppContext';
 import type { WorkerStatus, Routine } from '../state/types';
+import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 
 interface LocalMessage {
   id: string;
@@ -49,7 +50,7 @@ function InlineJobCard({ jobId }: { jobId: string }) {
           <div className="flex items-center gap-1.5 mt-0.5">
             <span className={`w-1.5 h-1.5 rounded-full ${job.status === 'completed' ? 'bg-accent' : 'bg-primary'}`} />
             <span className={`text-xs ${job.status === 'completed' ? 'text-accent' : 'text-primary'}`}>
-              {job.status === 'completed' ? 'Research complete' : 'Working'}
+              {job.status === 'completed' ? 'Research complete' : job.status === 'planning' ? 'Planning' : 'Working'}
             </span>
           </div>
         </div>
@@ -384,10 +385,14 @@ export function WorkerWorkspace() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const worker = state.workers.find((w) => w.id === state.activeWorkerId);
+  const durableConversation = worker ? state.conversations.find((c) => c.scope === 'worker' && c.workerId === worker.id) : undefined;
+  const durableMessages: LocalMessage[] = durableConversation?.messages.map((m) => ({ id: m.id, role: m.role === 'user' ? 'user' : 'manager', content: m.content, jobId: m.jobId })) ?? [];
+  const productionConversation = WEB_RUNTIME_SETTINGS.dataMode === 'api' && !!state.user;
+  const displayMessages = productionConversation ? durableMessages : messages;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, messages.at(-1)?.isStreaming]);
+  }, [displayMessages.length, displayMessages.at(-1)?.isStreaming]);
 
   if (!worker) {
     return (
@@ -440,14 +445,56 @@ export function WorkerWorkspace() {
 
   function sendMessage() {
     if (!input.trim()) return;
+    if (!worker) return;
     const text = input.trim();
     setInput('');
 
-    const userMsg: LocalMessage = { id: uid(), role: 'user', content: text };
-    setMessages((prev) => [...prev, userMsg]);
-
     const isCompareRequest = /compare|bonk.*wif|wif.*bonk|popcat/i.test(text);
     const isRoutineRequest = detectRoutineIntent(text);
+
+    if (productionConversation && durableConversation) {
+      const userMessage = { id: uid(), role: 'user' as const, content: text, timestamp: new Date() };
+      dispatch({ type: 'ADD_MSG', convId: durableConversation.id, msg: userMessage });
+      let jobId: string | undefined;
+      let response = `${worker.name} is installed and this message has been saved. Real Worker model intelligence is introduced in Production Milestone 4, so AgentPlace will not fabricate a specialist answer in Milestone 3.`;
+      if (isCompareRequest && !(state.jobs ?? []).some((j) => j.title.includes('Compare BONK'))) {
+        jobId = uid();
+        const now = new Date();
+        dispatch({
+          type: 'ADD_JOB',
+          job: {
+            id: jobId,
+            title: 'Compare BONK, WIF and POPCAT',
+            goal: 'Compare the three meme assets using market context, smart-money evidence, risk profile, and ecosystem strength.',
+            status: 'planning',
+            leadWorkerId: worker.id,
+            leadWorkerName: worker.name,
+            supportingWorkerIds: ['w-smartmoney'],
+            supportingWorkerNames: ['Smart Money Scout'],
+            originWorkerId: worker.id,
+            currentStage: 'Planned',
+            stages: [
+              { id: 's1', label: 'Candidate context', status: 'pending' },
+              { id: 's2', label: 'Smart-money analysis', status: 'pending' },
+              { id: 's3', label: 'Risk comparison', status: 'pending' },
+              { id: 's4', label: 'Synthesis', status: 'pending' },
+            ],
+            kind: 'research',
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+        response = 'I created the durable comparison Job and assigned the Worker team. It is currently a planned Job; the real Intelligence and capability runtime that can execute this research arrives in Production Milestone 4.';
+      } else if (isRoutineRequest) {
+        response = 'I saved your instruction, but I have not activated a background Routine. Real Routine execution is a later production milestone.';
+      }
+      const managerMessage = { id: uid(), role: 'manager' as const, content: response, timestamp: new Date(), ...(jobId ? { jobId } : {}) };
+      dispatch({ type: 'ADD_MSG', convId: durableConversation.id, msg: managerMessage });
+      return;
+    }
+
+    const userMsg: LocalMessage = { id: uid(), role: 'user', content: text };
+    setMessages((prev) => [...prev, userMsg]);
 
     if (isRoutineRequest && worker) {
       const preview = buildRoutinePreview(text, worker.id, worker.name);
@@ -520,7 +567,7 @@ export function WorkerWorkspace() {
     }
   }
 
-  const isStreaming = messages.some((m) => m.isStreaming);
+  const isStreaming = displayMessages.some((m) => m.isStreaming);
 
   return (
     <div className="h-full flex flex-col bg-bg overflow-hidden">
@@ -570,7 +617,7 @@ export function WorkerWorkspace() {
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           <div className="flex-1 overflow-y-auto px-5 py-5">
             <div className="max-w-2xl mx-auto space-y-4">
-              {messages.length === 0 && (
+              {displayMessages.length === 0 && (
                 <div className="text-center py-12">
                   <p className="text-sm text-text-sub mb-1">
                     Talk directly to {worker.name}
@@ -611,7 +658,7 @@ export function WorkerWorkspace() {
                 </div>
               )}
 
-              {messages.map((msg) => {
+              {displayMessages.map((msg) => {
                 if (msg.role === 'user') {
                   return (
                     <div key={msg.id} className="flex justify-end">

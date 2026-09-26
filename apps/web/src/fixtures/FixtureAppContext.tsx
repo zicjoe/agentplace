@@ -48,6 +48,7 @@ import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { getAgentPlaceIdentity, getAuthenticatedUser, signOut as signOutAuth } from '../platform/authClient';
 import { addDurableMessage, createDurableConversation, fetchConversations, importGuestConversations, patchDurableConversation, updateDurableMessage } from '../platform/conversationApi';
 import { clearIdentityResume, readIdentityResume } from '../platform/identityResume';
+import { createDurableJob, fetchWorkState, installDurableWorker } from '../platform/workApi';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -917,6 +918,9 @@ const INITIAL_STATE: AppState = {
 export type Action =
   | { type: 'SET_USER'; user: User | null }
   | { type: 'SET_CONVERSATIONS'; conversations: Conversation[] }
+  | { type: 'SET_WORKERS'; workers: Worker[] }
+  | { type: 'SET_JOBS'; jobs: Job[] }
+  | { type: 'SET_ACTIVITY_EVENTS'; events: ActivityEvent[] }
   | { type: 'SET_VIEW'; view: NavView }
   | { type: 'SET_ENV'; env: Environment }
   | { type: 'SET_ACTIVE_CONV'; id: string | null }
@@ -1003,6 +1007,15 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'SET_CONVERSATIONS':
       return { ...state, conversations: action.conversations };
+
+    case 'SET_WORKERS':
+      return { ...state, workers: action.workers };
+
+    case 'SET_JOBS':
+      return { ...state, jobs: action.jobs };
+
+    case 'SET_ACTIVITY_EVENTS':
+      return { ...state, activityEvents: action.events };
 
     case 'SET_VIEW':
       return {
@@ -1573,6 +1586,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rawDispatch({ type: 'SET_CONVERSATIONS', conversations });
   }, []);
 
+  const refreshDurableWork = useCallback(async () => {
+    if (WEB_RUNTIME_SETTINGS.dataMode !== 'api' || !stateRef.current.user) return;
+    const work = await fetchWorkState();
+    rawDispatch({ type: 'SET_WORKERS', workers: work.workers });
+    rawDispatch({ type: 'SET_JOBS', jobs: work.jobs });
+    rawDispatch({ type: 'SET_ACTIVITY_EVENTS', events: work.activity });
+  }, []);
+
+  const syncWorkAction = useCallback((action: Action, before: AppState) => {
+    if (WEB_RUNTIME_SETTINGS.dataMode !== 'api' || !before.user) return;
+    let task: Promise<unknown> | null = null;
+    if (action.type === 'ADD_WORKER' && action.worker.isOriginal) {
+      task = installDurableWorker(action.worker.id);
+    }
+    if (action.type === 'ADD_JOB' && action.job.kind !== 'financial' && !action.job.actionId && !action.job.executionId) {
+      task = createDurableJob(action.job, before.environment);
+    }
+    if (task) task.then(() => Promise.all([refreshDurableWork(), refreshDurableConversations()])).catch(() => void Promise.all([refreshDurableWork(), refreshDurableConversations()]));
+  }, [refreshDurableWork, refreshDurableConversations]);
+
   const syncConversationAction = useCallback((action: Action, before: AppState, after: AppState) => {
     if (WEB_RUNTIME_SETTINGS.dataMode !== 'api' || !before.user) return;
     let task: Promise<unknown> | null = null;
@@ -1608,6 +1641,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (action.type === 'RESET_GUEST') clearFixtureState();
     syncConversationAction(action, before, next);
+    syncWorkAction(action, before);
 
     if (typeof window !== 'undefined' && action.type !== 'HYDRATE_ROUTE' && isNavigationAction(action.type)) {
       pendingPathRef.current = pathForState(next);
@@ -1621,7 +1655,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
       }
     }
-  }, [syncConversationAction]);
+  }, [syncConversationAction, syncWorkAction]);
 
   useEffect(() => {
     persistFixtureState(state);
@@ -1639,13 +1673,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? stateRef.current.conversations.find((c) => c.id === marker.conversationId)
           : undefined;
         if (guestConversation) await importGuestConversations([guestConversation]);
-        const [conversations, identity] = await Promise.all([fetchConversations(), getAgentPlaceIdentity()]);
+        const [conversations, identity, work] = await Promise.all([fetchConversations(), getAgentPlaceIdentity(), fetchWorkState()]);
         const user = userFromAuth(identity);
-        const nextUser = reducer(stateRef.current, { type: 'SET_USER', user });
-        const next = reducer(nextUser, { type: 'SET_CONVERSATIONS', conversations });
+        let next = reducer(stateRef.current, { type: 'SET_USER', user });
+        next = reducer(next, { type: 'SET_CONVERSATIONS', conversations });
+        next = reducer(next, { type: 'SET_WORKERS', workers: work.workers });
+        next = reducer(next, { type: 'SET_JOBS', jobs: work.jobs });
+        next = reducer(next, { type: 'SET_ACTIVITY_EVENTS', events: work.activity });
         stateRef.current = next;
         rawDispatch({ type: 'SET_USER', user });
         rawDispatch({ type: 'SET_CONVERSATIONS', conversations });
+        rawDispatch({ type: 'SET_WORKERS', workers: work.workers });
+        rawDispatch({ type: 'SET_JOBS', jobs: work.jobs });
+        rawDispatch({ type: 'SET_ACTIVITY_EVENTS', events: work.activity });
         clearFixtureState();
         clearIdentityResume();
       } catch (error) {

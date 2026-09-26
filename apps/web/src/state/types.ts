@@ -89,7 +89,7 @@ export interface Worker {
 
 // ── Job ───────────────────────────────────────────────────────────────────────
 
-export type JobStatus = 'working' | 'completed' | 'failed' | 'blocked' | 'needs-approval' | 'executing' | 'settling' | 'verifying' | 'recovering' | 'needs-you' | 'rejected' | 'unknown';
+export type JobStatus = 'planning' | 'working' | 'completed' | 'failed' | 'blocked' | 'needs-approval' | 'executing' | 'settling' | 'verifying' | 'recovering' | 'needs-you' | 'rejected' | 'unknown';
 
 // ── Routine ───────────────────────────────────────────────────────────────────
 
@@ -216,6 +216,7 @@ export interface Job {
   stages: JobProgressStage[];
   result?: JobResult;
   kind?: 'research' | 'financial';
+  environment?: Environment;
   originConversationId?: string;
   actionId?: string;
   executionId?: string;
