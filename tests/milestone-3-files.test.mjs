@@ -17,3 +17,12 @@ test('Milestone 3 API scopes durable work behind authenticated identity', () => 
   assert.match(server, /listJobs\(identity\.appUserId\)/);
   assert.match(server, /listActivity\(identity\.appUserId\)/);
 });
+
+test('Milestone 3 rehydrates Workers, Jobs and Activity after interactive sign-in', () => {
+  const checkpoint = readFileSync('apps/web/src/components/IdentityCheckpoint.tsx','utf8');
+  assert.match(checkpoint, /fetchWorkState\(\)/);
+  assert.match(checkpoint, /SET_WORKERS/);
+  assert.match(checkpoint, /SET_JOBS/);
+  assert.match(checkpoint, /SET_ACTIVITY_EVENTS/);
+});
+

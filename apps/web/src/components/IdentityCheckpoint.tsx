@@ -5,6 +5,7 @@ import { getAgentPlaceIdentity, signInWithEthereum, signInWithGoogle, type Authe
 import { fetchConversations, importGuestConversations } from '../platform/conversationApi';
 import { rememberIdentityResume, clearIdentityResume } from '../platform/identityResume';
 import { clearFixtureState } from '../platform/fixtureStore';
+import { fetchWorkState } from '../platform/workApi';
 import { useRuntime } from '../platform/RuntimeProvider';
 
 function toUser(value: AuthenticatedUser): User {
@@ -43,10 +44,17 @@ export function IdentityCheckpoint() {
       ? state.conversations.find((conversation) => conversation.id === state.activeConversationId)
       : undefined;
     if (guestConversation) await importGuestConversations([guestConversation]);
-    const [conversations, identity] = await Promise.all([fetchConversations(), getAgentPlaceIdentity()]);
+    const [conversations, identity, work] = await Promise.all([
+      fetchConversations(),
+      getAgentPlaceIdentity(),
+      fetchWorkState(),
+    ]);
     const user = toUser(identity);
     dispatch({ type: 'SET_USER', user });
     dispatch({ type: 'SET_CONVERSATIONS', conversations });
+    dispatch({ type: 'SET_WORKERS', workers: work.workers });
+    dispatch({ type: 'SET_JOBS', jobs: work.jobs });
+    dispatch({ type: 'SET_ACTIVITY_EVENTS', events: work.activity });
     clearFixtureState();
     clearIdentityResume();
     checkpoint!.onComplete(user);
