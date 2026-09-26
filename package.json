@@ -31,7 +31,7 @@
     "verify:milestone-3": "node scripts/verify-milestone-3.mjs"
   },
   "devDependencies": {
-    "@types/node": "22.19.17",
-    "typescript": "5.9.3"
+    "@types/node": "26.6.2",
+    "typescript": "7.0.2"
   }
 }
