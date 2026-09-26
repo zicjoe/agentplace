@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useAppState, useDispatch, createComparisonJob, uid } from '../state/AppContext';
 import type { WorkerStatus, Routine } from '../state/types';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { fetchWorkState, updateDurableWorkerStatus } from '../platform/workApi';
 
 interface LocalMessage {
   id: string;
@@ -191,10 +192,47 @@ function InlineRoutinePreviewCard({ routine, workerId }: { routine: Routine; wor
 function WorkerSideRail({ workerId }: { workerId: string }) {
   const state = useAppState();
   const dispatch = useDispatch();
+  const [workerControlBusy, setWorkerControlBusy] = useState<'pause' | 'resume' | 'remove' | null>(null);
+  const [workerControlError, setWorkerControlError] = useState<string | null>(null);
   const worker = state.workers.find((w) => w.id === workerId);
   if (!worker) return null;
+  const currentWorker = worker;
 
-  const activeJob = (state.jobs ?? []).find((j) => j.id === worker.currentJobId);
+  const activeJob = (state.jobs ?? []).find((j) => j.id === currentWorker.currentJobId);
+
+  async function changeWorkerStatus(status: 'paused' | 'standby' | 'removed') {
+    const action = status === 'paused' ? 'pause' : status === 'removed' ? 'remove' : 'resume';
+    if (
+      status === 'removed' &&
+      !window.confirm(`Remove ${currentWorker.name} from your workforce? Existing Job and conversation history will be kept.`)
+    ) {
+      return;
+    }
+
+    setWorkerControlBusy(action);
+    setWorkerControlError(null);
+    try {
+      if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+        await updateDurableWorkerStatus(currentWorker.id, status);
+        const work = await fetchWorkState();
+        dispatch({ type: 'SET_WORKERS', workers: work.workers });
+        dispatch({ type: 'SET_JOBS', jobs: work.jobs });
+        dispatch({ type: 'SET_ACTIVITY_EVENTS', events: work.activity });
+      } else if (status === 'removed') {
+        dispatch({ type: 'SET_WORKERS', workers: state.workers.filter((item) => item.id !== currentWorker.id) });
+      } else {
+        dispatch({ type: 'UPDATE_WORKER', workerId: currentWorker.id, updates: { status } });
+      }
+
+      if (status === 'removed') {
+        dispatch({ type: 'SET_ACTIVE_WORKER', id: null });
+      }
+    } catch (error) {
+      setWorkerControlError(error instanceof Error ? error.message : 'Worker update failed.');
+    } finally {
+      setWorkerControlBusy(null);
+    }
+  }
   const recentOutcomes = (state.outcomes ?? []).filter((o) => o.workerId === workerId).slice(0, 3);
 
   return (
@@ -221,6 +259,33 @@ function WorkerSideRail({ workerId }: { workerId: string }) {
           </div>
           {worker.currentFocus && (
             <p className="text-xs text-text-muted mt-1">{worker.currentFocus}</p>
+          )}
+          <div className="flex items-center gap-3 mt-2">
+            <button
+              type="button"
+              disabled={workerControlBusy !== null}
+              onClick={() => void changeWorkerStatus(worker.status === 'paused' ? 'standby' : 'paused')}
+              className="text-xs text-primary hover:underline disabled:text-text-dim disabled:no-underline"
+            >
+              {workerControlBusy === 'pause'
+                ? 'Pausing…'
+                : workerControlBusy === 'resume'
+                  ? 'Resuming…'
+                  : worker.status === 'paused'
+                    ? 'Resume Worker'
+                    : 'Pause Worker'}
+            </button>
+            <button
+              type="button"
+              disabled={workerControlBusy !== null}
+              onClick={() => void changeWorkerStatus('removed')}
+              className="text-xs text-text-muted hover:text-danger disabled:text-text-dim transition-colors"
+            >
+              {workerControlBusy === 'remove' ? 'Removing…' : 'Remove Worker'}
+            </button>
+          </div>
+          {workerControlError && (
+            <p className="text-xs text-danger mt-2">{workerControlError}</p>
           )}
         </div>
 

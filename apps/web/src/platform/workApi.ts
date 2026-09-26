@@ -78,6 +78,17 @@ export async function installDurableWorker(definitionId:string):Promise<Worker> 
   const data=await request<{worker:ApiWorker}>('/api/v1/workers',{method:'POST',body:JSON.stringify({definitionId})}); return fromWorker(data.worker);
 }
 
+export async function updateDurableWorkerStatus(
+  workerId:string,
+  status:'standby'|'paused'|'removed',
+):Promise<Worker> {
+  const data=await request<{worker:ApiWorker}>(`/api/v1/workers/${encodeURIComponent(workerId)}`,{
+    method:'PATCH',
+    body:JSON.stringify({status}),
+  });
+  return fromWorker(data.worker);
+}
+
 export async function createDurableJob(job:Job, environment:'mainnet'|'testnet'):Promise<Job> {
   const data=await request<{job:ApiJob}>('/api/v1/jobs',{method:'POST',body:JSON.stringify({job:{
     id:job.id,title:job.title,goal:job.goal,status:'PLANNED',environment,kind:job.kind??'research',originType:job.originWorkerId?'worker':'user',leadWorkerId:job.leadWorkerId,
