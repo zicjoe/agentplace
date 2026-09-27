@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useAppState, useDispatch, createComparisonJob, uid } from '../state/AppContext';
 import type { WorkerStatus, Routine } from '../state/types';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
+import { ModelSelector } from './ModelSelector';
 import { fetchWorkState, updateDurableWorkerStatus } from '../platform/workApi';
 
 interface LocalMessage {
@@ -446,6 +448,7 @@ export function WorkerWorkspace() {
   const dispatch = useDispatch();
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [input, setInput] = useState('');
+  const [modelSelection, setModelSelection] = useState<ModelSelection>({ provider: 'auto' });
   const [showDetails, setShowDetails] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -520,41 +523,9 @@ export function WorkerWorkspace() {
     if (productionConversation && durableConversation) {
       const userMessage = { id: uid(), role: 'user' as const, content: text, timestamp: new Date() };
       dispatch({ type: 'ADD_MSG', convId: durableConversation.id, msg: userMessage });
-      let jobId: string | undefined;
-      let response = `${worker.name} is installed and this message has been saved. Real Worker model intelligence is introduced in Production Milestone 4, so AgentPlace will not fabricate a specialist answer in Milestone 3.`;
-      if (isCompareRequest && !(state.jobs ?? []).some((j) => j.title.includes('Compare BONK'))) {
-        jobId = uid();
-        const now = new Date();
-        dispatch({
-          type: 'ADD_JOB',
-          job: {
-            id: jobId,
-            title: 'Compare BONK, WIF and POPCAT',
-            goal: 'Compare the three meme assets using market context, smart-money evidence, risk profile, and ecosystem strength.',
-            status: 'planning',
-            leadWorkerId: worker.id,
-            leadWorkerName: worker.name,
-            supportingWorkerIds: ['w-smartmoney'],
-            supportingWorkerNames: ['Smart Money Scout'],
-            originWorkerId: worker.id,
-            currentStage: 'Planned',
-            stages: [
-              { id: 's1', label: 'Candidate context', status: 'pending' },
-              { id: 's2', label: 'Smart-money analysis', status: 'pending' },
-              { id: 's3', label: 'Risk comparison', status: 'pending' },
-              { id: 's4', label: 'Synthesis', status: 'pending' },
-            ],
-            kind: 'research',
-            createdAt: now,
-            updatedAt: now,
-          },
-        });
-        response = 'I created the durable comparison Job and assigned the Worker team. It is currently a planned Job; the real Intelligence and capability runtime that can execute this research arrives in Production Milestone 4.';
-      } else if (isRoutineRequest) {
-        response = 'I saved your instruction, but I have not activated a background Routine. Real Routine execution is a later production milestone.';
-      }
-      const managerMessage = { id: uid(), role: 'manager' as const, content: response, timestamp: new Date(), ...(jobId ? { jobId } : {}) };
-      dispatch({ type: 'ADD_MSG', convId: durableConversation.id, msg: managerMessage });
+      void submitIntelligence(durableConversation.id, userMessage, modelSelection).catch((error) => {
+        dispatch({ type: 'ADD_MSG', convId: durableConversation.id, msg: { id: uid(), role: 'manager', content: error instanceof Error ? error.message : 'AgentPlace intelligence request failed.', timestamp: new Date() } });
+      });
       return;
     }
 
@@ -785,7 +756,7 @@ export function WorkerWorkspace() {
                   className="w-full bg-transparent resize-none px-4 pt-3 pb-2 text-sm text-text placeholder-text-muted outline-none leading-relaxed"
                 />
                 <div className="flex items-center justify-between px-4 pb-3">
-                  <span className="text-xs text-text-dim font-mono">Shift+Enter for new line</span>
+                  <div className="flex items-center gap-2"><span className="text-xs text-text-dim font-mono hidden md:inline">Shift+Enter for new line</span>{productionConversation && durableConversation && <ModelSelector conversationId={durableConversation.id} onChange={setModelSelection} />}</div>
                   <button
                     onClick={sendMessage}
                     disabled={!input.trim() || isStreaming}

@@ -1695,6 +1695,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (WEB_RUNTIME_SETTINGS.dataMode !== 'api' || !state.user) return undefined;
+    let running = false;
+    const refresh = async () => {
+      if (running || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return;
+      running = true;
+      try {
+        await Promise.all([refreshDurableConversations(), refreshDurableWork()]);
+      } finally {
+        running = false;
+      }
+    };
+    const timer = window.setInterval(() => { void refresh(); }, 4000);
+    return () => window.clearInterval(timer);
+  }, [state.user?.id, refreshDurableConversations, refreshDurableWork]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handlePopState = () => {
       const route = routeSelectionFromPath(window.location.pathname);

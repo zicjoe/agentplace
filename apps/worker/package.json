@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/worker",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -12,11 +12,18 @@
     }
   },
   "scripts": {
-    "clean": "node -e \"require(\\'node:fs\\').rmSync(\\'dist\\',{recursive:true,force:true})\"",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "start": "node --env-file-if-exists=../../.env dist/index.js"
   },
   "dependencies": {
-    "@agent-place/shared": "workspace:*"
+    "@agent-place/capabilities": "workspace:*",
+    "@agent-place/context": "workspace:*",
+    "@agent-place/db": "workspace:*",
+    "@agent-place/jobs": "workspace:*",
+    "@agent-place/models": "workspace:*",
+    "@agent-place/shared": "workspace:*",
+    "@agent-place/workers": "workspace:*"
   }
 }

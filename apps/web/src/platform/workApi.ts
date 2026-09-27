@@ -96,3 +96,10 @@ export async function createDurableJob(job:Job, environment:'mainnet'|'testnet')
     stages:job.stages.map((stage,index)=>({id:stage.id,label:stage.label,status:'pending',ordinal:index})),createdAt:job.createdAt.toISOString(),updatedAt:job.updatedAt.toISOString(),
   }})}); return fromJob(data.job);
 }
+
+export interface JobEvidenceSource { id:string; url:string; title:string; provider:string; retrievedAt:string; }
+export async function fetchJobEvidence(jobId:string):Promise<JobEvidenceSource[]> {
+  const data=await request<{sources:JobEvidenceSource[]}>(`/api/v1/jobs/${encodeURIComponent(jobId)}/evidence`);
+  return data.sources;
+}
+

@@ -3,6 +3,9 @@ import { useAppState, useDispatch, uid } from '../state/AppContext';
 import { ExecutionTimeline } from './ExecutionTimeline';
 import type { ExecutionStatus } from '../state/types';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
+import { fetchJobEvidence, type JobEvidenceSource } from '../platform/workApi';
+import { ModelSelector } from './ModelSelector';
 
 interface JobMessage {
   id: string;
@@ -448,7 +451,9 @@ export function JobWorkspace() {
   const dispatch = useDispatch();
   const [messages, setMessages] = useState<JobMessage[]>([]);
   const [input, setInput] = useState('');
+  const [modelSelection, setModelSelection] = useState<ModelSelection>({ provider: 'auto' });
   const [activeTab, setActiveTab] = useState<'conversation' | 'team' | 'result'>('conversation');
+  const [evidenceSources, setEvidenceSources] = useState<JobEvidenceSource[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const job = (state.jobs ?? []).find((j) => j.id === state.activeJobId);
@@ -464,6 +469,14 @@ export function JobWorkspace() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [displayMessages.length]);
+
+
+  useEffect(() => {
+    if (!job || WEB_RUNTIME_SETTINGS.dataMode !== 'api' || !state.user) return;
+    let cancelled = false;
+    void fetchJobEvidence(job.id).then((sources) => { if (!cancelled) setEvidenceSources(sources); }).catch(() => { if (!cancelled) setEvidenceSources([]); });
+    return () => { cancelled = true; };
+  }, [job?.id, job?.status, state.user?.id]);
 
   if (!job) {
     return (
@@ -483,17 +496,10 @@ export function JobWorkspace() {
     setInput('');
 
     if (productionConversation && durableConversation) {
-      dispatch({ type: 'ADD_MSG', convId: durableConversation.id, msg: { id: uid(), role: 'user', content: text, timestamp: new Date() } });
-      dispatch({
-        type: 'ADD_MSG',
-        convId: durableConversation.id,
-        msg: {
-          id: uid(),
-          role: 'manager',
-          content: 'Your message is saved to this durable Job. The real AgentPlace Intelligence and capability runtime arrives in Production Milestone 4, so this Milestone 3 Job will not fabricate research or execution results.',
-          timestamp: new Date(),
-          jobId: job.id,
-        },
+      const userMessage = { id: uid(), role: 'user' as const, content: text, timestamp: new Date() };
+      dispatch({ type: 'ADD_MSG', convId: durableConversation.id, msg: userMessage });
+      void submitIntelligence(durableConversation.id, userMessage, modelSelection).catch((error) => {
+        dispatch({ type: 'ADD_MSG', convId: durableConversation.id, msg: { id: uid(), role: 'manager', content: error instanceof Error ? error.message : 'AgentPlace intelligence request failed.', timestamp: new Date(), jobId: job.id } });
       });
       return;
     }
@@ -692,7 +698,7 @@ export function JobWorkspace() {
                     className="w-full bg-transparent resize-none px-4 pt-3 pb-2 text-sm text-text placeholder-text-muted outline-none leading-relaxed"
                   />
                   <div className="flex items-center justify-between px-4 pb-3">
-                    <span className="text-xs text-text-dim font-mono">Shift+Enter for new line</span>
+                    <div className="flex items-center gap-2"><span className="text-xs text-text-dim font-mono hidden md:inline">Shift+Enter for new line</span>{productionConversation && durableConversation && <ModelSelector conversationId={durableConversation.id} onChange={setModelSelection} />}</div>
                     <button
                       onClick={sendMessage}
                       disabled={!input.trim() || isStreaming}
@@ -750,9 +756,26 @@ export function JobWorkspace() {
           </div>
         )}
 
-        {activeTab === 'result' && job.result && (
+        {activeTab === 'result' && (
           <div className="overflow-y-auto h-full px-5 py-5">
             <div className="max-w-xl">
+              {productionConversation && (
+                <div className="mb-5 border border-border rounded-lg bg-panel px-4 py-4">
+                  <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">Evidence sources</p>
+                  {evidenceSources.length ? (
+                    <div className="space-y-2">
+                      {evidenceSources.map((source) => (
+                        <a key={source.id} href={source.url} target="_blank" rel="noreferrer" className="block text-xs text-primary hover:underline break-words">
+                          {source.title} <span className="text-text-dim">· {source.provider}</span>
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-text-muted">No preservable source URLs were returned for this Job.</p>
+                  )}
+                </div>
+              )}
+              {job.result && <>
               <div className="flex items-center gap-2 mb-4">
                 <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
@@ -777,7 +800,7 @@ export function JobWorkspace() {
                 <p className="text-sm text-text-sub leading-relaxed">{job.result.summary}</p>
               </div>
 
-              <div className="mt-4 flex items-center gap-1.5">
+              {!productionConversation && <div className="mt-4 flex items-center gap-1.5">
                 <svg className="w-3 h-3 text-text-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <circle cx="12" cy="12" r="9" strokeWidth={1.8} />
                   <path strokeLinecap="round" strokeWidth={1.8} d="M12 8v4M12 16h.01" />
@@ -785,7 +808,7 @@ export function JobWorkspace() {
                 <p className="text-xs text-text-dim">
                   Illustrative prototype data. Not financial advice.
                 </p>
-              </div>
+              </div>}
 
               {!job.routineId && (
                 <div className="mt-4 border border-border-dim rounded-lg px-4 py-3">
@@ -801,6 +824,7 @@ export function JobWorkspace() {
                   </button>
                 </div>
               )}
+              </>}
             </div>
           </div>
         )}

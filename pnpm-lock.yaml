@@ -17,6 +17,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@agent-place/capabilities':
+        specifier: workspace:*
+        version: link:../../packages/capabilities
       '@agent-place/auth':
         specifier: workspace:*
         version: link:../../packages/auth
@@ -29,6 +32,9 @@ importers:
       '@agent-place/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs
+      '@agent-place/models':
+        specifier: workspace:*
+        version: link:../../packages/models
       '@agent-place/workers':
         specifier: workspace:*
         version: link:../../packages/workers
@@ -78,9 +84,27 @@ importers:
 
   apps/worker:
     dependencies:
+      '@agent-place/capabilities':
+        specifier: workspace:*
+        version: link:../../packages/capabilities
+      '@agent-place/context':
+        specifier: workspace:*
+        version: link:../../packages/context
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
+      '@agent-place/models':
+        specifier: workspace:*
+        version: link:../../packages/models
       '@agent-place/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@agent-place/workers':
+        specifier: workspace:*
+        version: link:../../packages/workers
 
   packages/auth:
     dependencies:
@@ -108,7 +132,11 @@ importers:
 
   packages/billing: {}
 
-  packages/capabilities: {}
+  packages/capabilities:
+    dependencies:
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
 
   packages/chains-evm: {}
 

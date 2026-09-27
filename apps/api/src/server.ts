@@ -10,15 +10,19 @@ import {
   addMessage,
   createConversation,
   getConversation,
+  getConversationModelPreference,
   importConversations,
   listConversations,
   patchConversation,
   patchMessage,
+  setConversationModelPreference,
   type ConversationDraft,
   type DurableConversationMessage,
 } from '@agent-place/context';
 import { checkDatabase } from '@agent-place/db';
-import { createJob, getJob, jobStatuses, listActivity, listJobs, setJobConversation, type JobDraft } from '@agent-place/jobs';
+import { listCanonicalCapabilities, listCapabilityImplementations } from '@agent-place/capabilities';
+import { getModelCatalog } from '@agent-place/models';
+import { createJob, enqueueIntelligenceTask, getIntelligenceTask, getJob, getJobEvidence, jobStatuses, listActivity, listJobs, setJobConversation, type JobDraft } from '@agent-place/jobs';
 import { getUserWorker, installWorker, listUserWorkers, listWorkerCatalog, updateUserWorker, type UserWorkerStatus } from '@agent-place/workers';
 import {
   createRequestId,
@@ -211,6 +215,72 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
   }
 
 
+
+  if (url.pathname === '/api/v1/capabilities' && req.method === 'GET') {
+    await requireIdentity(req);
+    const [capabilities, implementations] = await Promise.all([listCanonicalCapabilities(), listCapabilityImplementations()]);
+    writeJson(res, 200, { capabilities, implementations });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/intelligence/models' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const conversationId = url.searchParams.get('conversationId');
+    const preference = conversationId ? await getConversationModelPreference(identity.appUserId, conversationId) : { provider: 'auto' as const };
+    writeJson(res, 200, { catalog: getModelCatalog(), preference });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/intelligence/tasks' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    if (typeof body.conversationId !== 'string' || !body.conversationId || body.conversationId.length > 128) throw new Error('INVALID_CONVERSATION_ID');
+    if (!isMessage(body.message) || body.message.role !== 'user') throw new Error('INVALID_INTELLIGENCE_MESSAGE');
+    const conversation = await getConversation(identity.appUserId, body.conversationId);
+    if (!conversation) return writeJson(res, 404, { error: 'not_found', message: 'Conversation not found.', requestId });
+    const provider = body.provider === 'openai' || body.provider === 'gemini' ? body.provider : 'auto';
+    const requestedModel = body.model === undefined || body.model === null || body.model === '' ? undefined : asOptionalString(body.model, 200);
+    const model = provider === 'auto' ? undefined : requestedModel;
+    if (provider !== 'auto') {
+      const providerCatalog = getModelCatalog().providers.find((item) => item.provider === provider);
+      if (!providerCatalog?.configured) throw new Error('MODEL_PROVIDER_NOT_CONFIGURED');
+      if (model && !providerCatalog.models.some((item) => item.model === model)) throw new Error('INVALID_MODEL_SELECTION');
+    }
+    await addMessage(identity.appUserId, conversation.id, body.message);
+    await setConversationModelPreference(identity.appUserId, conversation.id, provider, model);
+    const task = await enqueueIntelligenceTask({
+      ownerUserId: identity.appUserId,
+      conversationId: conversation.id,
+      userMessageId: body.message.id,
+      scope: conversation.scope,
+      ...(conversation.workerId ? { workerId: conversation.workerId } : {}),
+      ...(conversation.jobId ? { jobId: conversation.jobId } : {}),
+      providerPreference: provider,
+      ...(model ? { modelPreference: model } : {}),
+    });
+    writeJson(res, 202, { task });
+    return;
+  }
+
+  const intelligenceTaskMatch = url.pathname.match(/^\/api\/v1\/intelligence\/tasks\/([^/]+)$/);
+  if (intelligenceTaskMatch && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const task = await getIntelligenceTask(identity.appUserId, decodeURIComponent(intelligenceTaskMatch[1] ?? ''));
+    if (!task) return writeJson(res, 404, { error: 'not_found', message: 'Intelligence task not found.', requestId });
+    writeJson(res, 200, { task });
+    return;
+  }
+
+  const evidenceMatch = url.pathname.match(/^\/api\/v1\/jobs\/([^/]+)\/evidence$/);
+  if (evidenceMatch && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const jobId = decodeURIComponent(evidenceMatch[1] ?? '');
+    const job = await getJob(identity.appUserId, jobId);
+    if (!job) return writeJson(res, 404, { error: 'not_found', message: 'Job not found.', requestId });
+    const sources = await getJobEvidence(identity.appUserId, jobId);
+    writeJson(res, 200, { sources });
+    return;
+  }
 
   if (url.pathname === '/api/v1/worker-catalog' && req.method === 'GET') {
     await requireIdentity(req);
@@ -443,7 +513,7 @@ const server = createServer((req, res) => {
       writeJson(res, 401, { error: 'unauthenticated', message: 'Sign in to continue.', requestId });
       return;
     }
-    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE','INVALID_WORKER_DEFINITION','INVALID_WORKER_STATUS','INVALID_JOB','INVALID_STRING','JOB_LEAD_REQUIRED','JOB_WORKER_NOT_AVAILABLE','WORKER_DEFINITION_NOT_FOUND'].includes(code)) {
+    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE','INVALID_WORKER_DEFINITION','INVALID_WORKER_STATUS','INVALID_JOB','INVALID_STRING','INVALID_MODEL_SELECTION','MODEL_PROVIDER_NOT_CONFIGURED','JOB_LEAD_REQUIRED','JOB_WORKER_NOT_AVAILABLE','WORKER_DEFINITION_NOT_FOUND'].includes(code)) {
       writeJson(res, 400, { error: 'invalid_request', message: code, requestId });
       return;
     }

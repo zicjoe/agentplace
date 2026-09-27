@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — Production Milestone 4
+
+- Added canonical Capability Registry and provider implementation metadata.
+- Added provider-neutral OpenAI/Gemini Model Gateway with AgentPlace Auto and user model selection.
+- Added durable PostgreSQL intelligence tasks, Railway Worker runtime, grounded web research, source evidence, model provenance and AI usage limits.
+- Replaced Milestone 3 production placeholder responses in Manager, Worker and Job conversations with the real intelligence submission path.
+- Financial authority and execution remain disabled and separated from model reasoning.
+
+
 ## 0.4.0 — Production Milestone 3
 
 - Added versioned Worker Definitions, Worker Versions and Job Contracts.

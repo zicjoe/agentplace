@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { getDatabasePool, withTransaction } from '@agent-place/db';
 
 export const jobStatuses = ['PLANNED','RUNNING','PREPARING','AWAITING_APPROVAL','AUTHORIZED','SUBMITTED','CONFIRMING','SETTLING','VERIFYING','COMPLETED','RECOVERING','PAUSED','BLOCKED','FAILED_RECOVERABLE','FAILED_FINAL','REQUIRES_USER'] as const;
@@ -64,4 +65,70 @@ export async function listActivity(ownerUserId:string):Promise<ActivityProjectio
   return result.rows.map(r=>{ const eventType:ActivityProjection['eventType']=r.event_type.startsWith('job.')?'job':r.event_type==='worker.added'?'worker-added':'system'; const out:ActivityProjection={id:r.id,eventType,title:r.title,summary:r.summary,status:r.status,timestamp:r.occurred_at.toISOString()}; if(r.effect) out.effect=r.effect; if(r.worker_id) out.workerId=r.worker_id; if(r.worker_name) out.workerName=r.worker_name; if(r.job_id) out.jobId=r.job_id; return out; });
 }
 
-export const moduleManifest={name:'jobs',layer:'controlled-runtime',milestone:3,status:'production-foundation'} as const;
+export const moduleManifest={name:'jobs',layer:'controlled-runtime',milestone:4,status:'durable-jobs-and-intelligence-queue'} as const;
+
+export type IntelligenceTaskStatus='queued'|'running'|'completed'|'failed';
+export interface IntelligenceTask {
+  id:string; ownerUserId:string; conversationId:string; userMessageId:string; scope:'manager'|'worker'|'job'; workerId?:string; jobId?:string;
+  providerPreference:'auto'|'openai'|'gemini'; modelPreference?:string; status:IntelligenceTaskStatus; attempts:number; maxAttempts:number; lastError?:string;
+  createdAt:string; startedAt?:string; completedAt?:string;
+}
+type IntelligenceTaskRow={id:string;owner_user_id:string;conversation_id:string;user_message_id:string;scope:'manager'|'worker'|'job';worker_id:string|null;job_id:string|null;provider_preference:'auto'|'openai'|'gemini';model_preference:string|null;status:IntelligenceTaskStatus;attempts:number;max_attempts:number;last_error:string|null;created_at:Date;started_at:Date|null;completed_at:Date|null};
+function mapIntelligenceTask(row:IntelligenceTaskRow):IntelligenceTask { const out:IntelligenceTask={id:row.id,ownerUserId:row.owner_user_id,conversationId:row.conversation_id,userMessageId:row.user_message_id,scope:row.scope,providerPreference:row.provider_preference,status:row.status,attempts:row.attempts,maxAttempts:row.max_attempts,createdAt:row.created_at.toISOString()}; if(row.worker_id)out.workerId=row.worker_id;if(row.job_id)out.jobId=row.job_id;if(row.model_preference)out.modelPreference=row.model_preference;if(row.last_error)out.lastError=row.last_error;if(row.started_at)out.startedAt=row.started_at.toISOString();if(row.completed_at)out.completedAt=row.completed_at.toISOString();return out; }
+
+export async function enqueueIntelligenceTask(args:{ownerUserId:string;conversationId:string;userMessageId:string;scope:'manager'|'worker'|'job';workerId?:string;jobId?:string;providerPreference?:'auto'|'openai'|'gemini';modelPreference?:string}):Promise<IntelligenceTask> {
+  const id=`aitask_${randomUUID()}`;
+  const result=await getDatabasePool().query<IntelligenceTaskRow>(
+    `INSERT INTO intelligence_task(id,owner_user_id,conversation_id,user_message_id,scope,worker_id,job_id,provider_preference,model_preference)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+     ON CONFLICT(owner_user_id,conversation_id,user_message_id) DO UPDATE SET updated_at=now()
+     RETURNING *`,[id,args.ownerUserId,args.conversationId,args.userMessageId,args.scope,args.workerId??null,args.jobId??null,args.providerPreference??'auto',args.modelPreference??null]);
+  const row=result.rows[0]; if(!row) throw new Error('INTELLIGENCE_TASK_ENQUEUE_FAILED'); return mapIntelligenceTask(row);
+}
+
+export async function getIntelligenceTask(ownerUserId:string,id:string):Promise<IntelligenceTask|null>{ const r=await getDatabasePool().query<IntelligenceTaskRow>(`SELECT * FROM intelligence_task WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,id]);return r.rows[0]?mapIntelligenceTask(r.rows[0]):null; }
+
+export async function claimNextIntelligenceTask():Promise<IntelligenceTask|null>{
+  return withTransaction(async db=>{
+    const result=await db.query<IntelligenceTaskRow>(
+      `SELECT * FROM intelligence_task
+       WHERE (status='queued' OR (status='running' AND lease_until < now())) AND attempts < max_attempts
+       ORDER BY created_at ASC FOR UPDATE SKIP LOCKED LIMIT 1`);
+    const row=result.rows[0]; if(!row) return null;
+    const updated=await db.query<IntelligenceTaskRow>(
+      `UPDATE intelligence_task SET status='running',attempts=attempts+1,started_at=COALESCE(started_at,now()),lease_until=now()+interval '3 minutes',updated_at=now(),last_error=NULL WHERE id=$1 RETURNING *`,[row.id]);
+    return updated.rows[0]?mapIntelligenceTask(updated.rows[0]):null;
+  });
+}
+
+export async function completeIntelligenceTask(id:string):Promise<void>{ await getDatabasePool().query(`UPDATE intelligence_task SET status='completed',completed_at=now(),lease_until=NULL,updated_at=now() WHERE id=$1`,[id]); }
+export async function failIntelligenceTask(id:string,error:string):Promise<void>{
+  await getDatabasePool().query(`UPDATE intelligence_task SET status=CASE WHEN attempts < max_attempts THEN 'queued' ELSE 'failed' END,last_error=$2,lease_until=NULL,completed_at=CASE WHEN attempts >= max_attempts THEN now() ELSE NULL END,updated_at=now() WHERE id=$1`,[id,error.slice(0,2000)]);
+}
+
+export async function updateJobRuntime(ownerUserId:string,jobId:string,args:{status?:JobStatus;currentStage?:string;stageId?:string;stageStatus?:'done'|'active'|'pending'}):Promise<void>{
+  await withTransaction(async db=>{
+    if(args.status||args.currentStage) await db.query(`UPDATE job SET status=COALESCE($3,status),current_stage=COALESCE($4,current_stage),updated_at=now() WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,jobId,args.status??null,args.currentStage??null]);
+    if(args.stageId&&args.stageStatus) await db.query(`UPDATE job_stage SET status=$4,updated_at=now() WHERE job_id=$2 AND id=$3 AND EXISTS(SELECT 1 FROM job WHERE id=$2 AND owner_user_id=$1)`,[ownerUserId,jobId,args.stageId,args.stageStatus]);
+  });
+}
+
+export async function recordModelRun(args:{id:string;taskId:string;ownerUserId:string;jobId?:string;workerId?:string;provider:string;model:string;taskKind:string;contextManifest:Record<string,unknown>;inputHash:string;outputSchema?:string;inputTokens?:number;outputTokens?:number;estimatedCostUsd:number;latencyMs:number;status:'completed'|'failed';errorCode?:string}):Promise<void>{
+  await getDatabasePool().query(`INSERT INTO model_run(id,task_id,owner_user_id,job_id,worker_id,provider,model,task_kind,context_manifest,input_hash,output_schema,input_tokens,output_tokens,estimated_cost_usd,latency_ms,status,error_code)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,[args.id,args.taskId,args.ownerUserId,args.jobId??null,args.workerId??null,args.provider,args.model,args.taskKind,args.contextManifest,args.inputHash,args.outputSchema??null,args.inputTokens??null,args.outputTokens??null,args.estimatedCostUsd,args.latencyMs,args.status,args.errorCode??null]);
+}
+
+export async function getDailyModelCostUsd(ownerUserId:string):Promise<number>{ const r=await getDatabasePool().query<{total:string}>(`SELECT COALESCE(sum(estimated_cost_usd),0)::text AS total FROM model_run WHERE owner_user_id=$1 AND created_at>=date_trunc('day',now())`,[ownerUserId]);return Number.parseFloat(r.rows[0]?.total??'0')||0; }
+
+export async function addJobEvidence(ownerUserId:string,jobId:string,sources:readonly {url:string;title:string;provider:string}[]):Promise<void>{
+  for(const source of sources) await getDatabasePool().query(`INSERT INTO job_evidence_source(id,job_id,owner_user_id,url,title,provider) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(job_id,url) DO UPDATE SET title=EXCLUDED.title,provider=EXCLUDED.provider,retrieved_at=now()`,[`src_${randomUUID()}`,jobId,ownerUserId,source.url,source.title,source.provider]);
+}
+
+export async function appendJobEvent(args:{ownerUserId:string;jobId:string;workerId?:string;eventType:string;title:string;summary:string;status:string;effect?:string;eventId?:string}):Promise<void>{
+  await getDatabasePool().query(`INSERT INTO domain_event(id,owner_user_id,event_type,object_type,object_id,title,summary,effect,status,worker_id,job_id,origin_type) VALUES($1,$2,$3,'job',$4,$5,$6,$7,$8,$9,$4,'agentplace') ON CONFLICT(id) DO NOTHING`,[args.eventId??`evt_${randomUUID()}`,args.ownerUserId,args.eventType,args.jobId,args.title,args.summary,args.effect??null,args.status,args.workerId??null]);
+}
+
+export async function getJobEvidence(ownerUserId:string,jobId:string):Promise<Array<{id:string;url:string;title:string;provider:string;retrievedAt:string}>>{
+  const r=await getDatabasePool().query<{id:string;url:string;title:string;provider:string;retrieved_at:Date}>(`SELECT id,url,title,provider,retrieved_at FROM job_evidence_source WHERE owner_user_id=$1 AND job_id=$2 ORDER BY retrieved_at,id`,[ownerUserId,jobId]);
+  return r.rows.map((row)=>({id:row.id,url:row.url,title:row.title,provider:row.provider,retrievedAt:row.retrieved_at.toISOString()}));
+}

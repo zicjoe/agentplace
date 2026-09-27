@@ -321,3 +321,43 @@ export async function patchMessage(
   await getDatabasePool().query('UPDATE conversation SET last_activity_at=$2, updated_at=now() WHERE id=$1 AND owner_user_id=$3', [conversationId, updates.updatedAt, ownerUserId]);
   return true;
 }
+
+export interface IntelligenceContext {
+  conversationId:string;
+  scope:ConversationScope;
+  workerId?:string;
+  jobId?:string;
+  worker?:{id:string;name:string;responsibility:string;mission:string;antiJobs:string[];expectedOutputs:string[];defaultApprovalBoundary:string;capabilityRequirements:string[]};
+  job?:{id:string;title:string;goal:string;status:string;currentStage:string};
+  recentMessages:Array<{role:ConversationRole;content:string}>;
+}
+
+export async function getIntelligenceContext(ownerUserId:string,conversationId:string):Promise<IntelligenceContext|null>{
+  const conversation=await getConversation(ownerUserId,conversationId); if(!conversation) return null;
+  const out:IntelligenceContext={conversationId,scope:conversation.scope,recentMessages:conversation.messages.slice(-24).map((m)=>({role:m.role,content:m.content}))};
+  if(conversation.workerId){
+    out.workerId=conversation.workerId;
+    const r=await getDatabasePool().query<{id:string;name:string;responsibility:string;mission:string;anti_jobs:string[];expected_outputs:string[];default_approval_boundary:string;default_capability_requirements:string[]}>(
+      `SELECT d.id,d.name,d.responsibility,jc.mission,jc.anti_jobs,jc.expected_outputs,jc.default_approval_boundary,jc.default_capability_requirements
+       FROM user_worker uw JOIN worker_definition d ON d.id=uw.worker_definition_id JOIN job_contract jc ON jc.worker_version_id=uw.worker_version_id
+       WHERE uw.owner_user_id=$1 AND uw.id=$2 AND uw.status<>'removed'`,[ownerUserId,conversation.workerId]);
+    const row=r.rows[0]; if(row) out.worker={id:row.id,name:row.name,responsibility:row.responsibility,mission:row.mission,antiJobs:row.anti_jobs,expectedOutputs:row.expected_outputs,defaultApprovalBoundary:row.default_approval_boundary,capabilityRequirements:row.default_capability_requirements};
+  }
+  if(conversation.jobId){
+    out.jobId=conversation.jobId;
+    const r=await getDatabasePool().query<{id:string;title:string;goal:string;status:string;current_stage:string}>(`SELECT id,title,goal,status,current_stage FROM job WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,conversation.jobId]);
+    const row=r.rows[0]; if(row) out.job={id:row.id,title:row.title,goal:row.goal,status:row.status,currentStage:row.current_stage};
+  }
+  return out;
+}
+
+export async function setConversationModelPreference(ownerUserId:string,conversationId:string,provider:'auto'|'openai'|'gemini',model?:string):Promise<void>{
+  const owned=await getConversation(ownerUserId,conversationId); if(!owned) throw new Error('CONVERSATION_NOT_FOUND');
+  await getDatabasePool().query(`INSERT INTO conversation_model_preference(conversation_id,owner_user_id,provider,model) VALUES($1,$2,$3,$4)
+    ON CONFLICT(conversation_id) DO UPDATE SET provider=EXCLUDED.provider,model=EXCLUDED.model,updated_at=now() WHERE conversation_model_preference.owner_user_id=EXCLUDED.owner_user_id`,[conversationId,ownerUserId,provider,model??null]);
+}
+
+export async function getConversationModelPreference(ownerUserId:string,conversationId:string):Promise<{provider:'auto'|'openai'|'gemini';model?:string}>{
+  const r=await getDatabasePool().query<{provider:'auto'|'openai'|'gemini';model:string|null}>(`SELECT provider,model FROM conversation_model_preference WHERE owner_user_id=$1 AND conversation_id=$2`,[ownerUserId,conversationId]);
+  const row=r.rows[0]; return row ? {provider:row.provider,...(row.model?{model:row.model}:{})} : {provider:'auto'};
+}

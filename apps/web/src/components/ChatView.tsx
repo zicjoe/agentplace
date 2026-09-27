@@ -13,6 +13,9 @@ import {
 } from '../state/AppContext';
 import { PERPS_ACTION_ID } from './ActionReview';
 import type { ChatMessage } from '../state/types';
+import { submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
+import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { ModelSelector } from './ModelSelector';
 
 function RenderContent({ text }: { text: string }) {
   const lines = text.split('\n');
@@ -516,9 +519,11 @@ export function ChatView() {
   const [input, setInput] = useState('');
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleVal, setTitleVal] = useState('');
+  const [modelSelection, setModelSelection] = useState<ModelSelection>({ provider: 'auto' });
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const conv = state.conversations.find((c) => c.id === state.activeConversationId);
+  const productionConversation = WEB_RUNTIME_SETTINGS.dataMode === 'api' && !!state.user;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -553,7 +558,13 @@ export function ChatView() {
       timestamp: new Date(),
     };
     dispatch({ type: 'ADD_MSG', convId: conv!.id, msg });
-    runGenericManagerResponse(dispatch, conv!.id, input.trim());
+    if (productionConversation) {
+      void submitIntelligence(conv!.id, msg, modelSelection).catch((error) => {
+        dispatch({ type: 'ADD_MSG', convId: conv!.id, msg: { id: uid(), role: 'manager', content: error instanceof Error ? error.message : 'AgentPlace intelligence request failed.', timestamp: new Date() } });
+      });
+    } else {
+      runGenericManagerResponse(dispatch, conv!.id, input.trim());
+    }
     setInput('');
   }
 
@@ -945,7 +956,7 @@ export function ChatView() {
               className="w-full bg-transparent resize-none px-4 pt-3 pb-2 text-sm text-text placeholder-text-muted outline-none leading-relaxed"
             />
             <div className="flex items-center justify-between px-4 pb-3">
-              <span className="text-xs text-text-dim font-mono">Shift+Enter for new line</span>
+              <div className="flex items-center gap-2"><span className="text-xs text-text-dim font-mono hidden md:inline">Shift+Enter for new line</span>{productionConversation && <ModelSelector conversationId={conv.id} onChange={setModelSelection} />}</div>
               <button
                 onClick={sendMessage}
                 disabled={!input.trim() || isStreaming}
