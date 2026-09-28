@@ -58,14 +58,14 @@ function configuredModels(provider:ModelProvider):ModelChoice[] {
       ]
     : provider==='gemini'
       ? [
-          {provider,model:env('GEMINI_MODEL_FAST','gemini-3.8-flash'),label:'Gemini · Fast',role:'fast'},
+          {provider,model:env('GEMINI_MODEL_FAST','gemini-3.5-flash-lite'),label:'Gemini · Fast',role:'fast'},
           {provider,model:env('GEMINI_MODEL_BALANCED','gemini-3.8-flash'),label:'Gemini · Balanced',role:'balanced'},
-          {provider,model:env('GEMINI_MODEL_REASONING','gemini-3.8-pro'),label:'Gemini · Reasoning',role:'reasoning'},
+          {provider,model:env('GEMINI_MODEL_REASONING','gemini-3.8-flash'),label:'Gemini · Reasoning',role:'reasoning'},
         ]
       : [
-          {provider,model:env('ANTHROPIC_MODEL_FAST','claude-sonnet-5'),label:'Claude · Fast',role:'fast'},
+          {provider,model:env('ANTHROPIC_MODEL_FAST','claude-haiku-4-5-20251001'),label:'Claude · Fast',role:'fast'},
           {provider,model:env('ANTHROPIC_MODEL_BALANCED','claude-sonnet-5'),label:'Claude · Balanced',role:'balanced'},
-          {provider,model:env('ANTHROPIC_MODEL_REASONING','claude-fable-5'),label:'Claude · Reasoning',role:'reasoning'},
+          {provider,model:env('ANTHROPIC_MODEL_REASONING','claude-opus-5'),label:'Claude · Reasoning',role:'reasoning'},
         ];
   return values.filter((item,index,array)=>array.findIndex((candidate)=>candidate.model===item.model)===index);
 }

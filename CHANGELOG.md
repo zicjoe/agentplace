@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.5.0 — Production Milestone 4
+- Corrected M4 provider model defaults to current valid IDs: Gemini 3.5 Flash-Lite / 3.8 Flash and Claude Haiku 4.5 / Sonnet 5 / Opus 5.
 - Added Anthropic Claude as a first-class Model Gateway provider, including model selection, structured output, hosted web research, usage telemetry, and server-side secret handling.
 - Refreshed default OpenAI API model aliases to the current GPT-6 Luna/Sol/Astra family while preserving environment overrides.
 

@@ -46,6 +46,7 @@ test('Milestone 4 supports Anthropic Claude as a first-class provider', () => {
   const models = readFileSync('packages/models/src/index.ts', 'utf8');
   assert.match(sql, /anthropic/);
   assert.match(models, /claude-sonnet-5/);
-  assert.match(models, /claude-fable-5/);
+  assert.match(models, /claude-opus-5/);
+  assert.doesNotMatch(models, /gemini-3\.8-pro/);
   assert.match(models, /web_search_20260318/);
 });
