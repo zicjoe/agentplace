@@ -57,6 +57,14 @@ To enable OpenAI choices too:
 OPENAI_API_KEY=<secret>
 ```
 
+To enable Claude choices too:
+
+```text
+ANTHROPIC_API_KEY=<secret>
+```
+
+AgentPlace's model selector only shows providers that are actually configured. Provider keys remain server-side on Railway.
+
 Do not expose provider keys to Vercel or to variables beginning with `VITE_`.
 
 ## Recommended M4 limits
@@ -78,6 +86,8 @@ GEMINI_INPUT_USD_PER_MILLION=0
 GEMINI_OUTPUT_USD_PER_MILLION=0
 OPENAI_INPUT_USD_PER_MILLION=0
 OPENAI_OUTPUT_USD_PER_MILLION=0
+ANTHROPIC_INPUT_USD_PER_MILLION=0
+ANTHROPIC_OUTPUT_USD_PER_MILLION=0
 ```
 
 ## Vercel

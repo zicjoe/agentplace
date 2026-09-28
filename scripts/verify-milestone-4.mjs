@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const required = [
   'packages/db/migrations/0004_intelligence_capabilities.sql',
+  'packages/db/migrations/0005_anthropic_model_provider.sql',
   'packages/capabilities/src/index.ts',
   'packages/models/src/index.ts',
   'apps/worker/src/index.ts',
@@ -13,12 +14,15 @@ const required = [
 ];
 for (const file of required) if (!existsSync(file)) throw new Error(`Milestone 4 required file missing: ${file}`);
 
-const migration = readFileSync('packages/db/migrations/0004_intelligence_capabilities.sql', 'utf8');
+const migration = [
+  readFileSync('packages/db/migrations/0004_intelligence_capabilities.sql', 'utf8'),
+  readFileSync('packages/db/migrations/0005_anthropic_model_provider.sql', 'utf8'),
+].join('\n');
 for (const token of ['canonical_capability', 'capability_implementation', 'intelligence_task', 'model_run', 'job_evidence_source', 'research.web.search']) {
   if (!migration.includes(token)) throw new Error(`Milestone 4 migration missing ${token}`);
 }
 const models = readFileSync('packages/models/src/index.ts', 'utf8');
-for (const token of ['AgentPlace Auto', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'researchWithWeb', 'generateStructured']) {
+for (const token of ['AgentPlace Auto', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'ANTHROPIC_API_KEY', 'researchWithWeb', 'generateStructured']) {
   if (!models.includes(token)) throw new Error(`Milestone 4 Model Gateway missing ${token}`);
 }
 const worker = readFileSync('apps/worker/src/index.ts', 'utf8');

@@ -238,7 +238,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     if (!isMessage(body.message) || body.message.role !== 'user') throw new Error('INVALID_INTELLIGENCE_MESSAGE');
     const conversation = await getConversation(identity.appUserId, body.conversationId);
     if (!conversation) return writeJson(res, 404, { error: 'not_found', message: 'Conversation not found.', requestId });
-    const provider = body.provider === 'openai' || body.provider === 'gemini' ? body.provider : 'auto';
+    const provider = body.provider === 'openai' || body.provider === 'gemini' || body.provider === 'anthropic' ? body.provider : 'auto';
     const requestedModel = body.model === undefined || body.model === null || body.model === '' ? undefined : asOptionalString(body.model, 200);
     const model = provider === 'auto' ? undefined : requestedModel;
     if (provider !== 'auto') {

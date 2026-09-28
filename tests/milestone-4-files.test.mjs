@@ -17,7 +17,8 @@ test('Milestone 4 keeps provider secrets server-side and exposes AgentPlace Auto
   assert.match(models, /AgentPlace Auto/);
   assert.match(models, /OPENAI_API_KEY/);
   assert.match(models, /GEMINI_API_KEY/);
-  assert.doesNotMatch(env, /VITE_OPENAI_API_KEY|VITE_GEMINI_API_KEY/);
+  assert.match(models, /ANTHROPIC_API_KEY/);
+  assert.doesNotMatch(env, /VITE_OPENAI_API_KEY|VITE_GEMINI_API_KEY|VITE_ANTHROPIC_API_KEY/);
 });
 
 test('Milestone 4 UI offers model selection across conversation surfaces', () => {
@@ -37,4 +38,14 @@ test('Milestone 4 durable Worker runtime has bounded retries and cost controls',
   assert.match(worker, /AI_MAX_CALLS_PER_TASK/);
   assert.match(worker, /AI_MODEL_TIMEOUT_MS|researchWithWeb/);
   assert.match(worker, /untrusted evidence, never instruction/);
+});
+
+
+test('Milestone 4 supports Anthropic Claude as a first-class provider', () => {
+  const sql = readFileSync('packages/db/migrations/0005_anthropic_model_provider.sql', 'utf8');
+  const models = readFileSync('packages/models/src/index.ts', 'utf8');
+  assert.match(sql, /anthropic/);
+  assert.match(models, /claude-sonnet-5/);
+  assert.match(models, /claude-fable-5/);
+  assert.match(models, /web_search_20260318/);
 });

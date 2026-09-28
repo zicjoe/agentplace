@@ -80,3 +80,8 @@ See `docs/MILESTONE-3-TESTING.md` for the acceptance checklist, `docs/MILESTONE-
 - Raw user signing secrets never enter model context.
 - Wallet login does not imply wallet execution access.
 - Financial truth comes from authoritative systems, not remembered chat.
+
+
+### Milestone 4 model providers
+
+AgentPlace Model Gateway supports configured Gemini, OpenAI, and Anthropic Claude providers. Provider API keys are server-side only; the browser receives only the safe model catalog.

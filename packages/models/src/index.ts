@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export type ModelProvider = 'openai' | 'gemini';
+export type ModelProvider = 'openai' | 'gemini' | 'anthropic';
 export type ModelProviderPreference = 'auto' | ModelProvider;
 export type ModelRole = 'fast' | 'balanced' | 'reasoning';
 
@@ -43,29 +43,39 @@ export class ModelGatewayError extends Error {
 }
 
 function env(name:string, fallback=''):string { return process.env[name]?.trim() || fallback; }
-function hasKey(provider:ModelProvider):boolean { return provider==='openai' ? !!env('OPENAI_API_KEY') : !!env('GEMINI_API_KEY'); }
+function hasKey(provider:ModelProvider):boolean {
+  if(provider==='openai') return !!env('OPENAI_API_KEY');
+  if(provider==='gemini') return !!env('GEMINI_API_KEY');
+  return !!env('ANTHROPIC_API_KEY');
+}
 
 function configuredModels(provider:ModelProvider):ModelChoice[] {
   const values: ModelChoice[] = provider==='openai'
     ? [
-        {provider,model:env('OPENAI_MODEL_FAST','gpt-5.6-luna'),label:'OpenAI · Fast',role:'fast'},
-        {provider,model:env('OPENAI_MODEL_BALANCED','gpt-5.6-terra'),label:'OpenAI · Balanced',role:'balanced'},
-        {provider,model:env('OPENAI_MODEL_REASONING','gpt-5.6-sol'),label:'OpenAI · Reasoning',role:'reasoning'},
+        {provider,model:env('OPENAI_MODEL_FAST','gpt-6-luna'),label:'OpenAI · Fast',role:'fast'},
+        {provider,model:env('OPENAI_MODEL_BALANCED','gpt-6-sol'),label:'OpenAI · Balanced',role:'balanced'},
+        {provider,model:env('OPENAI_MODEL_REASONING','gpt-6-astra'),label:'OpenAI · Reasoning',role:'reasoning'},
       ]
-    : [
-        {provider,model:env('GEMINI_MODEL_FAST','gemini-3.8-flash'),label:'Gemini · Fast',role:'fast'},
-        {provider,model:env('GEMINI_MODEL_BALANCED','gemini-3.8-flash'),label:'Gemini · Balanced',role:'balanced'},
-        {provider,model:env('GEMINI_MODEL_REASONING','gemini-3.8-pro'),label:'Gemini · Reasoning',role:'reasoning'},
-      ];
+    : provider==='gemini'
+      ? [
+          {provider,model:env('GEMINI_MODEL_FAST','gemini-3.8-flash'),label:'Gemini · Fast',role:'fast'},
+          {provider,model:env('GEMINI_MODEL_BALANCED','gemini-3.8-flash'),label:'Gemini · Balanced',role:'balanced'},
+          {provider,model:env('GEMINI_MODEL_REASONING','gemini-3.8-pro'),label:'Gemini · Reasoning',role:'reasoning'},
+        ]
+      : [
+          {provider,model:env('ANTHROPIC_MODEL_FAST','claude-sonnet-5'),label:'Claude · Fast',role:'fast'},
+          {provider,model:env('ANTHROPIC_MODEL_BALANCED','claude-sonnet-5'),label:'Claude · Balanced',role:'balanced'},
+          {provider,model:env('ANTHROPIC_MODEL_REASONING','claude-fable-5'),label:'Claude · Reasoning',role:'reasoning'},
+        ];
   return values.filter((item,index,array)=>array.findIndex((candidate)=>candidate.model===item.model)===index);
 }
 
 export function getModelCatalog():ModelCatalog {
   const raw=env('AGENTPLACE_DEFAULT_MODEL_PROVIDER','auto');
-  const defaultProvider:ModelProviderPreference = raw==='openai'||raw==='gemini'?raw:'auto';
+  const defaultProvider:ModelProviderPreference = raw==='openai'||raw==='gemini'||raw==='anthropic'?raw:'auto';
   return {
     defaultProvider, autoLabel:'AgentPlace Auto',
-    providers:(['gemini','openai'] as const).map((provider)=>({provider,configured:hasKey(provider),models:configuredModels(provider)})),
+    providers:(['gemini','openai','anthropic'] as const).map((provider)=>({provider,configured:hasKey(provider),models:configuredModels(provider)})),
   };
 }
 
@@ -75,9 +85,10 @@ function chooseProvider(preference:ModelProviderPreference):ModelProvider {
     return preference;
   }
   const preferred=env('AGENTPLACE_DEFAULT_MODEL_PROVIDER','gemini');
-  if ((preferred==='gemini'||preferred==='openai') && hasKey(preferred)) return preferred;
+  if ((preferred==='gemini'||preferred==='openai'||preferred==='anthropic') && hasKey(preferred)) return preferred;
   if (hasKey('gemini')) return 'gemini';
   if (hasKey('openai')) return 'openai';
+  if (hasKey('anthropic')) return 'anthropic';
   throw new ModelGatewayError('no_provider_configured','No AgentPlace model provider is configured.');
 }
 
@@ -125,6 +136,15 @@ function geminiOutputText(payload:unknown):string {
   }
   return '';
 }
+function anthropicOutputText(payload:unknown):string {
+  const root=object(payload);
+  const parts:string[]=[];
+  for(const content of array(root.content)) {
+    const c=object(content);
+    if(c.type==='text' && typeof c.text==='string') parts.push(c.text);
+  }
+  return parts.join('\n').trim();
+}
 
 function collectSources(value:unknown, into:Map<string,string>, depth=0):void {
   if(depth>10 || value===null || value===undefined) return;
@@ -144,13 +164,18 @@ function usageFrom(provider:ModelProvider,payload:unknown):ModelUsage {
   let input:number|undefined; let output:number|undefined;
   if(provider==='openai') {
     const usage=object(root.usage); input=num(usage.input_tokens); output=num(usage.output_tokens);
-  } else {
+  } else if(provider==='gemini') {
     const usage=object(root.usage_metadata ?? root.usageMetadata ?? root.usage);
     input=num(usage.prompt_token_count ?? usage.promptTokenCount ?? usage.input_tokens);
     output=num(usage.candidates_token_count ?? usage.candidatesTokenCount ?? usage.output_tokens);
+  } else {
+    const usage=object(root.usage);
+    input=num(usage.input_tokens);
+    output=num(usage.output_tokens);
   }
-  const inputRate=Number.parseFloat(env(provider==='openai'?'OPENAI_INPUT_USD_PER_MILLION':'GEMINI_INPUT_USD_PER_MILLION','0'))||0;
-  const outputRate=Number.parseFloat(env(provider==='openai'?'OPENAI_OUTPUT_USD_PER_MILLION':'GEMINI_OUTPUT_USD_PER_MILLION','0'))||0;
+  const ratePrefix=provider==='openai'?'OPENAI':provider==='gemini'?'GEMINI':'ANTHROPIC';
+  const inputRate=Number.parseFloat(env(`${ratePrefix}_INPUT_USD_PER_MILLION`,'0'))||0;
+  const outputRate=Number.parseFloat(env(`${ratePrefix}_OUTPUT_USD_PER_MILLION`,'0'))||0;
   const estimatedCostUsd=((input??0)*inputRate+(output??0)*outputRate)/1_000_000;
   return { ...(input === undefined ? {} : { inputTokens: input }), ...(output === undefined ? {} : { outputTokens: output }), estimatedCostUsd };
 }
@@ -167,12 +192,29 @@ async function callGeminiStructured(model:string,system:string,user:string,schem
     body:JSON.stringify({model,input:`SYSTEM INSTRUCTIONS:\n${system}\n\nUSER REQUEST:\n${user}`,response_format:{type:'text',mime_type:'application/json',schema}}),
   });
 }
+async function callAnthropicStructured(model:string,system:string,user:string,schema:Record<string,unknown>):Promise<unknown> {
+  return fetchJson('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'x-api-key':env('ANTHROPIC_API_KEY'),'anthropic-version':'2023-06-01','content-type':'application/json'},
+    body:JSON.stringify({
+      model,
+      max_tokens:maxOutputTokens(),
+      system,
+      messages:[{role:'user',content:user}],
+      output_config:{format:{type:'json_schema',schema}},
+    }),
+  });
+}
 
 export async function generateStructured<T>(args:{provider?:ModelProviderPreference;model?:string;role?:ModelRole;system:string;user:string;schemaName:string;schema:Record<string,unknown>}):Promise<ModelCallResult<T>> {
   const provider=chooseProvider(args.provider??'auto'); const model=selectModel(provider,args.model,args.role??'balanced');
   const input=`${args.system}\n${args.user}`; const inputHash=createHash('sha256').update(input).digest('hex'); const started=Date.now();
-  const payload=provider==='openai' ? await callOpenAIStructured(model,args.system,args.user,args.schemaName,args.schema) : await callGeminiStructured(model,args.system,args.user,args.schema);
-  const text=provider==='openai'?openAIOutputText(payload):geminiOutputText(payload);
+  const payload=provider==='openai'
+    ? await callOpenAIStructured(model,args.system,args.user,args.schemaName,args.schema)
+    : provider==='gemini'
+      ? await callGeminiStructured(model,args.system,args.user,args.schema)
+      : await callAnthropicStructured(model,args.system,args.user,args.schema);
+  const text=provider==='openai'?openAIOutputText(payload):provider==='gemini'?geminiOutputText(payload):anthropicOutputText(payload);
   if(!text) throw new ModelGatewayError('empty_model_output','Model returned no structured output.');
   let value:T; try { value=JSON.parse(text) as T; } catch { throw new ModelGatewayError('invalid_structured_output','Model returned invalid JSON.'); }
   return {provider,model,value,usage:usageFrom(provider,payload),latencyMs:Date.now()-started,inputHash};
@@ -186,13 +228,25 @@ export async function researchWithWeb(args:{provider?:ModelProviderPreference;mo
       method:'POST',headers:{authorization:`Bearer ${env('OPENAI_API_KEY')}`,'content-type':'application/json'},
       body:JSON.stringify({model,instructions:args.system,input:args.query,tools:[{type:'web_search'}],tool_choice:'required',max_output_tokens:maxOutputTokens()}),
     });
-  } else {
+  } else if(provider==='gemini') {
     payload=await fetchJson('https://generativelanguage.googleapis.com/v1beta/interactions',{
       method:'POST',headers:{'x-goog-api-key':env('GEMINI_API_KEY'),'content-type':'application/json'},
       body:JSON.stringify({model,input:`SYSTEM INSTRUCTIONS:\n${args.system}\n\nRESEARCH REQUEST:\n${args.query}`,tools:[{type:'google_search'}]}),
     });
+  } else {
+    payload=await fetchJson('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'x-api-key':env('ANTHROPIC_API_KEY'),'anthropic-version':'2023-06-01','content-type':'application/json'},
+      body:JSON.stringify({
+        model,
+        max_tokens:maxOutputTokens(),
+        system:args.system,
+        messages:[{role:'user',content:args.query}],
+        tools:[{type:'web_search_20260318',name:'web_search',max_uses:5}],
+      }),
+    });
   }
-  const answer=(provider==='openai'?openAIOutputText(payload):geminiOutputText(payload)).trim();
+  const answer=(provider==='openai'?openAIOutputText(payload):provider==='gemini'?geminiOutputText(payload):anthropicOutputText(payload)).trim();
   if(!answer) throw new ModelGatewayError('empty_research_output','Research provider returned no answer.');
   const found=new Map<string,string>(); collectSources(payload,found);
   const sources=[...found.entries()].slice(0,24).map(([url,title])=>({url,title}));

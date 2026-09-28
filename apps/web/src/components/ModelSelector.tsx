@@ -24,7 +24,7 @@ export function ModelSelector({conversationId,onChange}:{conversationId:string;o
         aria-label="AI model"
         value={value}
         onChange={(event)=>{
-          const raw=event.target.value; const next:ModelSelection=raw==='auto'?{provider:'auto'}:(()=>{const [provider,...rest]=raw.split(':');return {provider:provider as 'openai'|'gemini',model:rest.join(':')};})();
+          const raw=event.target.value; const next:ModelSelection=raw==='auto'?{provider:'auto'}:(()=>{const [provider,...rest]=raw.split(':');return {provider:provider as 'openai'|'gemini'|'anthropic',model:rest.join(':')};})();
           setSelection(next); onChange(next);
         }}
         className="max-w-[170px] bg-transparent border border-border rounded px-2 py-1 text-[11px] text-text-sub outline-none hover:border-primary/40 focus:border-primary/50"

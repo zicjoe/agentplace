@@ -57,10 +57,11 @@ export async function listCapabilityImplementations(): Promise<CapabilityImpleme
   }));
 }
 
-export function configuredResearchProviders(): Array<'openai'|'gemini'> {
-  const providers:Array<'openai'|'gemini'>=[];
+export function configuredResearchProviders(): Array<'openai'|'gemini'|'anthropic'> {
+  const providers:Array<'openai'|'gemini'|'anthropic'>=[];
   if (process.env.OPENAI_API_KEY?.trim()) providers.push('openai');
   if (process.env.GEMINI_API_KEY?.trim()) providers.push('gemini');
+  if (process.env.ANTHROPIC_API_KEY?.trim()) providers.push('anthropic');
   return providers;
 }
 

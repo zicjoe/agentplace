@@ -70,13 +70,13 @@ export const moduleManifest={name:'jobs',layer:'controlled-runtime',milestone:4,
 export type IntelligenceTaskStatus='queued'|'running'|'completed'|'failed';
 export interface IntelligenceTask {
   id:string; ownerUserId:string; conversationId:string; userMessageId:string; scope:'manager'|'worker'|'job'; workerId?:string; jobId?:string;
-  providerPreference:'auto'|'openai'|'gemini'; modelPreference?:string; status:IntelligenceTaskStatus; attempts:number; maxAttempts:number; lastError?:string;
+  providerPreference:'auto'|'openai'|'gemini'|'anthropic'; modelPreference?:string; status:IntelligenceTaskStatus; attempts:number; maxAttempts:number; lastError?:string;
   createdAt:string; startedAt?:string; completedAt?:string;
 }
-type IntelligenceTaskRow={id:string;owner_user_id:string;conversation_id:string;user_message_id:string;scope:'manager'|'worker'|'job';worker_id:string|null;job_id:string|null;provider_preference:'auto'|'openai'|'gemini';model_preference:string|null;status:IntelligenceTaskStatus;attempts:number;max_attempts:number;last_error:string|null;created_at:Date;started_at:Date|null;completed_at:Date|null};
+type IntelligenceTaskRow={id:string;owner_user_id:string;conversation_id:string;user_message_id:string;scope:'manager'|'worker'|'job';worker_id:string|null;job_id:string|null;provider_preference:'auto'|'openai'|'gemini'|'anthropic';model_preference:string|null;status:IntelligenceTaskStatus;attempts:number;max_attempts:number;last_error:string|null;created_at:Date;started_at:Date|null;completed_at:Date|null};
 function mapIntelligenceTask(row:IntelligenceTaskRow):IntelligenceTask { const out:IntelligenceTask={id:row.id,ownerUserId:row.owner_user_id,conversationId:row.conversation_id,userMessageId:row.user_message_id,scope:row.scope,providerPreference:row.provider_preference,status:row.status,attempts:row.attempts,maxAttempts:row.max_attempts,createdAt:row.created_at.toISOString()}; if(row.worker_id)out.workerId=row.worker_id;if(row.job_id)out.jobId=row.job_id;if(row.model_preference)out.modelPreference=row.model_preference;if(row.last_error)out.lastError=row.last_error;if(row.started_at)out.startedAt=row.started_at.toISOString();if(row.completed_at)out.completedAt=row.completed_at.toISOString();return out; }
 
-export async function enqueueIntelligenceTask(args:{ownerUserId:string;conversationId:string;userMessageId:string;scope:'manager'|'worker'|'job';workerId?:string;jobId?:string;providerPreference?:'auto'|'openai'|'gemini';modelPreference?:string}):Promise<IntelligenceTask> {
+export async function enqueueIntelligenceTask(args:{ownerUserId:string;conversationId:string;userMessageId:string;scope:'manager'|'worker'|'job';workerId?:string;jobId?:string;providerPreference?:'auto'|'openai'|'gemini'|'anthropic';modelPreference?:string}):Promise<IntelligenceTask> {
   const id=`aitask_${randomUUID()}`;
   const result=await getDatabasePool().query<IntelligenceTaskRow>(
     `INSERT INTO intelligence_task(id,owner_user_id,conversation_id,user_message_id,scope,worker_id,job_id,provider_preference,model_preference)

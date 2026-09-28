@@ -1,6 +1,8 @@
 # Changelog
 
 ## 0.5.0 — Production Milestone 4
+- Added Anthropic Claude as a first-class Model Gateway provider, including model selection, structured output, hosted web research, usage telemetry, and server-side secret handling.
+- Refreshed default OpenAI API model aliases to the current GPT-6 Luna/Sol/Astra family while preserving environment overrides.
 
 - Added canonical Capability Registry and provider implementation metadata.
 - Added provider-neutral OpenAI/Gemini Model Gateway with AgentPlace Auto and user model selection.

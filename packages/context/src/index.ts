@@ -351,13 +351,13 @@ export async function getIntelligenceContext(ownerUserId:string,conversationId:s
   return out;
 }
 
-export async function setConversationModelPreference(ownerUserId:string,conversationId:string,provider:'auto'|'openai'|'gemini',model?:string):Promise<void>{
+export async function setConversationModelPreference(ownerUserId:string,conversationId:string,provider:'auto'|'openai'|'gemini'|'anthropic',model?:string):Promise<void>{
   const owned=await getConversation(ownerUserId,conversationId); if(!owned) throw new Error('CONVERSATION_NOT_FOUND');
   await getDatabasePool().query(`INSERT INTO conversation_model_preference(conversation_id,owner_user_id,provider,model) VALUES($1,$2,$3,$4)
     ON CONFLICT(conversation_id) DO UPDATE SET provider=EXCLUDED.provider,model=EXCLUDED.model,updated_at=now() WHERE conversation_model_preference.owner_user_id=EXCLUDED.owner_user_id`,[conversationId,ownerUserId,provider,model??null]);
 }
 
-export async function getConversationModelPreference(ownerUserId:string,conversationId:string):Promise<{provider:'auto'|'openai'|'gemini';model?:string}>{
-  const r=await getDatabasePool().query<{provider:'auto'|'openai'|'gemini';model:string|null}>(`SELECT provider,model FROM conversation_model_preference WHERE owner_user_id=$1 AND conversation_id=$2`,[ownerUserId,conversationId]);
+export async function getConversationModelPreference(ownerUserId:string,conversationId:string):Promise<{provider:'auto'|'openai'|'gemini'|'anthropic';model?:string}>{
+  const r=await getDatabasePool().query<{provider:'auto'|'openai'|'gemini'|'anthropic';model:string|null}>(`SELECT provider,model FROM conversation_model_preference WHERE owner_user_id=$1 AND conversation_id=$2`,[ownerUserId,conversationId]);
   const row=r.rows[0]; return row ? {provider:row.provider,...(row.model?{model:row.model}:{})} : {provider:'auto'};
 }

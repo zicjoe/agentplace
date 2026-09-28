@@ -1,10 +1,10 @@
 import { WEB_RUNTIME_SETTINGS } from './runtime';
 import type { ChatMessage } from '../state/types';
 
-export type ModelProviderPreference='auto'|'openai'|'gemini';
+export type ModelProviderPreference='auto'|'openai'|'gemini'|'anthropic';
 export interface ModelSelection { provider:ModelProviderPreference; model?:string; }
-export interface ModelChoice { provider:'openai'|'gemini'; model:string; label:string; role:'fast'|'balanced'|'reasoning'; }
-export interface ModelCatalog { defaultProvider:ModelProviderPreference; autoLabel:'AgentPlace Auto'; providers:Array<{provider:'openai'|'gemini';configured:boolean;models:ModelChoice[]}>; }
+export interface ModelChoice { provider:'openai'|'gemini'|'anthropic'; model:string; label:string; role:'fast'|'balanced'|'reasoning'; }
+export interface ModelCatalog { defaultProvider:ModelProviderPreference; autoLabel:'AgentPlace Auto'; providers:Array<{provider:'openai'|'gemini'|'anthropic';configured:boolean;models:ModelChoice[]}>; }
 export interface IntelligenceTask { id:string; status:'queued'|'running'|'completed'|'failed'; lastError?:string; }
 
 function endpoint(path:string):string { return `${WEB_RUNTIME_SETTINGS.apiBaseUrl}${path}`; }
