@@ -60,8 +60,31 @@ test('Milestone 4 exposes truthful persisted task status and guest preview bound
   const worker = readFileSync('apps/worker/src/index.ts', 'utf8');
   assert.match(api, /getLatestIntelligenceTask/);
   assert.match(jobs, /owner_user_id=\$1 AND conversation_id=\$2/);
-  assert.match(ui, /AI task stopped/);
+  assert.match(ui, /AgentPlace could not complete this request/);
   assert.match(chat, /Guest preview/);
   assert.match(worker, /Intelligence task claimed/);
   assert.match(worker, /isFinalAttempt/);
+});
+
+
+test('Milestone 4 renders durable AI processing state inline with the conversation', () => {
+  const status = readFileSync('apps/web/src/components/IntelligenceTaskStatus.tsx', 'utf8');
+  const manager = readFileSync('apps/web/src/components/ChatView.tsx', 'utf8');
+  const worker = readFileSync('apps/web/src/components/WorkerWorkspace.tsx', 'utf8');
+  const job = readFileSync('apps/web/src/components/JobWorkspace.tsx', 'utf8');
+
+  assert.match(status, /AgentPlace is preparing/);
+  assert.match(status, /AgentPlace is working/);
+  assert.match(status, /Finishing response/);
+  assert.match(status, /responseAlreadyVisible/);
+
+  for (const source of [manager, worker, job]) {
+    const end = source.lastIndexOf('<div ref={messagesEndRef}');
+    const taskStatus = source.lastIndexOf('<IntelligenceTaskStatus', end);
+    assert.ok(taskStatus >= 0, 'task status should render inside the conversation before messagesEndRef');
+  }
+
+  assert.doesNotMatch(manager, /productionConversation \? <IntelligenceTaskStatus/);
+  assert.doesNotMatch(worker, /productionConversation && durableConversation \? <IntelligenceTaskStatus/);
+  assert.doesNotMatch(job, /productionConversation && durableConversation \? <IntelligenceTaskStatus/);
 });

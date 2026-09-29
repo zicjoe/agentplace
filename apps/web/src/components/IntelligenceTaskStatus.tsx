@@ -13,10 +13,29 @@ function failureExplanation(error: string | undefined): string {
   return 'The AI task failed. Check the Worker deployment logs for its task ID.';
 }
 
-/** Observes real database-backed task state; never invents an AI response. */
-export function IntelligenceTaskStatus({ conversationId }: { conversationId: string }) {
+function ProcessingDots() {
+  return (
+    <span className="inline-flex gap-1 items-center h-4" aria-hidden="true">
+      <span className="w-1 h-1 rounded-full bg-text-muted animate-pulse" />
+      <span className="w-1 h-1 rounded-full bg-text-muted animate-pulse" style={{ animationDelay: '150ms' }} />
+      <span className="w-1 h-1 rounded-full bg-text-muted animate-pulse" style={{ animationDelay: '300ms' }} />
+    </span>
+  );
+}
+
+interface IntelligenceTaskStatusProps {
+  conversationId: string;
+  latestAssistantAt?: Date;
+}
+
+/**
+ * Projects real database-backed task state into the conversation stream.
+ * The row is truthful operational state, not a fabricated assistant message.
+ */
+export function IntelligenceTaskStatus({ conversationId, latestAssistantAt }: IntelligenceTaskStatusProps) {
   const [task, setTask] = useState<IntelligenceTask | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     let running = false;
@@ -25,33 +44,91 @@ export function IntelligenceTaskStatus({ conversationId }: { conversationId: str
       running = true;
       try {
         const next = await fetchLatestIntelligenceTask(conversationId);
-        if (!cancelled) { setTask(next); setUnavailable(false); }
+        if (!cancelled) {
+          setTask(next);
+          setUnavailable(false);
+        }
       } catch {
         if (!cancelled) setUnavailable(true);
-      } finally { running = false; }
+      } finally {
+        running = false;
+      }
     };
+
     setTask(null);
     setUnavailable(false);
     void refresh();
-    const interval = window.setInterval(() => { void refresh(); }, 3500);
-    return () => { cancelled = true; window.clearInterval(interval); };
+    const interval = window.setInterval(() => { void refresh(); }, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
   }, [conversationId]);
 
-  if (unavailable) return <div role="status" className="text-xs text-amber-300 mb-2">Cannot check AI task status right now. Your conversation remains saved.</div>;
+  if (unavailable) {
+    return (
+      <div className="flex gap-3" role="status" aria-live="polite">
+        <div className="w-6 h-6 rounded bg-primary-dim flex items-center justify-center shrink-0 mt-0.5">
+          <span className="text-[9px] font-bold text-primary">AP</span>
+        </div>
+        <p className="text-xs text-amber-300 pt-1">
+          AgentPlace cannot check this task right now. Your conversation remains saved.
+        </p>
+      </div>
+    );
+  }
+
   if (!task) return null;
-  const label = task.status === 'queued'
-    ? 'AI task queued'
-    : task.status === 'running'
-      ? 'AI task working'
-      : task.status === 'completed'
-        ? 'AI task completed · syncing conversation'
-        : 'AI task stopped';
+
+  const taskCreatedAt = Date.parse(task.createdAt);
+  const latestAssistantMs = latestAssistantAt?.getTime() ?? 0;
+  const responseAlreadyVisible =
+    task.status === 'completed' &&
+    Number.isFinite(taskCreatedAt) &&
+    latestAssistantMs >= taskCreatedAt;
+
+  if (responseAlreadyVisible) return null;
+
+  const isRetry = task.status === 'queued' && task.attempts > 0;
+  const label =
+    task.status === 'queued'
+      ? isRetry
+        ? 'AgentPlace is retrying'
+        : 'AgentPlace is preparing'
+      : task.status === 'running'
+        ? 'AgentPlace is working'
+        : task.status === 'completed'
+          ? 'Finishing response'
+          : 'AgentPlace could not complete this request';
+
   return (
-    <div role="status" aria-live="polite" className="text-xs text-text-muted mb-2">
-      <span>{label}</span>
-      {task.status === 'queued' && task.attempts > 0 && <span> · retry {task.attempts}/{task.maxAttempts}</span>}
-      {task.status === 'failed' && <span> · {failureExplanation(task.lastError)} </span>}
-      {(task.status === 'queued' || task.status === 'running' || task.status === 'failed') && <span className="font-mono text-[10px] break-all">· {task.id}</span>}
+    <div className="flex gap-3" role="status" aria-live="polite">
+      <div className="w-6 h-6 rounded bg-primary-dim flex items-center justify-center shrink-0 mt-0.5">
+        <span className="text-[9px] font-bold text-primary">AP</span>
+      </div>
+      <div className="flex-1 min-w-0 pt-0.5">
+        <div className="flex items-center gap-2 text-sm text-text-sub">
+          <span>{label}</span>
+          {task.status !== 'failed' && <ProcessingDots />}
+        </div>
+
+        {isRetry && (
+          <p className="text-[11px] text-text-muted mt-1">
+            Retry {task.attempts}/{task.maxAttempts}
+          </p>
+        )}
+
+        {task.status === 'failed' && (
+          <div className="mt-1">
+            <p className="text-xs text-text-muted leading-relaxed">
+              {failureExplanation(task.lastError)}
+            </p>
+            <p className="font-mono text-[10px] text-text-dim mt-1 break-all">
+              Task {task.id}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
