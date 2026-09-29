@@ -8,8 +8,11 @@ import { fetchJobEvidence, type JobEvidenceSource } from '../platform/workApi';
 import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
 import { ResearchMarkdown } from './ResearchMarkdown';
-import { safeResearchUrl } from '../platform/markdown';
+import { ResearchResultCard } from './ResearchResultCard';
+import { ResearchReport } from './ResearchReport';
 import { scrollConversationToEnd } from '../platform/scroll';
+
+type JobWorkspaceTab = 'conversation' | 'team' | 'result' | 'activity';
 
 interface JobMessage {
   id: string;
@@ -19,52 +22,27 @@ interface JobMessage {
 }
 
 function ProgressBar({ stages }: { stages: { id: string; label: string; status: 'done' | 'active' | 'pending' }[] }) {
+  if (stages.length === 0) return null;
   return (
-    <div className="flex items-center gap-0">
-      {stages.map((stage, i) => (
-        <div key={stage.id} className="flex items-center gap-0 flex-1">
-          <div className="flex flex-col items-center flex-1">
-            <div className="flex items-center gap-1.5 mb-1">
-              <div
-                className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
-                  stage.status === 'done'
-                    ? 'bg-accent'
-                    : stage.status === 'active'
-                    ? 'bg-primary'
-                    : 'bg-panel-raised border border-border'
-                }`}
-              >
-                {stage.status === 'done' && (
-                  <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
-                {stage.status === 'active' && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                )}
-              </div>
-              {i < stages.length - 1 && (
-                <div
-                  className={`h-px flex-1 ${
-                    stage.status === 'done' ? 'bg-accent/40' : 'bg-border'
-                  }`}
-                />
-              )}
-            </div>
-            <span
-              className={`text-[10px] text-center leading-tight ${
-                stage.status === 'done'
-                  ? 'text-accent'
-                  : stage.status === 'active'
-                  ? 'text-primary'
-                  : 'text-text-muted'
-              }`}
-            >
-              {stage.label}
+    <div className="space-y-2">
+      <p className="text-[11px] uppercase tracking-wide font-medium text-text-sub">Job progress</p>
+      <div role="group" aria-label="Job stages" className="overflow-x-auto max-w-full pb-2" tabIndex={0}>
+        <ol className="flex min-w-max gap-2">
+          {stages.map((stage, i) => <li key={stage.id} className="w-32 sm:w-36 shrink-0">
+            <div className={`h-1 rounded-full mb-2 ${stage.status === 'done' ? 'bg-accent' : stage.status === 'active' ? 'bg-primary' : 'bg-border'}`} />
+            <span className={`text-xs font-medium ${stage.status === 'done' ? 'text-accent' : stage.status === 'active' ? 'text-text' : 'text-text-muted'}`}>
+              {stage.status === 'done' ? '✓' : i + 1} {stage.status === 'done' ? 'Complete' : stage.status === 'active' ? 'In progress' : 'Pending'}
             </span>
-          </div>
-        </div>
-      ))}
+            <p title={stage.label} className="text-xs text-text-sub mt-1 leading-snug break-words line-clamp-2">{stage.label}</p>
+          </li>)}
+        </ol>
+      </div>
+      <details className="text-xs text-text-sub group">
+        <summary className="cursor-pointer w-fit py-1 text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary">View all stage details</summary>
+        <ol className="mt-2 space-y-2 border-l border-border pl-3">
+          {stages.map((stage) => <li key={stage.id}><span className="text-text font-medium">{stage.status === 'done' ? 'Done' : stage.status === 'active' ? 'Current' : 'Pending'}:</span> {stage.label}</li>)}
+        </ol>
+      </details>
     </div>
   );
 }
@@ -168,13 +146,13 @@ function FinancialJobWorkspace() {
           </button>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-base font-semibold text-text">{job.title}</h1>
+              <h1 className="text-lg sm:text-xl leading-snug font-semibold text-text">{job.title}</h1>
               <div className="flex items-center gap-1.5">
                 <span className={`w-1.5 h-1.5 rounded-full ${dotColor} ${job.status !== 'completed' ? 'animate-pulse' : ''}`} />
                 <span className={`text-xs ${statusColor}`}>{jobStatusLabel(job.status)}</span>
               </div>
             </div>
-            <p className="text-xs text-text-muted mt-0.5">{job.goal}</p>
+            <p className="text-sm text-text-sub leading-relaxed mt-2 max-w-3xl break-words">{job.goal}</p>
             <div className="flex items-center gap-3 mt-1.5 text-xs text-text-muted flex-wrap">
               <span>Lead: <span className="text-text-sub">{job.leadWorkerName}</span></span>
               {originConv && <button type="button" onClick={() => dispatch({ type: 'SET_ACTIVE_CONV', id: originConv.id })} className="text-primary hover:underline">Origin conversation →</button>}
@@ -209,7 +187,7 @@ function FinancialJobWorkspace() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-xs font-medium capitalize border-b-2 -mb-px transition-colors ${
+              className={`px-4 py-2 text-sm font-medium capitalize border-b-2 -mb-px transition-colors ${
                 activeTab === tab
                   ? 'border-primary text-text'
                   : 'border-transparent text-text-muted hover:text-text-sub'
@@ -458,9 +436,13 @@ export function JobWorkspace() {
   const [messages, setMessages] = useState<JobMessage[]>([]);
   const [input, setInput] = useState('');
   const [modelSelection, setModelSelection] = useState<ModelSelection>({ provider: 'auto' });
-  const [activeTab, setActiveTab] = useState<'conversation' | 'team' | 'result' | 'activity'>('conversation');
+  const [activeTab, setActiveTab] = useState<JobWorkspaceTab>(
+    state.activeJobTab === 'result' ? 'result' : 'conversation',
+  );
   const [evidenceSources, setEvidenceSources] = useState<JobEvidenceSource[]>([]);
   const messageScrollRef = useRef<HTMLDivElement>(null);
+  const lastConversationRef = useRef<string | null>(null);
+  const previousMessageCountRef = useRef(0);
 
   const job = (state.jobs ?? []).find((j) => j.id === state.activeJobId);
   const durableConversation = job ? state.conversations.find((c) => c.scope === 'job' && c.jobId === job.id) : undefined;
@@ -469,13 +451,31 @@ export function JobWorkspace() {
   const displayMessages = productionConversation ? durableMessages : messages;
 
   useEffect(() => {
-    scrollConversationToEnd(messageScrollRef.current);
-  }, [displayMessages.length]);
+    if (activeTab !== 'conversation') return;
+    const conversationKey = durableConversation?.id ?? job?.id ?? '';
+    const panel = messageScrollRef.current;
+    if (lastConversationRef.current !== conversationKey) {
+      lastConversationRef.current = conversationKey;
+      previousMessageCountRef.current = displayMessages.length;
+      if (panel) panel.scrollTop = 0;
+      return;
+    }
+    const previousCount = previousMessageCountRef.current;
+    const added = displayMessages.length > previousCount;
+    const completedReportArrived = displayMessages.slice(previousCount).some((message) => message.id.startsWith('msg_job_result_'));
+    previousMessageCountRef.current = displayMessages.length;
+    // A newly published report must not jump directly to its source list.
+    // Ordinary follow-ups only autoscroll when the user was already near the end.
+    if (added && !completedReportArrived && panel && panel.scrollHeight - panel.scrollTop - panel.clientHeight < 160) {
+      scrollConversationToEnd(panel);
+    }
+  }, [activeTab, durableConversation?.id, job?.id, displayMessages.length]);
 
 
   useEffect(() => {
     if (!job || WEB_RUNTIME_SETTINGS.dataMode !== 'api' || !state.user) return;
     let cancelled = false;
+    setEvidenceSources([]);
     void fetchJobEvidence(job.id).then((sources) => { if (!cancelled) setEvidenceSources(sources); }).catch(() => { if (!cancelled) setEvidenceSources([]); });
     return () => { cancelled = true; };
   }, [job?.id, job?.status, state.user?.id]);
@@ -493,6 +493,9 @@ export function JobWorkspace() {
   }
 
   const isComplete = job.status === 'completed';
+  const workspaceTabs: JobWorkspaceTab[] = isComplete
+    ? ['conversation', 'team', 'result', 'activity']
+    : ['conversation', 'team', 'activity'];
   const leadWorker = state.workers.find((w) => w.id === job.leadWorkerId);
   const originConversation = job.originConversationId ? state.conversations.find((c) => c.id === job.originConversationId) : undefined;
   const researchAnswer = durableConversation?.messages.find((m) => m.id.startsWith('msg_job_result_'))?.content;
@@ -553,8 +556,8 @@ export function JobWorkspace() {
 
   return (
     <div className="h-full flex flex-col bg-bg overflow-hidden">
-      {/* Header */}
-      <div className="px-5 py-4 border-b border-border shrink-0 max-h-[55dvh] overflow-y-auto">
+      {/* Bounded header stays readable without displacing the workspace at normal zoom. */}
+      <div className="px-4 sm:px-6 py-4 border-b border-border shrink-0 max-h-[55dvh] overflow-y-auto">
         <div className="flex items-start gap-3">
           <button
             onClick={() => dispatch({ type: 'SET_ACTIVE_JOB', id: null })}
@@ -572,7 +575,7 @@ export function JobWorkspace() {
                   className={`w-1.5 h-1.5 rounded-full ${isComplete ? 'bg-accent' : 'bg-primary'}`}
                 />
                 <span className={`text-xs ${isComplete ? 'text-accent' : 'text-primary'}`}>
-                  {isComplete ? 'Research complete' : job.status === 'planning' ? 'Planning' : 'Working'}
+                  {isComplete ? 'Research complete' : job.status === 'planning' ? 'Planning' : job.status === 'failed' ? 'Failed' : job.status === 'blocked' ? 'Blocked' : job.status === 'needs-you' ? 'Needs you' : job.status === 'recovering' ? 'Recovering' : 'Working'}
                 </span>
               </div>
             </div>
@@ -620,10 +623,10 @@ export function JobWorkspace() {
 
         {/* Tabs */}
         <div className="flex gap-0 mt-4 border-b border-border -mb-px">
-          {(['conversation', 'team', ...(isComplete ? ['result'] : []), 'activity'] as const).map((tab) => (
+          {workspaceTabs.map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab as any)}
+              onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 text-xs font-medium capitalize border-b-2 -mb-px transition-colors ${
                 activeTab === tab
                   ? 'border-primary text-text'
@@ -688,7 +691,9 @@ export function JobWorkspace() {
                             <span className="w-1 h-1 rounded-full bg-text-muted animate-pulse" style={{ animationDelay: '300ms' }} />
                           </span>
                         ) : (
-                          <ResearchMarkdown text={msg.content} />
+                          productionConversation && msg.id.startsWith('msg_job_result_') ? (
+                            <ResearchResultCard text={msg.content} title={job.title} onOpenReport={() => setActiveTab('result')} />
+                          ) : <ResearchMarkdown text={msg.content} />
                         )}
                       </div>
                     </div>
@@ -796,29 +801,11 @@ export function JobWorkspace() {
         )}
 
         {activeTab === 'result' && (
-          <div data-workspace-scroll className="overflow-y-auto h-full px-5 py-5">
-            <div className="max-w-xl">
-              {productionConversation && (
-                <div className="mb-5 border border-border rounded-lg bg-panel px-4 py-4">
-                  <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">Evidence sources</p>
-                  {evidenceSources.length ? (
-                    <div className="space-y-2">
-                      {evidenceSources.map((source) => {
-                        const href = safeResearchUrl(source.url);
-                        return href ? <a key={source.id} href={href} target="_blank" rel="noopener noreferrer" className="block text-xs text-primary hover:underline break-words">
-                          {source.title} <span className="text-text-dim">· {source.provider}</span>
-                        </a> : <p key={source.id} className="text-xs text-text-muted break-words">{source.title} · Unavailable source URL</p>;
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-text-muted">No preservable source URLs were returned for this Job.</p>
-                  )}
-                </div>
-              )}
-              {productionConversation && (researchAnswer ? <div className="mb-5">
-                <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-3">Research output</p>
-                <ResearchMarkdown text={researchAnswer} />
-              </div> : <p className="text-xs text-text-muted mb-5">Research output will appear here when the Worker publishes its result.</p>)}
+          <div className={productionConversation ? 'h-full min-h-0' : 'overflow-y-auto h-full px-5 py-5'}>
+            <div className={productionConversation ? 'h-full min-h-0' : 'max-w-xl'}>
+              {productionConversation && (researchAnswer ? (
+                <ResearchReport key={job.id} title={job.title} answer={researchAnswer} sources={evidenceSources} updatedAt={job.updatedAt} />
+              ) : <p className="text-sm text-text-muted">Research output will appear here when the Worker publishes its result.</p>)}
               {job.result && !productionConversation && <>
               <div className="flex items-center gap-2 mb-4">
                 <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">

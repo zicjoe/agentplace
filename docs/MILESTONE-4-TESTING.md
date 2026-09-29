@@ -7,7 +7,7 @@ pnpm install --frozen-lockfile
 pnpm check
 ```
 
-See `docs/MILESTONE-4-FIXES.md` for the new Job-card, viewport, safe Markdown and origin/Activity cross-link regression and owner acceptance checks.
+See `docs/MILESTONE-4-HYBRID-UX.md` and `docs/MILESTONE-4-FIXES.md` for the new Job-card, viewport, safe Markdown and origin/Activity cross-link regression and owner acceptance checks.
 
 ## Production acceptance
 

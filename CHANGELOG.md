@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.0 — Hybrid research presentation refinement (acceptance pending)
+
+- Added saved-answer excerpts and expandable inline research cards in Manager and Job conversations, with direct access to the existing Job Result.
+- Added a navigable full report and structured persisted source references; corrected display-only malformed emphasis and initial Job conversation scrolling.
+- Made Job progress and stage labels readable at normal zoom while preserving detailed underlying stage state.
+- No new backend state, database migration, dependency, credentials or execution authority. M4 remains open.
+
 ## v0.5.0 — Milestone 4 production corrections (acceptance pending)
 
 - Render live, owner-scoped Job references inside persisted Manager messages and cross-link Job/Worker/Activity/conversations.

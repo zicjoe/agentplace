@@ -121,3 +121,7 @@ database migration, environment variable, provider configuration or dependency.
 Wait for the previous queued Railway deployment to finish before pushing a new
 GitHub revision, so the deployments do not race. The Vercel frontend must be on
 the new commit before accepting this visual change. M4 remains unfrozen.
+
+## Approved hybrid research UX refinement
+
+The follow-on presentation change is documented with installation, regression and live acceptance steps in `docs/MILESTONE-4-HYBRID-UX.md`. It preserves the prior production corrections and is not itself a Milestone 4 freeze.

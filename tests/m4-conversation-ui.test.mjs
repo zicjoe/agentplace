@@ -81,3 +81,44 @@ test('sidebar preserves conversation history at normal zoom without losing navig
   assert.match(css, /\.agentplace-sidebar-navigation \{[\s\S]*overflow: visible/);
   assert.match(shell, /w-72 h-full overflow-hidden shadow-2xl/);
 });
+
+test('hybrid report derives only from saved research; malformed emphasis is display-only', () => {
+  const script = `
+    import assert from 'node:assert/strict';
+    import { researchExcerpt, researchOutline, reportWithoutAppendedSources, displayInlineMarkdown } from './apps/web/src/platform/researchPresentation.ts';
+    const answer = '## Markets\\n\\nAave snapshots may be stale. Check the reserve screen before transactions. This text is from the original saved answer.\\n\\n## Risks\\n\\nThe independent inventory identifies **DAI, EURS, MAI.\\n\\n## Sources\\n1. Aave — https://app.aave.com';
+    assert.match(researchExcerpt(answer), /Aave snapshots may be stale/);
+    assert.equal(researchOutline(answer)[0].title, 'Markets');
+    assert.equal(researchOutline(answer)[1].id, 'research-section-2');
+    assert.doesNotMatch(reportWithoutAppendedSources(answer, true), /## Sources/);
+    assert.equal(reportWithoutAppendedSources(answer, false), answer);
+    assert.equal(displayInlineMarkdown('The inventory identifies **DAI, EURS'), 'The inventory identifies DAI, EURS');
+    assert.equal(displayInlineMarkdown('**valid** then **orphan'), '**valid** then orphan');
+    assert.equal(displayInlineMarkdown('**valid**'), '**valid**');
+  `;
+  const result = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', '--input-type=module', '-e', script], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('hybrid UI opens the existing Job Result, retains saved evidence and respects security boundaries', () => {
+  const chat = read('apps/web/src/components/ChatView.tsx');
+  const job = read('apps/web/src/components/JobWorkspace.tsx');
+  const result = read('apps/web/src/components/ResearchReport.tsx');
+  const card = read('apps/web/src/components/ResearchResultCard.tsx');
+  const research = read('apps/web/src/components/ResearchMarkdown.tsx');
+  assert.match(chat, /msg_origin_result_/);
+  assert.match(chat, /SET_ACTIVE_JOB', id: msg\.jobId!, tab: 'result'/);
+  assert.match(job, /id\.startsWith\('msg_job_result_'\)/);
+  assert.match(job, /<ResearchReport key=\{job\.id\}/);
+  assert.match(job, /lastConversationRef\.current !== conversationKey/);
+  assert.match(job, /<ProgressBar stages=\{job\.stages\}/);
+  assert.match(card, /<ResearchMarkdown text=\{text\}/);
+  assert.match(result, /reportWithoutAppendedSources/);
+  assert.match(result, /safeResearchUrl\(source\.url\)/);
+  assert.match(result, /noopener noreferrer/);
+  assert.match(research, /displayInlineMarkdown/);
+  for (const component of [chat, job, result, card, research]) {
+    assert.doesNotMatch(component, /dangerouslySetInnerHTML\s*=/);
+  }
+  assert.doesNotMatch(result, /ADD_JOB|createDurableJob|submitIntelligence/);
+});

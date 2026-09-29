@@ -721,6 +721,7 @@ export interface AppState {
   activeConversationId: string | null;
   activeWorkerId: string | null;
   activeJobId: string | null;
+  activeJobTab: 'conversation' | 'result';
   activeWalletId: string | null;
   activeActionId: string | null;
   activeRoutineId: string | null;

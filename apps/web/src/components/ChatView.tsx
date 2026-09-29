@@ -20,6 +20,7 @@ import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
 import { ResearchMarkdown } from './ResearchMarkdown';
 import { JobReference } from './JobReference';
+import { ResearchResultCard } from './ResearchResultCard';
 import { scrollConversationToEnd } from '../platform/scroll';
 
 // Research content is always rendered as React nodes, never model-supplied HTML.
@@ -735,8 +736,10 @@ export function ChatView() {
         <div className="max-w-2xl mx-auto space-y-5">
           {conv.messages.map((msg) => (
             <div key={msg.id} className="min-w-0">
-              <MessageBubble msg={msg} />
-              {msg.jobId && msg.role !== 'user' && <div className="pl-9"><JobReference jobId={msg.jobId} /></div>}
+              {msg.id.startsWith('msg_origin_result_') && msg.jobId && msg.role !== 'user' && state.jobs.some((entry) => entry.id === msg.jobId) ? (
+                <div className="pl-0 sm:pl-9"><ResearchResultCard text={msg.content} title={state.jobs.find((entry) => entry.id === msg.jobId)!.title} onOpenReport={() => dispatch({ type: 'SET_ACTIVE_JOB', id: msg.jobId!, tab: 'result' })} /></div>
+              ) : <MessageBubble msg={msg} />}
+              {msg.jobId && msg.role !== 'user' && !msg.id.startsWith('msg_origin_result_') && <div className="pl-0 sm:pl-9"><JobReference jobId={msg.jobId} /></div>}
             </div>
           ))}
 

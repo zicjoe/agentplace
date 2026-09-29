@@ -96,6 +96,7 @@ export function applyRouteSelection(state: AppState, route: RouteSelection): App
   return {
     ...state,
     ...route,
+    activeJobTab: 'conversation',
     activeActionId: null,
     activeReceiptId: null,
     notificationInboxOpen: false,

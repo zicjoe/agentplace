@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
 import { parseMarkdown, safeResearchUrl } from '../platform/markdown';
+import { displayInlineMarkdown } from '../platform/researchPresentation';
 
 /** Inline Markdown is emitted as React text/elements. No HTML parser or dangerouslySetInnerHTML. */
 function inline(text: string, prefix = ''): ReactNode[] {
+  text = displayInlineMarkdown(text);
   const parts: ReactNode[] = [];
   // Images are deliberately not expanded; model output cannot embed remote trackers.
   const token = /(?<!!)\[([^\]\n]+)\]\(([^\s)]+)\)|\*\*([^*\n]+)\*\*|__([^_\n]+)__|`([^`\n]+)`|\*([^*\n]+)\*|(?<![\w])_([^_\n]+)_(?![\w])|https?:\/\/[^\s<>]+/g;
@@ -31,13 +33,13 @@ function inline(text: string, prefix = ''): ReactNode[] {
   return parts;
 }
 
-export function ResearchMarkdown({ text }: { text: string }) {
+export function ResearchMarkdown({ text, headingIds = false }: { text: string; headingIds?: boolean }) {
   return (
     <div className="research-markdown min-w-0 max-w-full space-y-3 text-sm leading-relaxed text-text-sub">
       {parseMarkdown(text).map((block, index) => {
         const key = `${index}-${block.type}`;
         switch (block.type) {
-          case 'heading': return <h3 key={key} className={`font-semibold text-text ${block.level === 1 ? 'text-base pt-1' : 'text-sm pt-1'}`}>{inline(block.text, key)}</h3>;
+          case 'heading': return <h3 key={key} id={headingIds ? `research-section-${index}` : undefined} tabIndex={headingIds ? -1 : undefined} className={`font-semibold text-text ${block.level === 1 ? 'text-base pt-1' : 'text-sm pt-1'}`}>{inline(block.text, key)}</h3>;
           case 'paragraph': return <p key={key} className="break-words">{inline(block.text, key)}</p>;
           case 'quote': return <blockquote key={key} className="border-l-2 border-primary/40 pl-3 text-text-muted">{inline(block.text, key)}</blockquote>;
           case 'list': return block.ordered

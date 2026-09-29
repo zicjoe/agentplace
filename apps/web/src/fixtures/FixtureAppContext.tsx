@@ -869,6 +869,7 @@ const INITIAL_STATE: AppState = {
   activeConversationId: null,
   activeWorkerId: null,
   activeJobId: null,
+  activeJobTab: 'conversation',
   activeWalletId: null,
   activeActionId: null,
   activeRoutineId: null,
@@ -925,7 +926,7 @@ export type Action =
   | { type: 'SET_ENV'; env: Environment }
   | { type: 'SET_ACTIVE_CONV'; id: string | null }
   | { type: 'SET_ACTIVE_WORKER'; id: string | null }
-  | { type: 'SET_ACTIVE_JOB'; id: string | null }
+  | { type: 'SET_ACTIVE_JOB'; id: string | null; tab?: 'conversation' | 'result' }
   | { type: 'SET_ACTIVE_WALLET'; id: string | null }
   | { type: 'SET_ACTIVE_ACTION'; id: string | null }
   | { type: 'ADD_CONV'; conv: Conversation; persisted?: boolean }
@@ -1060,7 +1061,7 @@ function reducer(state: AppState, action: Action): AppState {
       };
 
     case 'SET_ACTIVE_JOB':
-      return { ...state, activeJobId: action.id, activeActionId: null, routeNotFound: null };
+      return { ...state, activeJobId: action.id, activeJobTab: action.tab ?? 'conversation', activeActionId: null, routeNotFound: null };
 
     case 'SET_ACTIVE_WALLET':
       return { ...state, activeWalletId: action.id, routeNotFound: null };
