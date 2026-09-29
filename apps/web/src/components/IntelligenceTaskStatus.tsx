@@ -26,13 +26,14 @@ function ProcessingDots() {
 interface IntelligenceTaskStatusProps {
   conversationId: string;
   latestAssistantAt?: Date;
+  pendingMessageId?: string;
 }
 
 /**
  * Projects real database-backed task state into the conversation stream.
  * The row is truthful operational state, not a fabricated assistant message.
  */
-export function IntelligenceTaskStatus({ conversationId, latestAssistantAt }: IntelligenceTaskStatusProps) {
+export function IntelligenceTaskStatus({ conversationId, latestAssistantAt, pendingMessageId }: IntelligenceTaskStatusProps) {
   const [task, setTask] = useState<IntelligenceTask | null>(null);
   const [unavailable, setUnavailable] = useState(false);
 
@@ -74,6 +75,19 @@ export function IntelligenceTaskStatus({ conversationId, latestAssistantAt }: In
         <p className="text-xs text-amber-300 pt-1">
           AgentPlace cannot check this task right now. Your conversation remains saved.
         </p>
+      </div>
+    );
+  }
+
+  if (pendingMessageId && task?.userMessageId !== pendingMessageId && !unavailable) {
+    return (
+      <div className="flex gap-3" role="status" aria-live="polite">
+        <div className="w-6 h-6 rounded bg-primary-dim flex items-center justify-center shrink-0 mt-0.5">
+          <span className="text-[9px] font-bold text-primary">AP</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-text-sub pt-0.5">
+          AgentPlace is preparing <ProcessingDots />
+        </div>
       </div>
     );
   }

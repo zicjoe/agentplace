@@ -88,3 +88,34 @@ test('Milestone 4 renders durable AI processing state inline with the conversati
   assert.doesNotMatch(worker, /productionConversation && durableConversation \? <IntelligenceTaskStatus/);
   assert.doesNotMatch(job, /productionConversation && durableConversation \? <IntelligenceTaskStatus/);
 });
+
+test('Milestone 4 creates and submits the first authenticated message from Home', () => {
+  const home = readFileSync('apps/web/src/components/GuestHome.tsx', 'utf8');
+  const modelSelector = readFileSync('apps/web/src/components/ModelSelector.tsx', 'utf8');
+  const modelApi = readFileSync('apps/web/src/platform/intelligenceApi.ts', 'utf8');
+
+  const firstSend = home.slice(home.indexOf('async function createAndSend'), home.indexOf('function handleChip'));
+  assert.match(firstSend, /if \(!liveConversation\)/);
+  assert.match(firstSend, /await createDurableConversation\(conv\)/);
+  assert.match(firstSend, /await submitIntelligence\(convId, userMessage, modelSelection\)/);
+  assert.ok(firstSend.indexOf('await createDurableConversation(conv)') < firstSend.indexOf('await submitIntelligence(convId, userMessage, modelSelection)'), 'conversation must exist before its first task');
+  assert.match(firstSend, /persisted: true/);
+  assert.match(home, /liveConversation && <ModelSelector onChange=\{setModelSelection\}/);
+  assert.match(modelSelector, /conversationId\?:string/);
+  assert.match(modelApi, /const query=conversationId\?/);
+});
+
+test('Milestone 4 protects fresh messages against concurrent background rehydration', () => {
+  const state = readFileSync('apps/web/src/fixtures/FixtureAppContext.tsx', 'utf8');
+  const chat = readFileSync('apps/web/src/components/ChatView.tsx', 'utf8');
+  const status = readFileSync('apps/web/src/components/IntelligenceTaskStatus.tsx', 'utf8');
+
+  assert.match(state, /ADD_CONV'; conv: Conversation; persisted\?: boolean/);
+  assert.match(state, /conversationRevisionRef\.current/);
+  assert.match(state, /pendingConversationWritesRef\.current/);
+  assert.match(state, /const prior = pendingConversationWritesRef\.current\.get\(id\)/);
+  assert.match(state, /stateRef\.current\.user\?\.id !== ownerUserId/);
+  assert.match(chat, /await createDurableConversation\(\{ \.\.\.currentConversation, messages: \[\] \}\)/);
+  assert.match(chat, /pendingMessageId=\{pendingMessageId\}/);
+  assert.match(status, /pendingMessageId && task\?\.userMessageId !== pendingMessageId/);
+});

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchModelOptions, type ModelCatalog, type ModelSelection } from '../platform/intelligenceApi';
 
-export function ModelSelector({conversationId,onChange}:{conversationId:string;onChange:(selection:ModelSelection)=>void}){
+export function ModelSelector({conversationId,onChange}:{conversationId?:string;onChange:(selection:ModelSelection)=>void}){
   const [catalog,setCatalog]=useState<ModelCatalog|null>(null);
   const [selection,setSelection]=useState<ModelSelection>({provider:'auto'});
   const [error,setError]=useState(false);
@@ -16,7 +16,7 @@ export function ModelSelector({conversationId,onChange}:{conversationId:string;o
 
   const value=selection.provider==='auto'?'auto':`${selection.provider}:${selection.model??''}`;
   const options=useMemo(()=>catalog?.providers.flatMap((provider)=>provider.configured?provider.models:[])??[],[catalog]);
-  if(error) return <span className="text-[10px] text-text-dim">AgentPlace Auto</span>;
+  if(error) return <span className="text-[10px] text-amber-300" role="status">Model selector unavailable</span>;
   return (
     <label className="flex items-center gap-1.5 text-[10px] text-text-muted">
       <span className="hidden sm:inline">Model</span>

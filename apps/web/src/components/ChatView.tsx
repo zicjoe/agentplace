@@ -13,7 +13,8 @@ import {
 } from '../state/AppContext';
 import { PERPS_ACTION_ID } from './ActionReview';
 import type { ChatMessage } from '../state/types';
-import { submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
+import { fetchLatestIntelligenceTask, submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
+import { createDurableConversation } from '../platform/conversationApi';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
@@ -521,10 +522,15 @@ export function ChatView() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleVal, setTitleVal] = useState('');
   const [modelSelection, setModelSelection] = useState<ModelSelection>({ provider: 'auto' });
+  const [pendingMessageId, setPendingMessageId] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const conv = state.conversations.find((c) => c.id === state.activeConversationId);
   const productionConversation = WEB_RUNTIME_SETTINGS.dataMode === 'api' && !!state.user;
+
+  useEffect(() => {
+    setPendingMessageId(undefined);
+  }, [conv?.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -560,9 +566,24 @@ export function ChatView() {
     };
     dispatch({ type: 'ADD_MSG', convId: conv!.id, msg });
     if (productionConversation) {
-      void submitIntelligence(conv!.id, msg, modelSelection).catch((error) => {
-        dispatch({ type: 'ADD_MSG', convId: conv!.id, msg: { id: uid(), role: 'manager', content: error instanceof Error ? error.message : 'AgentPlace intelligence request failed.', timestamp: new Date() } });
-      });
+      const currentConversation = conv!;
+      setPendingMessageId(msg.id);
+      void (async () => {
+        try {
+          // An empty newly-created conversation can still be saving in the background.
+          // Ensure the durable row exists before the first intelligence submission.
+          if (currentConversation.messages.length === 0) {
+            await createDurableConversation({ ...currentConversation, messages: [] });
+          }
+          await submitIntelligence(currentConversation.id, msg, modelSelection);
+        } catch (error) {
+          setPendingMessageId((id) => id === msg.id ? undefined : id);
+          const task = await fetchLatestIntelligenceTask(currentConversation.id).catch(() => null);
+          if (task?.userMessageId !== msg.id) {
+            dispatch({ type: 'ADD_MSG', convId: currentConversation.id, msg: { id: uid(), role: 'manager', content: `AgentPlace could not confirm this request: ${error instanceof Error ? error.message : 'Please check the task status.'} Your message remains saved; check this conversation before trying again.`, timestamp: new Date() } });
+          }
+        }
+      })();
     } else {
       runGenericManagerResponse(dispatch, conv!.id, input.trim());
     }
@@ -947,6 +968,7 @@ export function ChatView() {
             <IntelligenceTaskStatus
               conversationId={conv.id}
               latestAssistantAt={latestAssistantAt}
+              pendingMessageId={pendingMessageId}
             />
           )}
           <div ref={messagesEndRef} />

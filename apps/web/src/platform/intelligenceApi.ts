@@ -5,7 +5,7 @@ export type ModelProviderPreference='auto'|'openai'|'gemini'|'anthropic';
 export interface ModelSelection { provider:ModelProviderPreference; model?:string; }
 export interface ModelChoice { provider:'openai'|'gemini'|'anthropic'; model:string; label:string; role:'fast'|'balanced'|'reasoning'; }
 export interface ModelCatalog { defaultProvider:ModelProviderPreference; autoLabel:'AgentPlace Auto'; providers:Array<{provider:'openai'|'gemini'|'anthropic';configured:boolean;models:ModelChoice[]}>; }
-export interface IntelligenceTask { id:string; status:'queued'|'running'|'completed'|'failed'; lastError?:string; attempts:number; maxAttempts:number; createdAt:string; completedAt?:string; providerPreference:ModelProviderPreference; }
+export interface IntelligenceTask { id:string; userMessageId:string; status:'queued'|'running'|'completed'|'failed'; lastError?:string; attempts:number; maxAttempts:number; createdAt:string; completedAt?:string; providerPreference:ModelProviderPreference; }
 
 function endpoint(path:string):string { return `${WEB_RUNTIME_SETTINGS.apiBaseUrl}${path}`; }
 async function request<T>(path:string,init?:RequestInit):Promise<T>{
@@ -14,8 +14,9 @@ async function request<T>(path:string,init?:RequestInit):Promise<T>{
   return await response.json() as T;
 }
 
-export async function fetchModelOptions(conversationId:string):Promise<{catalog:ModelCatalog;preference:ModelSelection}>{
-  return request(`/api/v1/intelligence/models?conversationId=${encodeURIComponent(conversationId)}`);
+export async function fetchModelOptions(conversationId?:string):Promise<{catalog:ModelCatalog;preference:ModelSelection}>{
+  const query=conversationId?`?conversationId=${encodeURIComponent(conversationId)}`:'';
+  return request(`/api/v1/intelligence/models${query}`);
 }
 
 function apiMessage(message:ChatMessage){

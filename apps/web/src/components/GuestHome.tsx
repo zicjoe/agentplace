@@ -1,6 +1,10 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAppState, useDispatch, runGenericManagerResponse, uid } from '../state/AppContext';
-import type { Conversation, Worker, WorkerStatus } from '../state/types';
+import type { ChatMessage, Conversation, Worker, WorkerStatus } from '../state/types';
+import { createDurableConversation } from '../platform/conversationApi';
+import { fetchLatestIntelligenceTask, submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
+import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { ModelSelector } from './ModelSelector';
 
 const QUICK_ACTIONS = [
   {
@@ -206,30 +210,85 @@ function IntentGroup({ group, onChip }: {
 // ── Composer (shared between both states) ─────────────────────────────────────
 
 function Composer({ compact = false }: { compact?: boolean }) {
+  const state = useAppState();
   const dispatch = useDispatch();
   const [input, setInput] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const [modelSelection, setModelSelection] = useState<ModelSelection>({ provider: 'auto' });
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const startingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const ownerUserIdRef = useRef(state.user?.id);
+  ownerUserIdRef.current = state.user?.id;
+  const liveConversation = WEB_RUNTIME_SETTINGS.dataMode === 'api' && !!state.user;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
-  function createAndSend(message: string) {
-    if (!message.trim()) return;
+  async function createAndSend(message: string): Promise<void> {
+    if (!message.trim() || startingRef.current) return;
+    startingRef.current = true;
+    setStarting(true);
+    setStartError(null);
     const convId = uid();
+    const userMessage: ChatMessage = { id: uid(), role: 'user', content: message.trim(), timestamp: new Date() };
     const conv: Conversation = {
       id: convId,
       title: 'New conversation',
       manuallyRenamed: false,
-      messages: [{ id: uid(), role: 'user', content: message.trim(), timestamp: new Date() }],
+      messages: [userMessage],
       pinned: false,
       archived: false,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    dispatch({ type: 'ADD_CONV', conv });
-    runGenericManagerResponse(dispatch, convId, message.trim());
-    setInput('');
+    if (!liveConversation) {
+      dispatch({ type: 'ADD_CONV', conv });
+      runGenericManagerResponse(dispatch, convId, message.trim());
+      setInput('');
+      startingRef.current = false;
+      setStarting(false);
+      return;
+    }
+
+    let created = false;
+    const ownerUserId = state.user?.id;
+    try {
+      // Persist the conversation and its first message before queuing AI work.
+      // The first message must never go through the guest/fixture responder.
+      await createDurableConversation(conv);
+      created = true;
+      if (!mountedRef.current || ownerUserIdRef.current !== ownerUserId) return;
+      await submitIntelligence(convId, userMessage, modelSelection);
+      if (!mountedRef.current || ownerUserIdRef.current !== ownerUserId) return;
+      dispatch({ type: 'ADD_CONV', conv, persisted: true });
+      setInput('');
+    } catch (error) {
+      if (!mountedRef.current || ownerUserIdRef.current !== ownerUserId) return;
+      const messageText = error instanceof Error ? error.message : 'Request failed.';
+      if (!created) {
+        setStartError(`Could not save the conversation. ${messageText}`);
+      } else {
+        // Submission may have reached the server even if its response was lost.
+        // Reuse that durable task instead of offering a duplicate send.
+        const task = await fetchLatestIntelligenceTask(convId).catch(() => null);
+        if (!mountedRef.current || ownerUserIdRef.current !== ownerUserId) return;
+        dispatch({ type: 'ADD_CONV', conv, persisted: true });
+        setInput('');
+        if (task?.userMessageId !== userMessage.id) {
+          dispatch({ type: 'ADD_MSG', convId, msg: { id: uid(), role: 'manager', content: `AgentPlace could not confirm this request: ${messageText}. Your message is saved. Check this conversation before trying again.`, timestamp: new Date() } });
+        }
+      }
+    } finally {
+      startingRef.current = false;
+      if (mountedRef.current) setStarting(false);
+    }
   }
 
   function handleChip(chip: string) {
-    createAndSend(CHIP_PROMPTS[chip] ?? chip);
+    void createAndSend(CHIP_PROMPTS[chip] ?? chip);
   }
 
   return (
@@ -245,7 +304,7 @@ function Composer({ compact = false }: { compact?: boolean }) {
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              createAndSend(input);
+              void createAndSend(input);
             }
           }}
           onFocus={() => setIsFocused(true)}
@@ -257,12 +316,15 @@ function Composer({ compact = false }: { compact?: boolean }) {
           className="w-full bg-transparent resize-none px-4 pt-4 pb-3 text-sm text-text placeholder-text-muted outline-none leading-relaxed"
         />
         <div className="flex items-center justify-between px-4 pb-3">
-          <span className="text-xs text-text-dim font-mono">Shift+Enter for new line</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-dim font-mono hidden sm:inline">Shift+Enter for new line</span>
+            {liveConversation && <ModelSelector onChange={setModelSelection} />}
+          </div>
           <button
-            onClick={() => createAndSend(input)}
-            disabled={!input.trim()}
+            onClick={() => { void createAndSend(input); }}
+            disabled={!input.trim() || starting}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all ${
-              input.trim()
+              input.trim() && !starting
                 ? 'bg-primary text-white hover:bg-primary-hover'
                 : 'bg-panel-raised text-text-dim cursor-not-allowed'
             }`}
@@ -270,10 +332,11 @@ function Composer({ compact = false }: { compact?: boolean }) {
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />
             </svg>
-            Send
+            {starting ? 'Starting…' : 'Send'}
           </button>
         </div>
       </div>
+      {startError && <p role="alert" className="text-xs text-amber-300 mt-2">{startError}</p>}
 
       {!compact && (
         <div className="mt-6">

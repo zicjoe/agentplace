@@ -928,7 +928,7 @@ export type Action =
   | { type: 'SET_ACTIVE_JOB'; id: string | null }
   | { type: 'SET_ACTIVE_WALLET'; id: string | null }
   | { type: 'SET_ACTIVE_ACTION'; id: string | null }
-  | { type: 'ADD_CONV'; conv: Conversation }
+  | { type: 'ADD_CONV'; conv: Conversation; persisted?: boolean }
   | { type: 'ADD_MSG'; convId: string; msg: ChatMessage }
   | { type: 'UPDATE_MSG'; convId: string; msgId: string; updates: Partial<ChatMessage> }
   | { type: 'AUTO_TITLE'; convId: string; title: string }
@@ -1575,6 +1575,8 @@ function userFromAuth(user: { id: string; name: string; email: string }): User {
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, rawDispatch] = useReducer(reducer, INITIAL_STATE, initializeState);
   const stateRef = useRef(state);
+  const conversationRevisionRef = useRef(0);
+  const pendingConversationWritesRef = useRef(new Map<string, Promise<void>>());
   const pendingPathRef = useRef<string | null>(null);
   const routeFlushScheduledRef = useRef(false);
   const apiBootstrapRef = useRef(false);
@@ -1582,7 +1584,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refreshDurableConversations = useCallback(async () => {
     if (WEB_RUNTIME_SETTINGS.dataMode !== 'api') return;
+    const ownerUserId = stateRef.current.user?.id;
+    if (!ownerUserId) return;
+    const revision = conversationRevisionRef.current;
+    if (pendingConversationWritesRef.current.size > 0) return;
     const conversations = await fetchConversations();
+    // Do not let a server snapshot taken before a local write erase a new first message.
+    // Likewise, a response started under Account A must never hydrate Account B or a guest session.
+    if (stateRef.current.user?.id !== ownerUserId || revision !== conversationRevisionRef.current || pendingConversationWritesRef.current.size > 0) return;
     rawDispatch({ type: 'SET_CONVERSATIONS', conversations });
   }, []);
 
@@ -1608,24 +1617,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const syncConversationAction = useCallback((action: Action, before: AppState, after: AppState) => {
     if (WEB_RUNTIME_SETTINGS.dataMode !== 'api' || !before.user) return;
-    let task: Promise<unknown> | null = null;
-    if (action.type === 'ADD_CONV') task = createDurableConversation(action.conv);
-    if (action.type === 'ADD_MSG') task = addDurableMessage(action.convId, action.msg);
+    let write: (() => Promise<unknown>) | null = null;
+    let conversationId: string | null = null;
+    if (action.type === 'ADD_CONV' && !action.persisted) {
+      conversationId = action.conv.id;
+      write = () => createDurableConversation(action.conv);
+    }
+    if (action.type === 'ADD_MSG') {
+      conversationId = action.convId;
+      write = () => addDurableMessage(action.convId, action.msg);
+    }
     if (action.type === 'UPDATE_MSG') {
       const message = after.conversations.find((c) => c.id === action.convId)?.messages.find((m) => m.id === action.msgId);
-      if (message) task = updateDurableMessage(action.convId, message);
+      if (message) {
+        conversationId = action.convId;
+        write = () => updateDurableMessage(action.convId, message);
+      }
     }
-    if (action.type === 'AUTO_TITLE') task = patchDurableConversation(action.convId, { title: action.title, titleSource: 'auto' });
-    if (action.type === 'RENAME_CONV') task = patchDurableConversation(action.convId, { title: action.title, titleSource: 'user' });
-    if (action.type === 'PIN_CONV') task = patchDurableConversation(action.convId, { pinned: action.pinned });
-    if (action.type === 'ARCHIVE_CONV') task = patchDurableConversation(action.convId, { archived: true });
-    if (action.type === 'UNARCHIVE_CONV') task = patchDurableConversation(action.convId, { archived: false });
-    if (task) task.catch(() => void refreshDurableConversations());
+    if (action.type === 'AUTO_TITLE') { conversationId = action.convId; write = () => patchDurableConversation(action.convId, { title: action.title, titleSource: 'auto' }); }
+    if (action.type === 'RENAME_CONV') { conversationId = action.convId; write = () => patchDurableConversation(action.convId, { title: action.title, titleSource: 'user' }); }
+    if (action.type === 'PIN_CONV') { conversationId = action.convId; write = () => patchDurableConversation(action.convId, { pinned: action.pinned }); }
+    if (action.type === 'ARCHIVE_CONV') { conversationId = action.convId; write = () => patchDurableConversation(action.convId, { archived: true }); }
+    if (action.type === 'UNARCHIVE_CONV') { conversationId = action.convId; write = () => patchDurableConversation(action.convId, { archived: false }); }
+    if (!write || !conversationId) return;
+    const id = conversationId;
+    const operation = write;
+    const ownerUserId = before.user.id;
+    const prior = pendingConversationWritesRef.current.get(id) ?? Promise.resolve();
+    // Writes to the same conversation must not outrun initial creation.
+    const task = prior.catch(() => undefined).then(async () => {
+      if (stateRef.current.user?.id !== ownerUserId) return;
+      await operation();
+    });
+    pendingConversationWritesRef.current.set(id, task);
+    void task.catch(() => void refreshDurableConversations()).finally(() => {
+      if (pendingConversationWritesRef.current.get(id) === task) pendingConversationWritesRef.current.delete(id);
+    });
   }, [refreshDurableConversations]);
 
   const dispatch = useCallback<React.Dispatch<Action>>((action) => {
     const before = stateRef.current;
     if (action.type === 'SET_USER' && action.user === null && before.user && WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+      conversationRevisionRef.current += 1;
       const guest = { ...INITIAL_STATE, environment: before.environment };
       stateRef.current = guest;
       rawDispatch({ type: 'RESET_GUEST' });
@@ -1636,6 +1669,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     const next = reducer(before, action);
+    if (action.type === 'ADD_CONV' || action.type === 'ADD_MSG' || action.type === 'UPDATE_MSG' || action.type === 'AUTO_TITLE' || action.type === 'RENAME_CONV' || action.type === 'PIN_CONV' || action.type === 'ARCHIVE_CONV' || action.type === 'UNARCHIVE_CONV') {
+      conversationRevisionRef.current += 1;
+    }
     stateRef.current = next;
     rawDispatch(action);
 

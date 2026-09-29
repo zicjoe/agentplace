@@ -1,6 +1,8 @@
 # Changelog
 
 ## 0.5.0 — Production Milestone 4
+- Fixed fresh-conversation first-message path: authenticated Home now persists the conversation, queues its first real intelligence task, and preserves the selected model before navigation; guest mode alone retains preview replies.
+- Serialized per-conversation writes and protected optimistic messages from stale background refreshes; first-message task status now appears inline even before the queue response arrives.
 - Restored in-conversation AI processing UX while preserving truthful durable task state, retries, failures, and provider diagnostics.
 - M4 production diagnostic hotfix: show real queued/running/completed/failed task state in Manager/Worker/Job conversations, visibly label guest preview, log Worker task claims/completions, and stop claiming exhausted tasks will retry.
 - Corrected M4 provider model defaults to current valid IDs: Gemini 3.5 Flash-Lite / 3.8 Flash and Claude Haiku 4.5 / Sonnet 5 / Opus 5.
