@@ -50,3 +50,18 @@ test('Milestone 4 supports Anthropic Claude as a first-class provider', () => {
   assert.doesNotMatch(models, /gemini-3\.8-pro/);
   assert.match(models, /web_search_20260318/);
 });
+
+
+test('Milestone 4 exposes truthful persisted task status and guest preview boundaries', () => {
+  const api = readFileSync('apps/api/src/server.ts', 'utf8');
+  const jobs = readFileSync('packages/jobs/src/index.ts', 'utf8');
+  const ui = readFileSync('apps/web/src/components/IntelligenceTaskStatus.tsx', 'utf8');
+  const chat = readFileSync('apps/web/src/components/ChatView.tsx', 'utf8');
+  const worker = readFileSync('apps/worker/src/index.ts', 'utf8');
+  assert.match(api, /getLatestIntelligenceTask/);
+  assert.match(jobs, /owner_user_id=\$1 AND conversation_id=\$2/);
+  assert.match(ui, /AI task stopped/);
+  assert.match(chat, /Guest preview/);
+  assert.match(worker, /Intelligence task claimed/);
+  assert.match(worker, /isFinalAttempt/);
+});

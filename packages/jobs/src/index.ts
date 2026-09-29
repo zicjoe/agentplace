@@ -88,6 +88,8 @@ export async function enqueueIntelligenceTask(args:{ownerUserId:string;conversat
 
 export async function getIntelligenceTask(ownerUserId:string,id:string):Promise<IntelligenceTask|null>{ const r=await getDatabasePool().query<IntelligenceTaskRow>(`SELECT * FROM intelligence_task WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,id]);return r.rows[0]?mapIntelligenceTask(r.rows[0]):null; }
 
+export async function getLatestIntelligenceTask(ownerUserId:string,conversationId:string):Promise<IntelligenceTask|null>{ const r=await getDatabasePool().query<IntelligenceTaskRow>(`SELECT * FROM intelligence_task WHERE owner_user_id=$1 AND conversation_id=$2 ORDER BY created_at DESC,id DESC LIMIT 1`,[ownerUserId,conversationId]);return r.rows[0]?mapIntelligenceTask(r.rows[0]):null; }
+
 export async function claimNextIntelligenceTask():Promise<IntelligenceTask|null>{
   return withTransaction(async db=>{
     const result=await db.query<IntelligenceTaskRow>(

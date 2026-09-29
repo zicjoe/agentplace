@@ -320,15 +320,21 @@ async function loop(): Promise<void> {
       return null;
     });
     if (!task) { await sleep(pollMs); continue; }
+    process.stdout.write(`${JSON.stringify({ level: 'info', service: service.name, taskId: task.id, providerPreference: task.providerPreference, attempt: task.attempts, message: 'Intelligence task claimed' })}\n`);
     try {
       await processTask(task);
+      process.stdout.write(`${JSON.stringify({ level: 'info', service: service.name, taskId: task.id, message: 'Intelligence task completed' })}\n`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await failIntelligenceTask(task.id, message).catch(() => undefined);
-      await addAssistantMessage(task.ownerUserId, task.conversationId, message === 'AI_DAILY_COST_LIMIT_REACHED'
-        ? 'AgentPlace reached the configured AI usage ceiling for today. Your work is saved; increase the limit or try again after the limit resets.'
-        : 'AgentPlace could not complete this intelligence run. Your request is saved and the durable Worker runtime will retry when safe.').catch(() => undefined);
-      process.stderr.write(`${JSON.stringify({ level: 'error', service: service.name, taskId: task.id, message: 'Intelligence task failed', error: message })}\n`);
+      const isFinalAttempt = task.attempts >= task.maxAttempts;
+      const response = message === 'AI_DAILY_COST_LIMIT_REACHED'
+        ? 'AgentPlace reached its configured AI usage ceiling. This run stopped; your request remains saved.'
+        : isFinalAttempt
+          ? 'AgentPlace could not complete this intelligence run after its permitted attempts. This run has stopped, and your request is saved. Check task status or choose another available model for a new request.'
+          : 'AgentPlace could not complete this intelligence attempt. Your request is saved and the Worker will retry within its configured limit.';
+      await addAssistantMessage(task.ownerUserId, task.conversationId, response, undefined, task.jobId, `msg_task_failure_${task.id}_${task.attempts}`).catch(() => undefined);
+      process.stderr.write(`${JSON.stringify({ level: 'error', service: service.name, taskId: task.id, attempt: task.attempts, final: isFinalAttempt, message: 'Intelligence task failed', error: message })}\n`);
     }
   }
 }

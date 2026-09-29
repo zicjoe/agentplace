@@ -22,7 +22,7 @@ import {
 import { checkDatabase } from '@agent-place/db';
 import { listCanonicalCapabilities, listCapabilityImplementations } from '@agent-place/capabilities';
 import { getModelCatalog } from '@agent-place/models';
-import { createJob, enqueueIntelligenceTask, getIntelligenceTask, getJob, getJobEvidence, jobStatuses, listActivity, listJobs, setJobConversation, type JobDraft } from '@agent-place/jobs';
+import { createJob, enqueueIntelligenceTask, getIntelligenceTask, getLatestIntelligenceTask, getJob, getJobEvidence, jobStatuses, listActivity, listJobs, setJobConversation, type JobDraft } from '@agent-place/jobs';
 import { getUserWorker, installWorker, listUserWorkers, listWorkerCatalog, updateUserWorker, type UserWorkerStatus } from '@agent-place/workers';
 import {
   createRequestId,
@@ -228,6 +228,17 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     const conversationId = url.searchParams.get('conversationId');
     const preference = conversationId ? await getConversationModelPreference(identity.appUserId, conversationId) : { provider: 'auto' as const };
     writeJson(res, 200, { catalog: getModelCatalog(), preference });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/intelligence/tasks' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const conversationId = url.searchParams.get('conversationId') ?? '';
+    if (!conversationId || conversationId.length > 128) throw new Error('INVALID_CONVERSATION_ID');
+    const conversation = await getConversation(identity.appUserId, conversationId);
+    if (!conversation) return writeJson(res, 404, { error: 'not_found', message: 'Conversation not found.', requestId });
+    const task = await getLatestIntelligenceTask(identity.appUserId, conversationId);
+    writeJson(res, 200, { task });
     return;
   }
 
