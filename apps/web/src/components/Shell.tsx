@@ -142,7 +142,7 @@ export function Shell() {
         {/* Conversation / history drawer */}
         {state.mobileDrawerOpen && (
           <div className="fixed inset-0 z-50 flex">
-            <div className="w-72 h-full overflow-y-auto shadow-2xl">
+            <div className="w-72 h-full overflow-hidden shadow-2xl">
               <Sidebar
                 isMobileDrawer
                 onCloseMobile={() => dispatch({ type: 'SET_MOBILE_DRAWER', open: false })}

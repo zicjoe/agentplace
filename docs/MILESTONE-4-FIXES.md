@@ -18,8 +18,8 @@ Use the latest **complete replacement ZIP**. The ZIP does not contain `.git` or 
 For example, in PowerShell (replace the existing checkout path with the actual location on your laptop):
 
 ```powershell
-$zip = Join-Path $HOME 'Downloads\AgentPlace-v0.5.0-M4-production-corrections.zip'
-$staging = Join-Path $HOME 'Downloads\AgentPlace-M4-staged'
+$zip = Join-Path $HOME 'Downloads\AgentPlace-v0.5.0-M4-sidebar-viewport-fix.zip'
+$staging = Join-Path $HOME 'Downloads\AgentPlace-M4-sidebar-staged'
 $repo = 'C:\dev\AgentPlace'  # Change this to your EXISTING Git checkout folder
 Expand-Archive -LiteralPath $zip -DestinationPath $staging -Force
 robocopy $staging $repo /E /XD .git node_modules /XF .env .env.local
@@ -59,7 +59,7 @@ node --test tests/m4-conversation-ui.test.mjs
 Recommended commit message:
 
 ```text
-fix(m4): link durable jobs in conversations and correct viewport/markdown UX
+fix(m4): keep conversation history visible at normal browser zoom
 ```
 
 Commands (after `pnpm check` passes):
@@ -67,7 +67,7 @@ Commands (after `pnpm check` passes):
 ```powershell
 git status
 git add -A
-git commit -m "fix(m4): link durable jobs in conversations and correct viewport/markdown UX"
+git commit -m "fix(m4): keep conversation history visible at normal browser zoom"
 git push origin main
 ```
 
@@ -91,3 +91,33 @@ git push origin main
 - An unhydrated Job reference indicates it is syncing; it does not forge a Job or bypass authorization. Check Activity/Worker service if it persists.
 - Existing source URLs are provider evidence, not independent validation of every research claim. Research alone does not grant financial authority or an onchain Verified receipt.
 - Any remaining approval/security/financial execution milestones remain deferred as defined in the Operating Guide. Do not freeze M4 until all live acceptance cases pass.
+
+## M4 sidebar follow-up — normal-zoom conversation-history visibility
+
+The initial shell fix corrected page-header scroll displacement but did not reserve vertical
+space for the desktop/sidebar conversation list. The Sidebar's `flex-1 min-h-0`
+history was permitted to collapse to zero after the fixed navigation, controls and
+account footer consumed the viewport at ordinary browser zoom. A smaller zoom made
+history visible only by increasing the available CSS viewport height.
+
+The correction retains the approved visual/navigation order, reserves a 7.5rem
+minimum history region with its own scrolling, allows primary/secondary navigation
+to scroll rather than consume that reserve, and keeps the account footer reachable.
+When the viewport height is at most 470px, the entire sidebar scrolls as a fallback.
+Mobile's overlay no longer adds an unnecessary outer scrollbar. No conversations,
+links, stored objects or server behavior are modified.
+
+Acceptance on the **deployed frontend**:
+
+- [ ] At Chrome 100%, the existing conversation titles are visible underneath Search history without changing zoom.
+- [ ] Scroll in history: pinned/recent/archived conversations remain accessible and reopen correctly.
+- [ ] At the same zoom, Home through Create are reachable by scrolling the navigation section where necessary; secondary Security/Billing/Settings also remain reachable.
+- [ ] User/account controls remain visible at the bottom at normal desktop height.
+- [ ] Repeat at 125% and 150% zoom, at a 1024px-wide window, and in a short-height window. Very short windows should scroll the sidebar as one region.
+- [ ] Open and close the mobile conversation drawer; history and navigation remain accessible without dual overlay scrolling.
+
+This is a frontend-only fix layered on the prior complete M4 correction. It adds no
+database migration, environment variable, provider configuration or dependency.
+Wait for the previous queued Railway deployment to finish before pushing a new
+GitHub revision, so the deployments do not race. The Vercel frontend must be on
+the new commit before accepting this visual change. M4 remains unfrozen.

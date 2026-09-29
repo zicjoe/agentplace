@@ -49,6 +49,32 @@ body {
   overflow: hidden;
 }
 
+/* The sidebar is two independently reachable scroll regions: history and nav.
+   At normal zoom the fixed navigation previously consumed all remaining height,
+   collapsing the history flex child to zero. Very short windows use one scroll
+   region instead so that no link or account control is trapped off-screen. */
+.agentplace-sidebar-history,
+.agentplace-sidebar-navigation {
+  scrollbar-gutter: stable;
+}
+
+@media (max-height: 470px) {
+  .agentplace-sidebar {
+    display: block;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .agentplace-sidebar-history {
+    height: 8rem;
+    min-height: 8rem;
+  }
+
+  .agentplace-sidebar-navigation {
+    overflow: visible;
+  }
+}
+
 /* Only the owning workspace scrolls; the document/shell never scrolls behind it. */
 [data-workspace-scroll] {
   min-height: 0;

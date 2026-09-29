@@ -65,3 +65,19 @@ test('all displayed research and studio content uses safe React rendering', () =
   assert.match(job, /if \(productionConversation && !durableConversation\) return;/);
   assert.match(job, /id\.startsWith\('msg_job_result_'\)/);
 });
+
+test('sidebar preserves conversation history at normal zoom without losing navigation or account access', () => {
+  const sidebar = read('apps/web/src/components/Sidebar.tsx');
+  const css = read('apps/web/src/index.css');
+  const shell = read('apps/web/src/components/Shell.tsx');
+  assert.match(sidebar, /agentplace-sidebar flex flex-col h-full min-h-0 shrink-0 overflow-hidden/);
+  assert.match(sidebar, /agentplace-sidebar-history flex-1 min-h-\[7\.5rem\] overflow-y-auto/);
+  assert.match(sidebar, /aria-label="Conversation history"/);
+  assert.match(sidebar, /agentplace-sidebar-navigation min-h-0 shrink overflow-y-auto/);
+  assert.match(sidebar, /aria-label="Sidebar navigation"/);
+  assert.match(sidebar, /px-3 py-3 shrink-0/);
+  assert.match(css, /@media \(max-height: 470px\)/);
+  assert.match(css, /\.agentplace-sidebar-history \{[\s\S]*height: 8rem/);
+  assert.match(css, /\.agentplace-sidebar-navigation \{[\s\S]*overflow: visible/);
+  assert.match(shell, /w-72 h-full overflow-hidden shadow-2xl/);
+});
