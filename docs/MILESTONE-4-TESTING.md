@@ -9,6 +9,7 @@ pnpm check
 
 See `docs/MILESTONE-4-HYBRID-UX.md` and `docs/MILESTONE-4-FIXES.md` for the new Job-card, viewport, safe Markdown and origin/Activity cross-link regression and owner acceptance checks.
 See `docs/MILESTONE-4-CONVERSATION-GROUPING.md` for the one-originating-thread and Job-conversation navigation correction.
+See `docs/MILESTONE-4-WORKER-CROSSLINK.md` for Job-to-Worker contextual navigation and workforce-boundary acceptance.
 
 ## Production acceptance
 

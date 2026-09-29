@@ -581,8 +581,16 @@ export function JobWorkspace() {
             </div>
             <p className="text-xs text-text-muted mt-0.5">{job.goal}</p>
             <div className="flex items-center gap-3 mt-1.5 text-xs text-text-muted flex-wrap">
-              <span>
-                Lead: <span className="text-text-sub">{job.leadWorkerName}</span>
+              <span className="inline-flex items-center gap-1">
+                <span>Lead:</span>
+                <button
+                  type="button"
+                  onClick={() => dispatch({ type: 'SET_ACTIVE_WORKER', id: job.leadWorkerId })}
+                  className="text-text-sub hover:text-primary transition-colors"
+                  aria-label={`Open ${job.leadWorkerName} Worker workspace`}
+                >
+                  {job.leadWorkerName} <span className="text-primary">· Open worker →</span>
+                </button>
               </span>
               {originConversation && <button type="button" onClick={() => dispatch({ type: 'SET_ACTIVE_CONV', id: originConversation.id })} className="text-primary hover:underline">Origin conversation →</button>}
               <button type="button" onClick={() => dispatch({ type: 'SET_VIEW', view: 'activity' })} className="text-primary hover:underline">Activity →</button>
@@ -777,14 +785,12 @@ export function JobWorkspace() {
                   <span className="text-xs text-primary border border-primary/30 rounded px-1.5 py-0.5">Lead</span>
                 </div>
                 <p className="text-xs text-text-sub">{productionConversation ? 'Research and synthesis' : 'Meme coin opportunity analysis · Synthesis'}</p>
-                {leadWorker && (
-                  <button
-                    onClick={() => dispatch({ type: 'SET_ACTIVE_WORKER', id: leadWorker.id })}
-                    className="text-xs text-primary hover:underline mt-2 block"
-                  >
-                    Open {leadWorker.name} workspace →
-                  </button>
-                )}
+                <button
+                  onClick={() => dispatch({ type: 'SET_ACTIVE_WORKER', id: job.leadWorkerId })}
+                  className="text-xs text-primary hover:underline mt-2 block"
+                >
+                  Open {job.leadWorkerName} workspace →
+                </button>
               </div>
               {job.supportingWorkerNames.map((name, index) => (
                 <div key={`${name}-${index}`} className="border border-border rounded-lg bg-panel px-4 py-3">
@@ -793,7 +799,15 @@ export function JobWorkspace() {
                     <span className="text-xs text-text-muted border border-border rounded px-1.5 py-0.5">Supporting</span>
                   </div>
                   {productionConversation ? <p className="text-xs text-text-muted mt-1">Supporting specialist · no additional financial authority</p> : <><p className="text-xs text-text-sub">Wallet-quality analysis · Smart-money signals</p><p className="text-xs text-text-muted mt-1">Temporary · not in your permanent workforce</p></>}
-                  {state.workers.some((worker) => worker.id === job.supportingWorkerIds[index]) && <button type="button" onClick={() => dispatch({ type: 'SET_ACTIVE_WORKER', id: job.supportingWorkerIds[index]! })} className="text-xs text-primary hover:underline mt-2">Open Worker workspace →</button>}
+                  {job.supportingWorkerIds[index] && (
+                    <button
+                      type="button"
+                      onClick={() => dispatch({ type: 'SET_ACTIVE_WORKER', id: job.supportingWorkerIds[index]! })}
+                      className="text-xs text-primary hover:underline mt-2"
+                    >
+                      Open {name} workspace →
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

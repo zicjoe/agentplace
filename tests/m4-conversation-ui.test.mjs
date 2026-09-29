@@ -159,3 +159,21 @@ test('Job discussions stay durable and searchable without appearing as duplicate
   assert.match(worker, /scope: 'job',[\s\S]*?jobId,[\s\S]*?setJobConversation/);
   assert.doesNotMatch(sidebar, /deleteConversation|DELETE FROM/);
 });
+
+test('Job Worker links open a contextual Worker Workspace without installing or granting authority', () => {
+  const job = read('apps/web/src/components/JobWorkspace.tsx');
+  const workspace = read('apps/web/src/components/WorkerWorkspace.tsx');
+  const api = read('apps/web/src/platform/workApi.ts');
+  assert.match(job, /aria-label=\{`Open \$\{job\.leadWorkerName\} Worker workspace`\}/);
+  assert.match(job, /SET_ACTIVE_WORKER', id: job\.leadWorkerId/);
+  assert.match(job, /Open \{job\.leadWorkerName\} workspace/);
+  assert.match(job, /Open \{name\} workspace/);
+  assert.match(api, /fetchWorkerCatalog/);
+  assert.match(api, /\/api\/v1\/worker-catalog/);
+  assert.match(workspace, /Contextual view/);
+  assert.match(workspace, /This view does not add \{worker\.name\} to your workforce and does not grant wallet or financial authority/);
+  assert.match(workspace, /Back to \{primaryJob\.title\} →/);
+  assert.match(workspace, /Jobs where \{worker\.name\} was lead or supporting specialist/);
+  assert.match(workspace, /Add from Discover/);
+  assert.doesNotMatch(workspace, /installDurableWorker/);
+});

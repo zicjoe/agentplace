@@ -15,6 +15,27 @@ interface ApiWorker {
   jobContract: { defaultApprovalBoundary: string; antiJobs: string[] };
 }
 
+export interface WorkerCatalogItem {
+  id: string;
+  name: string;
+  tagline: string;
+  responsibility: string;
+  origin: 'agentplace-original' | 'community' | 'custom';
+  creatorName: string;
+  category: string;
+  version: string;
+  defaultAutonomy: string;
+  jobContract: {
+    mission: string;
+    responsibilities: string[];
+    antiJobs: string[];
+    expectedOutputs: string[];
+    successConditions: string[];
+    defaultApprovalBoundary: string;
+    defaultCapabilityRequirements: string[];
+  };
+}
+
 interface ApiJobStage { id: string; label: string; status: JobProgressStage['status']; ordinal: number; }
 interface ApiJob {
   id: string; title: string; goal: string;
@@ -66,6 +87,11 @@ function fromJob(value:ApiJob):Job {
   return out;
 }
 
+
+export async function fetchWorkerCatalog():Promise<WorkerCatalogItem[]> {
+  const data=await request<{workers:WorkerCatalogItem[]}>('/api/v1/worker-catalog');
+  return data.workers;
+}
 
 export async function fetchWorkState():Promise<{workers:Worker[];jobs:Job[];activity:ActivityEvent[]}> {
   const [workers,jobs,activity]=await Promise.all([

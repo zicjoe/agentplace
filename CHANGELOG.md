@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.0 — M4 Job-to-Worker cross-link correction (acceptance pending)
+
+- Make Lead and Supporting Worker references in Job Workspace explicitly navigable.
+- Allow a Job-used first-party specialist to open in a contextual Worker Workspace even when the user has not added that Worker to their persistent workforce.
+- Keep contextual Worker views read-only with respect to workforce membership and financial authority; adding a Worker remains a separate Discover action.
+- Show the Worker’s related Jobs and provide a direct return to the same authoritative Job Workspace.
+- No database migration, new dependency, new paid service or authority change. M4 remains open pending live acceptance.
+
 ## v0.5.0 — M4 conversation-history grouping correction (acceptance pending)
 
 - Display one primary Manager thread for each research request; retain the linked Job conversation in PostgreSQL and open it from the Job Workspace rather than as a duplicate sidebar entry.

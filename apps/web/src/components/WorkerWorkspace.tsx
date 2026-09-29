@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAppState, useDispatch, createComparisonJob, uid } from '../state/AppContext';
-import type { WorkerStatus, Routine } from '../state/types';
+import type { WorkerStatus, Routine, Worker, Job } from '../state/types';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
 import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
-import { fetchWorkState, updateDurableWorkerStatus } from '../platform/workApi';
+import { fetchWorkState, fetchWorkerCatalog, updateDurableWorkerStatus, type WorkerCatalogItem } from '../platform/workApi';
 import { ResearchMarkdown } from './ResearchMarkdown';
 import { scrollConversationToEnd } from '../platform/scroll';
 
@@ -189,6 +189,148 @@ function InlineRoutinePreviewCard({ routine, workerId }: { routine: Routine; wor
         <button className="px-3 py-1.5 border border-border text-text-muted text-xs rounded hover:text-text transition-colors">
           Edit
         </button>
+      </div>
+    </div>
+  );
+}
+
+function contextualWorkerFromCatalog(item: WorkerCatalogItem, job?: Job): Worker {
+  const worker: Worker = {
+    id: item.id,
+    name: item.name,
+    tagline: item.tagline,
+    status: job && job.status !== 'completed' && job.status !== 'failed' && job.status !== 'blocked' ? 'working' : 'standby',
+    isOriginal: item.origin === 'agentplace-original',
+    responsibility: item.responsibility,
+    authoritySummary: 'Not in your workforce · No financial authority from this contextual view',
+  };
+  if (job) {
+    worker.currentFocus = job.title;
+    worker.currentJobId = job.id;
+  }
+  return worker;
+}
+
+function ContextualWorkerWorkspace({
+  worker,
+  catalog,
+  jobs,
+}: {
+  worker: Worker;
+  catalog: WorkerCatalogItem;
+  jobs: Job[];
+}) {
+  const dispatch = useDispatch();
+  const primaryJob = jobs[0];
+
+  return (
+    <div className="h-full flex flex-col bg-bg overflow-hidden">
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-border shrink-0">
+        <button
+          onClick={() => primaryJob ? dispatch({ type: 'SET_ACTIVE_JOB', id: primaryJob.id }) : dispatch({ type: 'SET_ACTIVE_WORKER', id: null })}
+          className="text-text-muted hover:text-text p-1 -ml-1 rounded transition-colors"
+          aria-label={primaryJob ? 'Back to Job' : 'Back'}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 12H5M12 5l-7 7 7 7" />
+          </svg>
+        </button>
+        <div className="w-7 h-7 rounded bg-panel-raised border border-border flex items-center justify-center shrink-0">
+          <span className="text-[10px] font-mono font-medium text-text-sub">{worker.name.slice(0, 2).toUpperCase()}</span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-text">{worker.name}</span>
+            <span className="text-[10px] font-mono uppercase tracking-wider text-primary border border-primary/30 rounded px-1.5 py-0.5">
+              Contextual view
+            </span>
+          </div>
+          <p className="text-xs text-text-muted truncate">{worker.tagline}</p>
+        </div>
+      </div>
+
+      <div data-workspace-scroll className="flex-1 min-h-0 overflow-y-auto px-5 py-6">
+        <div className="max-w-3xl mx-auto space-y-5">
+          <div className="rounded-lg border border-primary/25 bg-primary-dim/10 px-4 py-4">
+            <p className="text-sm font-medium text-text">This specialist contributed to your Job.</p>
+            <p className="text-xs text-text-sub leading-relaxed mt-1">
+              You can inspect its responsibility and Job history here. This view does not add {worker.name} to your workforce and does not grant wallet or financial authority.
+            </p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              {primaryJob && (
+                <button
+                  type="button"
+                  onClick={() => dispatch({ type: 'SET_ACTIVE_JOB', id: primaryJob.id })}
+                  className="px-3 py-1.5 text-xs border border-primary/30 rounded text-primary hover:bg-primary-dim/20 transition-colors"
+                >
+                  Back to {primaryJob.title} →
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => dispatch({ type: 'SET_VIEW', view: 'discover' })}
+                className="px-3 py-1.5 text-xs bg-primary text-white rounded font-medium hover:bg-primary-hover transition-colors"
+              >
+                Add from Discover
+              </button>
+            </div>
+            <p className="text-[11px] text-text-muted mt-2">Adding a Worker starts with no financial authority.</p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="border border-border rounded-lg bg-panel px-4 py-4">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim mb-2">Responsible for</p>
+              <p className="text-sm text-text-sub leading-relaxed">{catalog.responsibility}</p>
+              <p className="text-xs text-text-muted mt-3">{catalog.jobContract.mission}</p>
+            </div>
+            <div className="border border-border rounded-lg bg-panel px-4 py-4">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim mb-2">Default authority posture</p>
+              <p className="text-sm text-text-sub leading-relaxed">{catalog.jobContract.defaultApprovalBoundary || 'No financial authority by default'}</p>
+              <p className="text-xs text-text-muted mt-3">Using a specialist inside a Job does not propagate or create financial authority.</p>
+            </div>
+          </div>
+
+          {catalog.jobContract.antiJobs.length > 0 && (
+            <div className="border border-border rounded-lg bg-panel px-4 py-4">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim mb-2">Will not</p>
+              <ul className="space-y-1.5">
+                {catalog.jobContract.antiJobs.map((item) => (
+                  <li key={item} className="text-xs text-text-sub flex gap-2">
+                    <span className="text-text-dim">—</span><span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim">Work in your account</p>
+                <p className="text-xs text-text-muted mt-0.5">Jobs where {worker.name} was lead or supporting specialist.</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {jobs.length === 0 ? (
+                <p className="text-xs text-text-muted">No related Jobs are currently available.</p>
+              ) : jobs.slice(0, 6).map((job) => (
+                <div key={job.id} className="border border-border rounded-lg bg-panel px-4 py-3 flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-text truncate">{job.title}</p>
+                    <p className="text-xs text-text-muted mt-1">{job.status === 'completed' ? 'Research complete' : job.currentStage} · {job.leadWorkerId === worker.id ? 'Lead Worker' : 'Supporting Worker'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => dispatch({ type: 'SET_ACTIVE_JOB', id: job.id })}
+                    className="text-xs text-primary hover:underline shrink-0"
+                  >
+                    Open job →
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -453,13 +595,49 @@ export function WorkerWorkspace() {
   const [input, setInput] = useState('');
   const [modelSelection, setModelSelection] = useState<ModelSelection>({ provider: 'auto' });
   const [showDetails, setShowDetails] = useState(false);
+  const [catalogWorker, setCatalogWorker] = useState<WorkerCatalogItem | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const messageScrollRef = useRef<HTMLDivElement>(null);
 
-  const worker = state.workers.find((w) => w.id === state.activeWorkerId);
-  const durableConversation = worker ? state.conversations.find((c) => c.scope === 'worker' && c.workerId === worker.id) : undefined;
+  const activeWorkerId = state.activeWorkerId;
+  const installedWorker = state.workers.find((w) => w.id === activeWorkerId);
+  const relatedJobs = activeWorkerId
+    ? (state.jobs ?? [])
+        .filter((job) => job.leadWorkerId === activeWorkerId || job.supportingWorkerIds.includes(activeWorkerId))
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+    : [];
+  const worker = installedWorker ?? (catalogWorker ? contextualWorkerFromCatalog(catalogWorker, relatedJobs[0]) : undefined);
+  const durableConversation = installedWorker ? state.conversations.find((c) => c.scope === 'worker' && c.workerId === installedWorker.id) : undefined;
   const durableMessages: LocalMessage[] = durableConversation?.messages.map((m) => ({ id: m.id, role: m.role === 'user' ? 'user' : 'manager', content: m.content, jobId: m.jobId })) ?? [];
   const productionConversation = WEB_RUNTIME_SETTINGS.dataMode === 'api' && !!state.user;
   const displayMessages = productionConversation ? durableMessages : messages;
+
+  useEffect(() => {
+    if (!activeWorkerId || installedWorker || !productionConversation) {
+      setCatalogWorker(null);
+      setCatalogLoading(false);
+      setCatalogError(null);
+      return;
+    }
+    let cancelled = false;
+    setCatalogLoading(true);
+    setCatalogError(null);
+    void fetchWorkerCatalog()
+      .then((catalog) => {
+        if (cancelled) return;
+        setCatalogWorker(catalog.find((entry) => entry.id === activeWorkerId) ?? null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCatalogWorker(null);
+        setCatalogError(error instanceof Error ? error.message : 'Worker catalog could not be loaded.');
+      })
+      .finally(() => {
+        if (!cancelled) setCatalogLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeWorkerId, installedWorker?.id, productionConversation]);
 
   useEffect(() => {
     scrollConversationToEnd(messageScrollRef.current);
@@ -467,10 +645,14 @@ export function WorkerWorkspace() {
 
   if (!worker) {
     return (
-      <div className="h-full flex items-center justify-center bg-bg text-text-muted text-sm">
-        Worker not found
+      <div className="h-full flex items-center justify-center bg-bg text-text-muted text-sm px-6 text-center">
+        {catalogLoading ? 'Loading Worker…' : catalogError ?? 'Worker not found'}
       </div>
     );
+  }
+
+  if (!installedWorker && catalogWorker) {
+    return <ContextualWorkerWorkspace worker={worker} catalog={catalogWorker} jobs={relatedJobs} />;
   }
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
