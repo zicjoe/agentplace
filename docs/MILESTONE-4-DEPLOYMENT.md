@@ -1,5 +1,7 @@
 # Milestone 4 Deployment — Railway + Vercel
 
+For the v0.5.0 M4 defect correction, see `docs/MILESTONE-4-FIXES.md`. No new migrations or secrets are required. Existing 0004 and 0005 remain applied.
+
 ## Database
 
 The existing API pre-deploy command remains:

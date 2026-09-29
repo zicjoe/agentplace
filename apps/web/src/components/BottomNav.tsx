@@ -178,7 +178,7 @@ export function BottomNav() {
       )}
 
       {/* Bottom nav bar */}
-      <div className="h-16 bg-surface border-t border-border flex items-center px-2 shrink-0">
+      <div className="min-h-16 bg-surface border-t border-border flex items-center px-2 shrink-0" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         {navItems.map((item) => {
           const active = item.id === 'more' ? showMore : isActive(item.id);
           return (

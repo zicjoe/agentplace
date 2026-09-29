@@ -18,44 +18,13 @@ import { createDurableConversation } from '../platform/conversationApi';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
+import { ResearchMarkdown } from './ResearchMarkdown';
+import { JobReference } from './JobReference';
+import { scrollConversationToEnd } from '../platform/scroll';
 
+// Research content is always rendered as React nodes, never model-supplied HTML.
 function RenderContent({ text }: { text: string }) {
-  const lines = text.split('\n');
-  const elements: React.ReactNode[] = [];
-  let key = 0;
-  for (const line of lines) {
-    if (!line.trim()) {
-      elements.push(<div key={key++} className="h-2" />);
-    } else if (line.startsWith('## ')) {
-      elements.push(
-        <h4 key={key++} className="text-text font-semibold text-sm mt-3 mb-1 first:mt-0">
-          {line.slice(3)}
-        </h4>
-      );
-    } else {
-      elements.push(
-        <p key={key++} className="text-sm leading-relaxed">
-          <InlineMd text={line} />
-        </p>
-      );
-    }
-  }
-  return <div className="space-y-0.5">{elements}</div>;
-}
-
-function InlineMd({ text }: { text: string }) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return (
-    <>
-      {parts.map((part, i) =>
-        part.startsWith('**') && part.endsWith('**') ? (
-          <strong key={i} className="font-semibold text-text">{part.slice(2, -2)}</strong>
-        ) : (
-          <span key={i}>{part}</span>
-        )
-      )}
-    </>
-  );
+  return <ResearchMarkdown text={text} />;
 }
 
 function StreamingDots() {
@@ -523,7 +492,7 @@ export function ChatView() {
   const [titleVal, setTitleVal] = useState('');
   const [modelSelection, setModelSelection] = useState<ModelSelection>({ provider: 'auto' });
   const [pendingMessageId, setPendingMessageId] = useState<string | undefined>();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageScrollRef = useRef<HTMLDivElement>(null);
 
   const conv = state.conversations.find((c) => c.id === state.activeConversationId);
   const productionConversation = WEB_RUNTIME_SETTINGS.dataMode === 'api' && !!state.user;
@@ -533,7 +502,7 @@ export function ChatView() {
   }, [conv?.id]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollConversationToEnd(messageScrollRef.current);
   }, [conv?.messages.length, conv?.messages.at(-1)?.isStreaming]);
 
   if (!conv) {
@@ -762,10 +731,13 @@ export function ChatView() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-5 py-6">
+      <div ref={messageScrollRef} data-workspace-scroll className="flex-1 min-h-0 overflow-y-auto px-5 py-6">
         <div className="max-w-2xl mx-auto space-y-5">
           {conv.messages.map((msg) => (
-            <MessageBubble key={msg.id} msg={msg} />
+            <div key={msg.id} className="min-w-0">
+              <MessageBubble msg={msg} />
+              {msg.jobId && msg.role !== 'user' && <div className="pl-9"><JobReference jobId={msg.jobId} /></div>}
+            </div>
           ))}
 
           {/* Add Meme Scout CTA */}
@@ -971,7 +943,7 @@ export function ChatView() {
               pendingMessageId={pendingMessageId}
             />
           )}
-          <div ref={messagesEndRef} />
+
         </div>
       </div>
 

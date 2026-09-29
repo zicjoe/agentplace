@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAppState, useDispatch, uid } from '../state/AppContext';
+import { ResearchMarkdown } from './ResearchMarkdown';
+import { scrollConversationToEnd } from '../platform/scroll';
 import type { Worker, WorkerDraftData, CreatorAsset, CollaboratorConfig, CreatorTestCase, CreatorTestResult } from '../state/types';
 
 // ── Draft initial state ───────────────────────────────────────────────────────
@@ -276,14 +278,14 @@ export function AgentBuilder() {
   const [teachMode, setTeachMode] = useState(false);
   const [testResults, setTestResults] = useState<CreatorTestResult[]>([]);
   const [mobileTab, setMobileTab] = useState<'chat' | 'draft'>('chat');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageScrollRef = useRef<HTMLDivElement>(null);
   const [isStreaming, setIsStreaming] = useState(false);
 
   // Pre-fill from fork if there is one — not implemented yet, draft starts empty
   const forkSource = null as null;
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollConversationToEnd(messageScrollRef.current);
   }, [messages]);
 
   function addBuilderMessage(content: string) {
@@ -575,7 +577,7 @@ export function AgentBuilder() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+      <div ref={messageScrollRef} data-workspace-scroll className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
         {messages.length === 0 && (
           <div className="py-8 text-center">
             <p className="text-sm text-text-sub mb-1">Describe the Worker you want to build.</p>
@@ -589,12 +591,7 @@ export function AgentBuilder() {
                 ? 'bg-primary text-white rounded-br-sm'
                 : 'bg-panel-raised border border-border text-text-sub rounded-bl-sm'
             }`}>
-              {m.content.split('\n').map((line, i) => {
-                const bold = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-                return (
-                  <p key={i} className={i > 0 ? 'mt-1.5' : ''} dangerouslySetInnerHTML={{ __html: bold }} />
-                );
-              })}
+              <ResearchMarkdown text={m.content} />
             </div>
           </div>
         ))}
@@ -731,7 +728,7 @@ export function AgentBuilder() {
           </div>
         )}
 
-        <div ref={messagesEndRef} />
+
       </div>
 
       {/* Input */}

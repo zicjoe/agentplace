@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.0 — Milestone 4 production corrections (acceptance pending)
+
+- Render live, owner-scoped Job references inside persisted Manager messages and cross-link Job/Worker/Activity/conversations.
+- Scope conversation scrolling to the owned panel, fix global visible-viewport sizing and responsive shell constraints.
+- Render research Markdown tables, source links and Job Result safely without untrusted HTML.
+- Preserve source and research output truth; fix Activity research label and stale cross-account work refresh.
+- No schema migration, service dependency or provider configuration changes.
+
+
 ## 0.5.0 — Production Milestone 4
 - Fixed fresh-conversation first-message path: authenticated Home now persists the conversation, queues its first real intelligence task, and preserves the selected model before navigation; guest mode alone retains preview replies.
 - Serialized per-conversation writes and protected optimistic messages from stale background refreshes; first-message task status now appears inline even before the queue response arrives.

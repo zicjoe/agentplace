@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAppState, useDispatch, uid } from '../state/AppContext';
 import type { CreatorAsset, WorkflowDraftData } from '../state/types';
+import { ResearchMarkdown } from './ResearchMarkdown';
+import { scrollConversationToEnd } from '../platform/scroll';
 
 const MORNING_BRIEF_DRAFT: WorkflowDraftData = {
   name: 'Morning Portfolio Brief',
@@ -83,11 +85,11 @@ export function WorkflowStudio() {
   const [draft, setDraft] = useState<WorkflowDraftData>({ name: '', purpose: '', inputs: [], steps: [], conditions: [], outputs: [], requiredCapabilities: [], safetyBoundaries: [], compatibleWorkers: [], pricing: { type: 'free' } });
   const [step, setStep] = useState<StudioStep>('idle');
   const [mobileTab, setMobileTab] = useState<'chat' | 'draft'>('chat');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageScrollRef = useRef<HTMLDivElement>(null);
   const [streaming, setStreaming] = useState(false);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollConversationToEnd(messageScrollRef.current);
   }, [messages]);
 
   function addMsg(role: 'user' | 'studio', content: string) {
@@ -185,7 +187,7 @@ export function WorkflowStudio() {
               </svg>
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+          <div ref={messageScrollRef} data-workspace-scroll className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
             {messages.length === 0 && (
               <div className="py-8 text-center">
                 <p className="text-sm text-text-sub mb-1">Describe the workflow you want to build.</p>
@@ -195,10 +197,7 @@ export function WorkflowStudio() {
             {messages.map((m) => (
               <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] rounded-xl px-4 py-3 text-sm leading-relaxed ${m.role === 'user' ? 'bg-primary text-white rounded-br-sm' : 'bg-panel-raised border border-border text-text-sub rounded-bl-sm'}`}>
-                  {m.content.split('\n').map((line, i) => {
-                    const bold = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-                    return <p key={i} className={i > 0 ? 'mt-1' : ''} dangerouslySetInnerHTML={{ __html: bold }} />;
-                  })}
+                  <ResearchMarkdown text={m.content} />
                 </div>
               </div>
             ))}
@@ -218,7 +217,7 @@ export function WorkflowStudio() {
                 <button onClick={() => { close(); dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'creator-home' }); }} className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors">My creations</button>
               </div>
             )}
-            <div ref={messagesEndRef} />
+
           </div>
           {step !== 'saved' && (
             <div className="px-5 py-4 border-t border-border shrink-0">

@@ -79,9 +79,10 @@ test('Milestone 4 renders durable AI processing state inline with the conversati
   assert.match(status, /responseAlreadyVisible/);
 
   for (const source of [manager, worker, job]) {
-    const end = source.lastIndexOf('<div ref={messagesEndRef}');
-    const taskStatus = source.lastIndexOf('<IntelligenceTaskStatus', end);
-    assert.ok(taskStatus >= 0, 'task status should render inside the conversation before messagesEndRef');
+    const panel = source.indexOf('data-workspace-scroll');
+    const taskStatus = source.lastIndexOf('<IntelligenceTaskStatus');
+    assert.ok(panel >= 0 && taskStatus > panel, 'task status remains inside the owned conversation scroll panel');
+    assert.doesNotMatch(source, /scrollIntoView/, 'conversation scrolling must never move the document shell');
   }
 
   assert.doesNotMatch(manager, /productionConversation \? <IntelligenceTaskStatus/);

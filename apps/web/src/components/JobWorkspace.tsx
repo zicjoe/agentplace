@@ -7,6 +7,9 @@ import { submitIntelligence, type ModelSelection } from '../platform/intelligenc
 import { fetchJobEvidence, type JobEvidenceSource } from '../platform/workApi';
 import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
+import { ResearchMarkdown } from './ResearchMarkdown';
+import { safeResearchUrl } from '../platform/markdown';
+import { scrollConversationToEnd } from '../platform/scroll';
 
 interface JobMessage {
   id: string;
@@ -153,7 +156,7 @@ function FinancialJobWorkspace() {
 
   return (
     <div className="h-full flex flex-col bg-bg overflow-hidden">
-      <div className="px-5 py-4 border-b border-border shrink-0">
+      <div className="px-5 py-4 border-b border-border shrink-0 max-h-[55dvh] overflow-y-auto">
         <div className="flex items-start gap-3">
           <button
             onClick={() => dispatch({ type: 'SET_ACTIVE_JOB', id: null })}
@@ -174,6 +177,8 @@ function FinancialJobWorkspace() {
             <p className="text-xs text-text-muted mt-0.5">{job.goal}</p>
             <div className="flex items-center gap-3 mt-1.5 text-xs text-text-muted flex-wrap">
               <span>Lead: <span className="text-text-sub">{job.leadWorkerName}</span></span>
+              {originConv && <button type="button" onClick={() => dispatch({ type: 'SET_ACTIVE_CONV', id: originConv.id })} className="text-primary hover:underline">Origin conversation →</button>}
+              <button type="button" onClick={() => dispatch({ type: 'SET_VIEW', view: 'activity' })} className="text-primary hover:underline">Activity →</button>
               {job.routineId && (() => {
                 const routine = (state.routines ?? []).find((r) => r.id === job.routineId);
                 if (!routine) return null;
@@ -453,9 +458,9 @@ export function JobWorkspace() {
   const [messages, setMessages] = useState<JobMessage[]>([]);
   const [input, setInput] = useState('');
   const [modelSelection, setModelSelection] = useState<ModelSelection>({ provider: 'auto' });
-  const [activeTab, setActiveTab] = useState<'conversation' | 'team' | 'result'>('conversation');
+  const [activeTab, setActiveTab] = useState<'conversation' | 'team' | 'result' | 'activity'>('conversation');
   const [evidenceSources, setEvidenceSources] = useState<JobEvidenceSource[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageScrollRef = useRef<HTMLDivElement>(null);
 
   const job = (state.jobs ?? []).find((j) => j.id === state.activeJobId);
   const durableConversation = job ? state.conversations.find((c) => c.scope === 'job' && c.jobId === job.id) : undefined;
@@ -463,12 +468,8 @@ export function JobWorkspace() {
   const productionConversation = WEB_RUNTIME_SETTINGS.dataMode === 'api' && !!state.user;
   const displayMessages = productionConversation ? durableMessages : messages;
 
-  if (job?.kind === 'financial') {
-    return <FinancialJobWorkspace />;
-  }
-
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollConversationToEnd(messageScrollRef.current);
   }, [displayMessages.length]);
 
 
@@ -478,6 +479,10 @@ export function JobWorkspace() {
     void fetchJobEvidence(job.id).then((sources) => { if (!cancelled) setEvidenceSources(sources); }).catch(() => { if (!cancelled) setEvidenceSources([]); });
     return () => { cancelled = true; };
   }, [job?.id, job?.status, state.user?.id]);
+
+  if (job?.kind === 'financial') {
+    return <FinancialJobWorkspace />;
+  }
 
   if (!job) {
     return (
@@ -489,6 +494,9 @@ export function JobWorkspace() {
 
   const isComplete = job.status === 'completed';
   const leadWorker = state.workers.find((w) => w.id === job.leadWorkerId);
+  const originConversation = job.originConversationId ? state.conversations.find((c) => c.id === job.originConversationId) : undefined;
+  const researchAnswer = durableConversation?.messages.find((m) => m.id.startsWith('msg_job_result_'))?.content;
+  const jobEvents = state.activityEvents.filter((event) => event.jobId === job.id);
 
   function sendMessage() {
     if (!input.trim()) return;
@@ -496,6 +504,7 @@ export function JobWorkspace() {
     const text = input.trim();
     setInput('');
 
+    if (productionConversation && !durableConversation) return;
     if (productionConversation && durableConversation) {
       const userMessage = { id: uid(), role: 'user' as const, content: text, timestamp: new Date() };
       dispatch({ type: 'ADD_MSG', convId: durableConversation.id, msg: userMessage });
@@ -545,7 +554,7 @@ export function JobWorkspace() {
   return (
     <div className="h-full flex flex-col bg-bg overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-border shrink-0">
+      <div className="px-5 py-4 border-b border-border shrink-0 max-h-[55dvh] overflow-y-auto">
         <div className="flex items-start gap-3">
           <button
             onClick={() => dispatch({ type: 'SET_ACTIVE_JOB', id: null })}
@@ -572,6 +581,8 @@ export function JobWorkspace() {
               <span>
                 Lead: <span className="text-text-sub">{job.leadWorkerName}</span>
               </span>
+              {originConversation && <button type="button" onClick={() => dispatch({ type: 'SET_ACTIVE_CONV', id: originConversation.id })} className="text-primary hover:underline">Origin conversation →</button>}
+              <button type="button" onClick={() => dispatch({ type: 'SET_VIEW', view: 'activity' })} className="text-primary hover:underline">Activity →</button>
               {job.supportingWorkerNames.length > 0 && (
                 <span>
                   +{job.supportingWorkerNames.length} specialist
@@ -609,7 +620,7 @@ export function JobWorkspace() {
 
         {/* Tabs */}
         <div className="flex gap-0 mt-4 border-b border-border -mb-px">
-          {(['conversation', 'team', ...(isComplete ? ['result'] : [])] as const).map((tab) => (
+          {(['conversation', 'team', ...(isComplete ? ['result'] : []), 'activity'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
@@ -629,7 +640,7 @@ export function JobWorkspace() {
       <div className="flex-1 overflow-hidden min-h-0">
         {activeTab === 'conversation' && (
           <div className="h-full flex flex-col">
-            <div className="flex-1 overflow-y-auto px-5 py-5">
+            <div ref={messageScrollRef} data-workspace-scroll className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
               <div className="max-w-2xl mx-auto space-y-4">
                 {displayMessages.length === 0 && (
                   <div className="py-8 text-center">
@@ -638,11 +649,10 @@ export function JobWorkspace() {
                       AgentPlace remains the narrator. Specialists contribute their evidence.
                     </p>
                     <div className="flex flex-wrap gap-2 justify-center">
-                      {[
-                        "Why is WIF ranked highest?",
-                        "What did Smart Money Scout find?",
-                        "Compare holder risk across the three.",
-                      ].map((p) => (
+                      {(productionConversation
+                        ? ['What is the current status?', 'Show the evidence and sources.', 'What are the main risks?']
+                        : ["Why is WIF ranked highest?", "What did Smart Money Scout find?", "Compare holder risk across the three."]
+                      ).map((p) => (
                         <button
                           key={p}
                           onClick={() => setInput(p)}
@@ -678,7 +688,7 @@ export function JobWorkspace() {
                             <span className="w-1 h-1 rounded-full bg-text-muted animate-pulse" style={{ animationDelay: '300ms' }} />
                           </span>
                         ) : (
-                          <p className="text-sm leading-relaxed">{msg.content}</p>
+                          <ResearchMarkdown text={msg.content} />
                         )}
                       </div>
                     </div>
@@ -690,12 +700,13 @@ export function JobWorkspace() {
                     latestAssistantAt={latestAssistantAt}
                   />
                 )}
-                <div ref={messagesEndRef} />
+
               </div>
             </div>
             <div className="border-t border-border px-5 py-4 shrink-0">
               <div className="max-w-2xl mx-auto">
                 {!productionConversation && WEB_RUNTIME_SETTINGS.dataMode === 'api' ? <p className="text-xs text-text-muted mb-2">Guest preview · sign in to use live AI. Preview replies are not generated by a model.</p> : null}
+                {productionConversation && !durableConversation && <p className="text-xs text-text-muted mb-2">The Job conversation is syncing. Please wait for the saved conversation before replying.</p>}
                 <div className="relative rounded-lg border border-border bg-panel focus-within:border-primary/40 transition-colors">
                   <textarea
                     value={input}
@@ -714,7 +725,7 @@ export function JobWorkspace() {
                     <div className="flex items-center gap-2"><span className="text-xs text-text-dim font-mono hidden md:inline">Shift+Enter for new line</span>{productionConversation && durableConversation && <ModelSelector conversationId={durableConversation.id} onChange={setModelSelection} />}</div>
                     <button
                       onClick={sendMessage}
-                      disabled={!input.trim() || isStreaming}
+                      disabled={!input.trim() || isStreaming || (productionConversation && !durableConversation)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all ${
                         input.trim() && !isStreaming
                           ? 'bg-primary text-white hover:bg-primary-hover'
@@ -733,8 +744,23 @@ export function JobWorkspace() {
           </div>
         )}
 
+        {activeTab === 'activity' && (
+          <div data-workspace-scroll className="overflow-y-auto h-full px-5 py-5">
+            <div className="max-w-xl space-y-3">
+              <p className="text-xs font-medium text-text-muted uppercase tracking-wider">Job activity</p>
+              {jobEvents.length === 0 && <p className="text-xs text-text-muted">No events have been recorded for this Job yet.</p>}
+              {jobEvents.map((event) => <div key={event.id} className="rounded-lg border border-border bg-panel px-4 py-3">
+                <p className="text-sm text-text">{event.title}</p>
+                <p className="mt-1 text-xs text-text-sub">{event.summary}</p>
+                <p className="mt-2 text-[11px] text-text-muted">{event.timestamp.toLocaleString()} · {event.status}</p>
+              </div>)}
+              {originConversation && <button type="button" onClick={() => dispatch({ type: 'SET_ACTIVE_CONV', id: originConversation.id })} className="text-xs text-primary hover:underline">Open origin conversation →</button>}
+            </div>
+          </div>
+        )}
+
         {activeTab === 'team' && (
-          <div className="overflow-y-auto h-full px-5 py-5">
+          <div data-workspace-scroll className="overflow-y-auto h-full px-5 py-5">
             <div className="max-w-xl space-y-3">
               <p className="text-xs text-text-muted mb-4">
                 AgentPlace assembled the smallest competent team for this job. Supporting workers are
@@ -745,7 +771,7 @@ export function JobWorkspace() {
                   <span className="text-sm font-semibold text-text">{job.leadWorkerName}</span>
                   <span className="text-xs text-primary border border-primary/30 rounded px-1.5 py-0.5">Lead</span>
                 </div>
-                <p className="text-xs text-text-sub">Meme coin opportunity analysis · Synthesis</p>
+                <p className="text-xs text-text-sub">{productionConversation ? 'Research and synthesis' : 'Meme coin opportunity analysis · Synthesis'}</p>
                 {leadWorker && (
                   <button
                     onClick={() => dispatch({ type: 'SET_ACTIVE_WORKER', id: leadWorker.id })}
@@ -755,14 +781,14 @@ export function JobWorkspace() {
                   </button>
                 )}
               </div>
-              {job.supportingWorkerNames.map((name) => (
-                <div key={name} className="border border-border rounded-lg bg-panel px-4 py-3">
+              {job.supportingWorkerNames.map((name, index) => (
+                <div key={`${name}-${index}`} className="border border-border rounded-lg bg-panel px-4 py-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-semibold text-text">{name}</span>
                     <span className="text-xs text-text-muted border border-border rounded px-1.5 py-0.5">Supporting</span>
                   </div>
-                  <p className="text-xs text-text-sub">Wallet-quality analysis · Smart-money signals</p>
-                  <p className="text-xs text-text-muted mt-1">Temporary · not in your permanent workforce</p>
+                  {productionConversation ? <p className="text-xs text-text-muted mt-1">Supporting specialist · no additional financial authority</p> : <><p className="text-xs text-text-sub">Wallet-quality analysis · Smart-money signals</p><p className="text-xs text-text-muted mt-1">Temporary · not in your permanent workforce</p></>}
+                  {state.workers.some((worker) => worker.id === job.supportingWorkerIds[index]) && <button type="button" onClick={() => dispatch({ type: 'SET_ACTIVE_WORKER', id: job.supportingWorkerIds[index]! })} className="text-xs text-primary hover:underline mt-2">Open Worker workspace →</button>}
                 </div>
               ))}
             </div>
@@ -770,25 +796,30 @@ export function JobWorkspace() {
         )}
 
         {activeTab === 'result' && (
-          <div className="overflow-y-auto h-full px-5 py-5">
+          <div data-workspace-scroll className="overflow-y-auto h-full px-5 py-5">
             <div className="max-w-xl">
               {productionConversation && (
                 <div className="mb-5 border border-border rounded-lg bg-panel px-4 py-4">
                   <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">Evidence sources</p>
                   {evidenceSources.length ? (
                     <div className="space-y-2">
-                      {evidenceSources.map((source) => (
-                        <a key={source.id} href={source.url} target="_blank" rel="noreferrer" className="block text-xs text-primary hover:underline break-words">
+                      {evidenceSources.map((source) => {
+                        const href = safeResearchUrl(source.url);
+                        return href ? <a key={source.id} href={href} target="_blank" rel="noopener noreferrer" className="block text-xs text-primary hover:underline break-words">
                           {source.title} <span className="text-text-dim">· {source.provider}</span>
-                        </a>
-                      ))}
+                        </a> : <p key={source.id} className="text-xs text-text-muted break-words">{source.title} · Unavailable source URL</p>;
+                      })}
                     </div>
                   ) : (
                     <p className="text-xs text-text-muted">No preservable source URLs were returned for this Job.</p>
                   )}
                 </div>
               )}
-              {job.result && <>
+              {productionConversation && (researchAnswer ? <div className="mb-5">
+                <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-3">Research output</p>
+                <ResearchMarkdown text={researchAnswer} />
+              </div> : <p className="text-xs text-text-muted mb-5">Research output will appear here when the Worker publishes its result.</p>)}
+              {job.result && !productionConversation && <>
               <div className="flex items-center gap-2 mb-4">
                 <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
@@ -823,7 +854,7 @@ export function JobWorkspace() {
                 </p>
               </div>}
 
-              {!job.routineId && (
+              {!job.routineId && (!productionConversation || leadWorker) && (
                 <div className="mt-4 border border-border-dim rounded-lg px-4 py-3">
                   <p className="text-xs text-text-muted mb-2">This type of research could run on a schedule.</p>
                   <button

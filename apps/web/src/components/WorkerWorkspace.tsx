@@ -6,6 +6,8 @@ import { submitIntelligence, type ModelSelection } from '../platform/intelligenc
 import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
 import { fetchWorkState, updateDurableWorkerStatus } from '../platform/workApi';
+import { ResearchMarkdown } from './ResearchMarkdown';
+import { scrollConversationToEnd } from '../platform/scroll';
 
 interface LocalMessage {
   id: string;
@@ -451,7 +453,7 @@ export function WorkerWorkspace() {
   const [input, setInput] = useState('');
   const [modelSelection, setModelSelection] = useState<ModelSelection>({ provider: 'auto' });
   const [showDetails, setShowDetails] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageScrollRef = useRef<HTMLDivElement>(null);
 
   const worker = state.workers.find((w) => w.id === state.activeWorkerId);
   const durableConversation = worker ? state.conversations.find((c) => c.scope === 'worker' && c.workerId === worker.id) : undefined;
@@ -460,7 +462,7 @@ export function WorkerWorkspace() {
   const displayMessages = productionConversation ? durableMessages : messages;
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollConversationToEnd(messageScrollRef.current);
   }, [displayMessages.length, displayMessages.at(-1)?.isStreaming]);
 
   if (!worker) {
@@ -657,7 +659,7 @@ export function WorkerWorkspace() {
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Conversation */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-          <div className="flex-1 overflow-y-auto px-5 py-5">
+          <div ref={messageScrollRef} data-workspace-scroll className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
             <div className="max-w-2xl mx-auto space-y-4">
               {displayMessages.length === 0 && (
                 <div className="text-center py-12">
@@ -726,7 +728,7 @@ export function WorkerWorkspace() {
                         </span>
                       ) : (
                         <>
-                          <p className="text-sm leading-relaxed">{msg.content}</p>
+                          <ResearchMarkdown text={msg.content} />
                           {msg.jobId && <InlineJobCard jobId={msg.jobId} />}
                           {msg.routinePreview && (
                             <InlineRoutinePreviewCard
@@ -746,7 +748,7 @@ export function WorkerWorkspace() {
                   latestAssistantAt={latestAssistantAt}
                 />
               )}
-              <div ref={messagesEndRef} />
+
             </div>
           </div>
 

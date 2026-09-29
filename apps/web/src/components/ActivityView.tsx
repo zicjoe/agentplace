@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAppState, useDispatch } from '../state/AppContext';
 import type { ActivityEvent } from '../state/types';
+import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 
 type Filter = 'all' | 'working' | 'complete' | 'operational';
 
@@ -28,6 +29,7 @@ function ActivityRow({ event }: { event: ActivityEvent }) {
   // For financial jobs, derive live status from the linked Job
   const linkedJob = event.jobId ? (state.jobs ?? []).find((j) => j.id === event.jobId) : null;
   const effectiveStatus = linkedJob ? linkedJob.status as string : event.status;
+  const productionActivity = WEB_RUNTIME_SETTINGS.dataMode === 'api' && !!state.user;
 
   const isWorking = ['planning', 'working', 'executing', 'settling', 'verifying', 'needs-approval'].includes(effectiveStatus);
   const isComplete = effectiveStatus === 'completed' || effectiveStatus === 'complete';
@@ -77,7 +79,8 @@ function ActivityRow({ event }: { event: ActivityEvent }) {
           <div className="min-w-0">
             <p className="text-sm font-medium text-text truncate">{event.title}</p>
             <p className="text-xs text-text-muted mt-0.5">
-              {linkedJob?.status === 'completed' && linkedJob.kind === 'financial'
+              {productionActivity ? event.summary
+                : linkedJob?.status === 'completed' && linkedJob.kind === 'financial'
                 ? '498.92 USDC received on Base · Completed · AgentPlace Verified'
                 : linkedJob?.status === 'settling'
                 ? 'Settling · destination settlement in progress'
@@ -111,7 +114,7 @@ function ActivityRow({ event }: { event: ActivityEvent }) {
                    effectiveStatus === 'verifying' ? 'Verifying' :
                    effectiveStatus === 'recovering' ? 'Recovering' :
                    effectiveStatus === 'unknown' ? 'Unknown' :
-                   effectiveStatus === 'completed' ? 'Completed · AgentPlace Verified' :
+                   effectiveStatus === 'completed' ? (linkedJob?.kind === 'financial' ? 'Completed · AgentPlace Verified' : linkedJob?.kind === 'research' ? 'Research complete' : 'Completed') :
                    isWorking ? 'Working' :
                    isComplete ? 'Complete' : effectiveStatus}
                 </span>

@@ -26,6 +26,7 @@ import { WorkflowStudio } from './WorkflowStudio';
 import { CapabilityStudio } from './CapabilityStudio';
 import { BillingUsageView } from './BillingUsageView';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { pathForState } from '../platform/routing';
 
 function PlaceholderView({ title, description }: { title: string; description: string }) {
   return (
@@ -137,7 +138,7 @@ export function Shell() {
 
   if (isMobile) {
     return (
-      <div className="flex flex-col h-full bg-bg text-text overflow-hidden">
+      <div className="flex flex-col h-full min-h-0 min-w-0 bg-bg text-text overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         {/* Conversation / history drawer */}
         {state.mobileDrawerOpen && (
           <div className="fixed inset-0 z-50 flex">
@@ -192,8 +193,8 @@ export function Shell() {
           </div>
         </div>
 
-        <main className="flex-1 overflow-hidden">
-          <MainContent />
+        <main className="flex-1 min-h-0 min-w-0 overflow-hidden">
+          <MainContent key={pathForState(state)} />
         </main>
 
         <BottomNav />
@@ -209,10 +210,10 @@ export function Shell() {
   }
 
   return (
-    <div className="flex h-full bg-bg text-text overflow-hidden">
+    <div className="flex h-full min-h-0 min-w-0 bg-bg text-text overflow-hidden">
       <Sidebar />
-      <main className="flex-1 overflow-hidden">
-        <MainContent />
+      <main className="flex-1 min-h-0 min-w-0 overflow-hidden">
+        <MainContent key={pathForState(state)} />
       </main>
       {state.showCreateMenu && <CreateMenu />}
       {state.identityCheckpoint && <IdentityCheckpoint />}

@@ -1596,8 +1596,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshDurableWork = useCallback(async () => {
-    if (WEB_RUNTIME_SETTINGS.dataMode !== 'api' || !stateRef.current.user) return;
+    if (WEB_RUNTIME_SETTINGS.dataMode !== 'api') return;
+    const ownerUserId = stateRef.current.user?.id;
+    if (!ownerUserId) return;
     const work = await fetchWorkState();
+    // Poll responses from a previous session may never repopulate another user's UI.
+    if (stateRef.current.user?.id !== ownerUserId) return;
     rawDispatch({ type: 'SET_WORKERS', workers: work.workers });
     rawDispatch({ type: 'SET_JOBS', jobs: work.jobs });
     rawDispatch({ type: 'SET_ACTIVITY_EVENTS', events: work.activity });
