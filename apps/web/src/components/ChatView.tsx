@@ -22,6 +22,7 @@ import { ResearchMarkdown } from './ResearchMarkdown';
 import { JobReference } from './JobReference';
 import { ResearchResultCard } from './ResearchResultCard';
 import { scrollConversationToEnd } from '../platform/scroll';
+import { conversationHistoryTitle } from '../platform/conversationNavigation';
 
 // Research content is always rendered as React nodes, never model-supplied HTML.
 function RenderContent({ text }: { text: string }) {
@@ -515,7 +516,7 @@ export function ChatView() {
   }
 
   function startEditTitle() {
-    setTitleVal(conv!.title);
+    setTitleVal(conversationHistoryTitle(conv!, state.jobs));
     setEditingTitle(true);
   }
 
@@ -705,7 +706,7 @@ export function ChatView() {
             className="flex-1 text-left text-sm font-medium text-text hover:text-text-sub truncate transition-colors"
             title="Click to rename"
           >
-            {conv.title}
+            {conversationHistoryTitle(conv, state.jobs)}
           </button>
         )}
 

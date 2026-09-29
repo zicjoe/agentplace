@@ -5,6 +5,7 @@ import { createDurableConversation } from '../platform/conversationApi';
 import { fetchLatestIntelligenceTask, submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { ModelSelector } from './ModelSelector';
+import { conversationTitleFromPrompt } from '../platform/conversationNavigation';
 
 const QUICK_ACTIONS = [
   {
@@ -236,7 +237,7 @@ function Composer({ compact = false }: { compact?: boolean }) {
     const userMessage: ChatMessage = { id: uid(), role: 'user', content: message.trim(), timestamp: new Date() };
     const conv: Conversation = {
       id: convId,
-      title: 'New conversation',
+      title: conversationTitleFromPrompt(message),
       manuallyRenamed: false,
       messages: [userMessage],
       pinned: false,

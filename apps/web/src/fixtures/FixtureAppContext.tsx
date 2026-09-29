@@ -49,6 +49,7 @@ import { getAgentPlaceIdentity, getAuthenticatedUser, signOut as signOutAuth } f
 import { addDurableMessage, createDurableConversation, fetchConversations, importGuestConversations, patchDurableConversation, updateDurableMessage } from '../platform/conversationApi';
 import { clearIdentityResume, readIdentityResume } from '../platform/identityResume';
 import { createDurableJob, fetchWorkState, installDurableWorker } from '../platform/workApi';
+import { isJobConversation } from '../platform/conversationNavigation';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -926,7 +927,7 @@ export type Action =
   | { type: 'SET_ENV'; env: Environment }
   | { type: 'SET_ACTIVE_CONV'; id: string | null }
   | { type: 'SET_ACTIVE_WORKER'; id: string | null }
-  | { type: 'SET_ACTIVE_JOB'; id: string | null; tab?: 'conversation' | 'result' }
+  | { type: 'SET_ACTIVE_JOB'; id: string | null; tab?: 'conversation' | 'result'; clearConversation?: boolean }
   | { type: 'SET_ACTIVE_WALLET'; id: string | null }
   | { type: 'SET_ACTIVE_ACTION'; id: string | null }
   | { type: 'ADD_CONV'; conv: Conversation; persisted?: boolean }
@@ -1061,7 +1062,7 @@ function reducer(state: AppState, action: Action): AppState {
       };
 
     case 'SET_ACTIVE_JOB':
-      return { ...state, activeJobId: action.id, activeJobTab: action.tab ?? 'conversation', activeActionId: null, routeNotFound: null };
+      return { ...state, activeJobId: action.id, activeJobTab: action.tab ?? 'conversation', activeConversationId: action.clearConversation ? null : state.activeConversationId, activeActionId: null, routeNotFound: null };
 
     case 'SET_ACTIVE_WALLET':
       return { ...state, activeWalletId: action.id, routeNotFound: null };
@@ -1697,6 +1698,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [syncConversationAction, syncWorkAction]);
+
+  // Old bookmarked /conversations/<job-conversation-id> URLs must continue to
+  // work after job-scoped discussions move out of the top-level history list.
+  // Resolve only against the current account's hydrated conversations, and
+  // replace (rather than push) the legacy URL to avoid a browser-back loop.
+  useEffect(() => {
+    const conversation = state.conversations.find((item) => item.id === state.activeConversationId);
+    if (!conversation || !isJobConversation(conversation) || !conversation.jobId || state.activeJobId) return;
+    dispatch({ type: 'SET_ACTIVE_JOB', id: conversation.jobId, clearConversation: true });
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', `/activity/jobs/${encodeURIComponent(conversation.jobId)}`);
+    }
+  }, [state.activeConversationId, state.activeJobId, state.conversations, dispatch]);
 
   useEffect(() => {
     persistFixtureState(state);

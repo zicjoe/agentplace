@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.0 — M4 conversation-history grouping correction (acceptance pending)
+
+- Display one primary Manager thread for each research request; retain the linked Job conversation in PostgreSQL and open it from the Job Workspace rather than as a duplicate sidebar entry.
+- Preserve Job discussion retrieval through Search, label Job search results and direct them to the authoritative Job Workspace. Legacy Job-conversation URLs redirect to the Job route.
+- Give new Manager threads a useful first-prompt title and display meaningful fallback titles for older generic threads, without overwriting manual titles or changing historical messages.
+- No migration, deletions, new service, new dependency or financial authority change. M4 remains open pending live acceptance.
+
 ## v0.5.0 — Hybrid research presentation refinement (acceptance pending)
 
 - Added saved-answer excerpts and expandable inline research cards in Manager and Job conversations, with direct access to the existing Job Result.

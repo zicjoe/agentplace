@@ -3,6 +3,7 @@ import { useAppState, useDispatch, makeMemeScoutWorker } from '../state/AppConte
 import type { Conversation } from '../state/types';
 import { fetchConversations } from '../platform/conversationApi';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { conversationHistoryTitle, isJobConversation, primaryConversationHistory } from '../platform/conversationNavigation';
 
 function timeAgo(date: Date): string {
   const diff = Date.now() - date.getTime();
@@ -16,13 +17,14 @@ function timeAgo(date: Date): string {
 interface ConvItemProps {
   conv: Conversation;
   isActive: boolean;
+  displayTitle?: string;
 }
 
-function ConvItem({ conv, isActive }: ConvItemProps) {
+function ConvItem({ conv, isActive, displayTitle }: ConvItemProps) {
   const dispatch = useDispatch();
   const [showMenu, setShowMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const [renameVal, setRenameVal] = useState(conv.title);
+  const [renameVal, setRenameVal] = useState(displayTitle ?? conv.title);
   const menuRef = useRef<HTMLDivElement>(null);
 
   function open() {
@@ -71,7 +73,7 @@ function ConvItem({ conv, isActive }: ConvItemProps) {
             <path d="M9.828 1.293a1 1 0 0 1 1.414 0l3.465 3.465a1 1 0 0 1 0 1.414l-1.172 1.172a1 1 0 0 1-.672.287H12l-1 1v.75a1 1 0 0 1-.293.707L9.293 11.3a1 1 0 0 1-1.586-1.214l.293-.293-.75-.75-.293.293a1 1 0 0 1-1.414-1.414l.293-.293-.75-.75L5.586 7.4a1 1 0 0 1-1.172-1.586l1.414-1.414a1 1 0 0 1 .707-.293H7v-.137a1 1 0 0 1 .293-.707L8.414 2.15l1.414-1.414z" />
           </svg>
         )}
-        <span className="truncate flex-1">{conv.title}</span>
+        <span className="truncate flex-1">{displayTitle ?? conv.title}</span>
         <span className="text-text-dim text-xs shrink-0 hidden group-hover:hidden">
           {timeAgo(conv.updatedAt)}
         </span>
@@ -97,7 +99,7 @@ function ConvItem({ conv, isActive }: ConvItemProps) {
           className="absolute right-2 top-8 z-50 bg-panel-raised border border-border rounded shadow-xl py-1 w-40"
         >
           <button
-            onClick={() => { setRenaming(true); setShowMenu(false); }}
+            onClick={() => { setRenameVal(displayTitle ?? conv.title); setRenaming(true); setShowMenu(false); }}
             className="w-full text-left px-3 py-1.5 text-sm text-text-sub hover:text-text hover:bg-panel transition-colors"
           >
             Rename
@@ -126,7 +128,7 @@ function ConvItem({ conv, isActive }: ConvItemProps) {
   );
 }
 
-function ArchivedConvItem({ conv, isActive }: ConvItemProps) {
+function ArchivedConvItem({ conv, isActive, displayTitle }: ConvItemProps) {
   const dispatch = useDispatch();
   return (
     <div className="relative group">
@@ -136,7 +138,7 @@ function ArchivedConvItem({ conv, isActive }: ConvItemProps) {
           isActive ? 'bg-panel-raised text-text' : 'text-text-dim hover:bg-panel hover:text-text-sub'
         }`}
       >
-        <span className="truncate flex-1">{conv.title}</span>
+        <span className="truncate flex-1">{displayTitle ?? conv.title}</span>
       </button>
       <button
         onClick={() => dispatch({ type: 'UNARCHIVE_CONV', convId: conv.id })}
@@ -164,15 +166,16 @@ export function Sidebar({ isMobileDrawer = false, onCloseMobile }: SidebarProps)
 
   const [showArchived, setShowArchived] = useState(false);
   const allConvs = state.conversations;
-  const visibleConvs = allConvs.filter((c) => !c.archived);
-  const archivedConvs = allConvs.filter((c) => c.archived);
+  const historyConvs = primaryConversationHistory(allConvs);
+  const visibleConvs = historyConvs.filter((c) => !c.archived);
+  const archivedConvs = historyConvs.filter((c) => c.archived);
   const pinned = visibleConvs.filter((c) => c.pinned);
   const recent = visibleConvs.filter((c) => !c.pinned).slice(0, 8);
 
   const localSearchResults = searchQuery
     ? allConvs.filter(
         (c) =>
-          c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          conversationHistoryTitle(c, state.jobs).toLowerCase().includes(searchQuery.toLowerCase()) ||
           c.messages.some((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase()))
       )
     : [];
@@ -344,14 +347,21 @@ export function Sidebar({ isMobileDrawer = false, onCloseMobile }: SidebarProps)
                 <button
                   key={c.id}
                   onClick={() => {
-                    dispatch({ type: 'SET_ACTIVE_CONV', id: c.id });
+                    // Search includes specialist/Job content, but opens the owning
+                    // Workspace instead of a second top-level conversation.
+                    if (isJobConversation(c) && c.jobId) {
+                      dispatch({ type: 'SET_ACTIVE_JOB', id: c.jobId, clearConversation: true });
+                    } else {
+                      dispatch({ type: 'SET_ACTIVE_CONV', id: c.id });
+                    }
                     setShowSearch(false);
                     setSearchQuery('');
                     if (onCloseMobile) onCloseMobile();
                   }}
                   className="w-full text-left px-3 py-2 text-sm text-text-sub hover:text-text hover:bg-panel-raised transition-colors"
                 >
-                  {c.title}
+                  <span className="block truncate">{conversationHistoryTitle(c, state.jobs)}</span>
+                  {isJobConversation(c) && <span className="block text-[10px] text-text-dim">Job · Opens Job Workspace</span>}
                 </button>
               ))}
             </div>
@@ -374,7 +384,7 @@ export function Sidebar({ isMobileDrawer = false, onCloseMobile }: SidebarProps)
               Pinned
             </p>
             {pinned.map((c) => (
-              <ConvItem key={c.id} conv={c} isActive={state.activeConversationId === c.id} />
+              <ConvItem key={c.id} conv={c} displayTitle={conversationHistoryTitle(c, state.jobs)} isActive={!state.activeJobId && state.activeConversationId === c.id} />
             ))}
           </div>
         )}
@@ -386,7 +396,7 @@ export function Sidebar({ isMobileDrawer = false, onCloseMobile }: SidebarProps)
               </p>
             )}
             {recent.map((c) => (
-              <ConvItem key={c.id} conv={c} isActive={state.activeConversationId === c.id} />
+              <ConvItem key={c.id} conv={c} displayTitle={conversationHistoryTitle(c, state.jobs)} isActive={!state.activeJobId && state.activeConversationId === c.id} />
             ))}
           </div>
         )}
@@ -411,7 +421,7 @@ export function Sidebar({ isMobileDrawer = false, onCloseMobile }: SidebarProps)
               <span className="ml-auto text-text-dim font-mono">{archivedConvs.length}</span>
             </button>
             {showArchived && archivedConvs.map((c) => (
-              <ArchivedConvItem key={c.id} conv={c} isActive={state.activeConversationId === c.id} />
+              <ArchivedConvItem key={c.id} conv={c} displayTitle={conversationHistoryTitle(c, state.jobs)} isActive={!state.activeJobId && state.activeConversationId === c.id} />
             ))}
           </div>
         )}

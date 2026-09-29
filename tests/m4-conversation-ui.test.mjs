@@ -122,3 +122,40 @@ test('hybrid UI opens the existing Job Result, retains saved evidence and respec
   }
   assert.doesNotMatch(result, /ADD_JOB|createDurableJob|submitIntelligence/);
 });
+
+test('Job discussions stay durable and searchable without appearing as duplicate top-level conversations', () => {
+  const script = `
+    import assert from 'node:assert/strict';
+    import { primaryConversationHistory, isJobConversation, conversationHistoryTitle, conversationTitleFromPrompt } from './apps/web/src/platform/conversationNavigation.ts';
+    const user = { role: 'user', content: 'Research GMX on Arbitrum. Compare its current product structure.' };
+    const manager = { id: 'manager-1', scope: 'manager', title: 'New conversation', manuallyRenamed: false, archived: false, messages: [user] };
+    const jobConversation = { id: 'jobconv-1', scope: 'job', jobId: 'job-1', title: 'Research GMX on Arbitrum', archived: false, messages: [] };
+    const job = { id: 'job-1', title: 'Research GMX on Arbitrum', originConversationId: 'manager-1' };
+    assert.deepEqual(primaryConversationHistory([manager, jobConversation]).map((c) => c.id), ['manager-1']);
+    assert.ok(isJobConversation(jobConversation));
+    assert.ok(!isJobConversation(manager));
+    assert.equal(conversationTitleFromPrompt(user.content), 'Research GMX on Arbitrum');
+    assert.equal(conversationHistoryTitle(manager, [job]), job.title);
+    assert.equal(conversationHistoryTitle(manager, [{ ...job, title: 'Later unrelated Job' }]), 'Research GMX on Arbitrum');
+    assert.equal(conversationHistoryTitle({ ...manager, title: 'My GMX notes', manuallyRenamed: true }, [job]), 'My GMX notes');
+    assert.ok(isJobConversation({ ...jobConversation, scope: undefined }));
+    assert.equal(conversationHistoryTitle({ ...manager, messages: [user], title: 'New conversation' }, []), 'Research GMX on Arbitrum');
+  `;
+  const result = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', '--input-type=module', '-e', script], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const sidebar = read('apps/web/src/components/Sidebar.tsx');
+  const home = read('apps/web/src/components/GuestHome.tsx');
+  const chat = read('apps/web/src/components/ChatView.tsx');
+  const context = read('apps/web/src/fixtures/FixtureAppContext.tsx');
+  const worker = read('apps/worker/src/index.ts');
+  assert.match(sidebar, /primaryConversationHistory\(allConvs\)/);
+  assert.match(sidebar, /isJobConversation\(c\) && c\.jobId/);
+  assert.match(sidebar, /Job · Opens Job Workspace/);
+  assert.match(home, /title: conversationTitleFromPrompt\(message\)/);
+  assert.match(chat, /conversationHistoryTitle\(conv, state\.jobs\)/);
+  assert.match(context, /window\.history\.replaceState\(null, '', `\/activity\/jobs\/\$\{encodeURIComponent\(conversation\.jobId\)\}`\)/);
+  assert.match(context, /case 'SET_ACTIVE_JOB':[\s\S]*?activeConversationId: action\.clearConversation \? null : state\.activeConversationId/);
+  assert.match(context, /SET_ACTIVE_JOB', id: conversation\.jobId, clearConversation: true/);
+  assert.match(worker, /scope: 'job',[\s\S]*?jobId,[\s\S]*?setJobConversation/);
+  assert.doesNotMatch(sidebar, /deleteConversation|DELETE FROM/);
+});
