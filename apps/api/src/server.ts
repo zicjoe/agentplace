@@ -22,6 +22,7 @@ import {
 import { checkDatabase } from '@agent-place/db';
 import { listCanonicalCapabilities, listCapabilityImplementations } from '@agent-place/capabilities';
 import { getModelCatalog } from '@agent-place/models';
+import { getRouteDecisionForJob } from '@agent-place/router';
 import { createJob, enqueueIntelligenceTask, getIntelligenceTask, getLatestIntelligenceTask, getJob, getJobEvidence, jobStatuses, listActivity, listJobs, setJobConversation, type JobDraft } from '@agent-place/jobs';
 import { getUserWorker, installWorker, listUserWorkers, listWorkerCatalog, updateUserWorker, type UserWorkerStatus } from '@agent-place/workers';
 import {
@@ -279,6 +280,17 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     const task = await getIntelligenceTask(identity.appUserId, decodeURIComponent(intelligenceTaskMatch[1] ?? ''));
     if (!task) return writeJson(res, 404, { error: 'not_found', message: 'Intelligence task not found.', requestId });
     writeJson(res, 200, { task });
+    return;
+  }
+
+  const routeMatch = url.pathname.match(/^\/api\/v1\/jobs\/([^/]+)\/route$/);
+  if (routeMatch && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const jobId = decodeURIComponent(routeMatch[1] ?? '');
+    const job = await getJob(identity.appUserId, jobId);
+    if (!job) return writeJson(res, 404, { error: 'not_found', message: 'Job not found.', requestId });
+    const route = await getRouteDecisionForJob(identity.appUserId, jobId);
+    writeJson(res, 200, { route });
     return;
   }
 

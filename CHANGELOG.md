@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 — Production Milestone 5 Router v1
+
+- Added durable Route Decisions linking intelligence tasks to validated Worker/capability/provider routing state.
+- Added deterministic capability eligibility across lifecycle, effect, environment, network, provider configuration, trust and health.
+- Added Worker/capability compatibility and deterministic lead/support selection/validation, including minimal specialist completion of uncovered requirements.
+- Added capability implementation priority, enablement and environment-eligibility metadata.
+- Added explicit-provider preservation and bounded fallback for AgentPlace Auto hosted web research.
+- Added progressive Job Workspace route disclosure without exposing financial authority.
+- Wired the M4 Research Coverage Contract to deterministic route availability rather than model claims alone.
+- Preserved the M5 read-only boundary; write/economic-write capabilities remain blocked.
+
 ## 0.5.0 — Milestone 4 research coverage contract
 
 - Added explicit per-Job research requirements so Manager planning preserves every material dimension of the user's request.

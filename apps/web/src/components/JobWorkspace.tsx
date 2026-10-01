@@ -4,7 +4,7 @@ import { ExecutionTimeline } from './ExecutionTimeline';
 import type { ExecutionStatus } from '../state/types';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
-import { fetchJobEvidence, type JobEvidenceSource } from '../platform/workApi';
+import { fetchJobEvidence, fetchJobRoute, type JobEvidenceSource, type JobRouteDecision } from '../platform/workApi';
 import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
 import { ResearchMarkdown } from './ResearchMarkdown';
@@ -440,6 +440,7 @@ export function JobWorkspace() {
     state.activeJobTab === 'result' ? 'result' : 'conversation',
   );
   const [evidenceSources, setEvidenceSources] = useState<JobEvidenceSource[]>([]);
+  const [routeDecision, setRouteDecision] = useState<JobRouteDecision | null>(null);
   const messageScrollRef = useRef<HTMLDivElement>(null);
   const lastConversationRef = useRef<string | null>(null);
   const previousMessageCountRef = useRef(0);
@@ -476,7 +477,13 @@ export function JobWorkspace() {
     if (!job || WEB_RUNTIME_SETTINGS.dataMode !== 'api' || !state.user) return;
     let cancelled = false;
     setEvidenceSources([]);
-    void fetchJobEvidence(job.id).then((sources) => { if (!cancelled) setEvidenceSources(sources); }).catch(() => { if (!cancelled) setEvidenceSources([]); });
+    setRouteDecision(null);
+    void Promise.allSettled([fetchJobEvidence(job.id), fetchJobRoute(job.id)])
+      .then(([evidenceResult, routeResult]) => {
+        if (cancelled) return;
+        setEvidenceSources(evidenceResult.status === 'fulfilled' ? evidenceResult.value : []);
+        setRouteDecision(routeResult.status === 'fulfilled' ? routeResult.value : null);
+      });
     return () => { cancelled = true; };
   }, [job?.id, job?.status, state.user?.id]);
 
@@ -779,6 +786,42 @@ export function JobWorkspace() {
                 AgentPlace assembled the smallest competent team for this job. Supporting workers are
                 not added to your permanent workforce.
               </p>
+              {productionConversation && routeDecision && (
+                <details className="border border-border rounded-lg bg-panel px-4 py-3">
+                  <summary className="cursor-pointer text-xs font-medium text-primary focus-visible:outline-2 focus-visible:outline-primary">
+                    How AgentPlace routed this job
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <p className="text-xs text-text-sub leading-relaxed">{routeDecision.routingExplanation}</p>
+                    <div className="flex flex-wrap gap-2 text-[11px]">
+                      <span className="rounded border border-border px-2 py-1 text-text-muted">{routeDecision.intentDomain}</span>
+                      <span className={`rounded border px-2 py-1 ${routeDecision.status === 'routable' ? 'border-accent/30 text-accent' : routeDecision.status === 'partially-routable' ? 'border-warn/30 text-warn' : 'border-danger/30 text-danger'}`}>
+                        {routeDecision.status === 'partially-routable' ? 'Partially routable' : routeDecision.status === 'routable' ? 'Routable' : 'Blocked'}
+                      </span>
+                      <span className="rounded border border-border px-2 py-1 text-text-muted">Read-only · no financial authority</span>
+                    </div>
+                    <div className="space-y-2">
+                      {routeDecision.capabilityRoutes.filter((capability) => capability.required).map((capability) => (
+                        <div key={capability.capabilityId} className="rounded border border-border-dim px-3 py-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-text">{capability.capabilityName}</p>
+                              <p className="text-[11px] text-text-muted mt-0.5 break-words">{capability.capabilityId}</p>
+                            </div>
+                            <span className={`text-[11px] shrink-0 ${capability.status === 'routable' ? 'text-accent' : capability.status === 'blocked' ? 'text-danger' : 'text-warn'}`}>
+                              {capability.status === 'routable' ? 'Routable' : capability.status === 'blocked' ? 'Blocked' : 'Unavailable'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-text-sub mt-1.5 leading-relaxed">{capability.reason}</p>
+                          {capability.selectedProvider && capability.selectedProvider !== 'agentplace' && (
+                            <p className="text-[11px] text-text-muted mt-1">Provider: {capability.selectedProvider}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+              )}
               <div className="border border-border rounded-lg bg-panel px-4 py-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm font-semibold text-text">{job.leadWorkerName}</span>

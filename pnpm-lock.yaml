@@ -35,6 +35,9 @@ importers:
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
+      '@agent-place/router':
+        specifier: workspace:*
+        version: link:../../packages/router
       '@agent-place/workers':
         specifier: workspace:*
         version: link:../../packages/workers
@@ -99,6 +102,9 @@ importers:
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
+      '@agent-place/router':
+        specifier: workspace:*
+        version: link:../../packages/router
       '@agent-place/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -185,7 +191,17 @@ importers:
 
   packages/risk: {}
 
-  packages/router: {}
+  packages/router:
+    dependencies:
+      '@agent-place/capabilities':
+        specifier: workspace:*
+        version: link:../capabilities
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
+      '@agent-place/workers':
+        specifier: workspace:*
+        version: link:../workers
 
   packages/shared: {}
 

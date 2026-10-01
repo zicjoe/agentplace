@@ -129,3 +129,59 @@ export async function fetchJobEvidence(jobId:string):Promise<JobEvidenceSource[]
   return data.sources;
 }
 
+export interface RouteCandidateImplementation {
+  implementationId:string;
+  provider:string;
+  name:string;
+  healthStatus:'healthy'|'degraded'|'unavailable'|'unknown';
+  trustStatus:string;
+  priority:number;
+  invocationKind:string;
+  eligible:boolean;
+  selected:boolean;
+  fallbackRank?:number;
+  reason:string;
+}
+
+export interface JobRouteCapability {
+  capabilityId:string;
+  capabilityName:string;
+  required:boolean;
+  effect:'read'|'write'|'economic-write';
+  lifecycleStatus:string;
+  status:'routable'|'unavailable'|'blocked';
+  reason:string;
+  selectedImplementationId?:string;
+  selectedProvider?:string;
+  candidates:RouteCandidateImplementation[];
+  compatibleWorkerIds:string[];
+}
+
+export interface JobRouteDecision {
+  id:string;
+  taskId:string;
+  conversationId:string;
+  jobId?:string;
+  status:'routable'|'partially-routable'|'blocked';
+  intentDomain:string;
+  goal:string;
+  deploymentEnvironment:string;
+  requestedNetworks:string[];
+  leadWorkerId:string;
+  leadWorkerName:string;
+  supportingWorkerIds:string[];
+  supportingWorkerNames:string[];
+  requiredCapabilities:string[];
+  optionalCapabilities:string[];
+  capabilityRoutes:JobRouteCapability[];
+  unavailableCapabilities:string[];
+  routingExplanation:string;
+  createdAt:string;
+  updatedAt:string;
+}
+
+export async function fetchJobRoute(jobId:string):Promise<JobRouteDecision|null> {
+  const data=await request<{route:JobRouteDecision|null}>(`/api/v1/jobs/${encodeURIComponent(jobId)}/route`);
+  return data.route;
+}
+

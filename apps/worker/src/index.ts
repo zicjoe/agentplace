@@ -17,11 +17,21 @@ import {
 } from '@agent-place/jobs';
 import {
   generateStructured,
+  getModelCatalog,
   researchWithWeb,
   type ModelCallResult,
+  type ModelProvider,
   type ModelProviderPreference,
+  type ResearchResult,
 } from '@agent-place/models';
-import { defineService } from '@agent-place/shared';
+import {
+  attachRouteDecisionToJob,
+  planRoute,
+  routedProvidersForCapability,
+  type DurableRouteDecision,
+  type RouteProposal,
+} from '@agent-place/router';
+import { defineService, parseEnvironmentContract } from '@agent-place/shared';
 import { listWorkerCatalog } from '@agent-place/workers';
 import {
   appendCoverageFallback,
@@ -34,13 +44,14 @@ import {
 export const service = defineService({
   name: 'agent-place-worker',
   runtimeClass: 'worker',
-  version: '0.5.0',
-  milestone: 4,
+  version: '0.6.0',
+  milestone: 5,
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const pollMs = Math.max(500, Number.parseInt(process.env.AI_WORKER_POLL_MS ?? '1500', 10) || 1500);
 let stopping = false;
+const deploymentEnvironment = parseEnvironmentContract(process.env).environment;
 
 const decisionSchema = {
   type: 'object',
@@ -56,11 +67,29 @@ const decisionSchema = {
     directAnswer: { type: 'string' },
     clarifyingQuestion: { type: 'string' },
     stages: { type: 'array', items: { type: 'string' } },
+    intentDomain: { type: 'string' },
+    requestedNetworks: { type: 'array', items: { type: 'string' } },
     requiredCapabilities: { type: 'array', items: { type: 'string' } },
+    optionalCapabilities: { type: 'array', items: { type: 'string' } },
+    capabilityGraph: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string' },
+          capabilityId: { type: 'string' },
+          dependsOn: { type: 'array', items: { type: 'string' } },
+          purpose: { type: 'string' },
+        },
+        required: ['id', 'capabilityId', 'dependsOn', 'purpose'],
+      },
+    },
   },
   required: [
     'responseMode', 'title', 'goal', 'leadWorkerId', 'supportingWorkerIds', 'researchQuery', 'researchRequirements',
-    'directAnswer', 'clarifyingQuestion', 'stages', 'requiredCapabilities',
+    'directAnswer', 'clarifyingQuestion', 'stages', 'intentDomain', 'requestedNetworks', 'requiredCapabilities',
+    'optionalCapabilities', 'capabilityGraph',
   ],
 } as const;
 
@@ -75,7 +104,11 @@ type Decision = {
   directAnswer: string;
   clarifyingQuestion: string;
   stages: string[];
+  intentDomain: string;
+  requestedNetworks: string[];
   requiredCapabilities: string[];
+  optionalCapabilities: string[];
+  capabilityGraph: Array<{ id: string; capabilityId: string; dependsOn: string[]; purpose: string }>;
 };
 
 type IntelligenceContextValue = NonNullable<Awaited<ReturnType<typeof getIntelligenceContext>>>;
@@ -153,8 +186,16 @@ async function decide(task: IntelligenceTask, context: IntelligenceContextValue)
       researchRequirements: [user],
       directAnswer: '',
       clarifyingQuestion: '',
-      stages: ['Plan research', 'Gather current sources', 'Synthesize evidence'],
-      requiredCapabilities: ['research.web.search'],
+      stages: ['Plan route', 'Gather current sources', 'Synthesize evidence'],
+      intentDomain: 'research',
+      requestedNetworks: [],
+      requiredCapabilities: ['research.web.search', 'research.web.read', 'research.source.extract'],
+      optionalCapabilities: [],
+      capabilityGraph: [
+        { id: 'search', capabilityId: 'research.web.search', dependsOn: [], purpose: 'Find current public evidence.' },
+        { id: 'read', capabilityId: 'research.web.read', dependsOn: ['search'], purpose: 'Read relevant sources.' },
+        { id: 'extract', capabilityId: 'research.source.extract', dependsOn: ['read'], purpose: 'Extract grounded findings.' },
+      ],
     };
   }
 
@@ -174,8 +215,16 @@ async function decide(task: IntelligenceTask, context: IntelligenceContextValue)
       researchRequirements: [user],
       directAnswer: '',
       clarifyingQuestion: '',
-      stages: ['Refresh evidence', 'Synthesize update'],
-      requiredCapabilities: ['research.web.search'],
+      stages: ['Plan route', 'Refresh evidence', 'Synthesize update'],
+      intentDomain: 'research',
+      requestedNetworks: [],
+      requiredCapabilities: ['research.web.search', 'research.web.read', 'research.source.extract'],
+      optionalCapabilities: [],
+      capabilityGraph: [
+        { id: 'search', capabilityId: 'research.web.search', dependsOn: [], purpose: 'Refresh current public evidence.' },
+        { id: 'read', capabilityId: 'research.web.read', dependsOn: ['search'], purpose: 'Read relevant sources.' },
+        { id: 'extract', capabilityId: 'research.source.extract', dependsOn: ['read'], purpose: 'Extract grounded findings.' },
+      ],
     };
   }
 
@@ -185,7 +234,15 @@ async function decide(task: IntelligenceTask, context: IntelligenceContextValue)
   const available = capabilities.filter((capability) => capability.lifecycleStatus !== 'planned').map((capability) => capability.id);
   const knownCapabilityIds = new Set(capabilities.map((capability) => capability.id));
   const capabilityCatalog = capabilities.map((capability) => `${capability.id} [${capability.lifecycleStatus}] — ${capability.purpose}`).join('\n');
-  const system = `You are AgentPlace Manager, the orchestration intelligence for a crypto Worker operating system. Convert the user's request into a bounded structured decision. Use a Job for requests needing current research, comparison, multiple steps, evidence, or specialist work. Use direct only for simple conversational guidance that does not require current external facts. Never claim wallet authority, financial execution, live onchain facts, or capabilities that are not available. Choose the smallest competent Worker team. For research Jobs, researchRequirements must enumerate every material dimension the user asked to have answered, including any dimension that may be unavailable. Do not collapse several distinct requested checks into one vague item when the user clearly asked for them separately. requiredCapabilities must include every known canonical capability ID materially required by the request even when its lifecycle is planned; this is planning metadata and does not make it available. Never invent capability IDs outside the catalog.\n\nWorkers:\n${catalog.map((worker) => `${worker.id}: ${worker.name} — ${worker.responsibility}`).join('\n')}\n\nCapability catalog:\n${capabilityCatalog || 'none'}\n\nCurrently live capabilities: ${available.join(', ') || 'none'}.`;
+  const system = `You are AgentPlace Manager, the orchestration intelligence for a crypto Worker operating system. Convert the user's request into a bounded structured proposal for the deterministic AgentPlace Router. Use a Job for requests needing current research, comparison, multiple steps, evidence, or specialist work. Use direct only for simple conversational guidance that does not require current external facts. Never claim wallet authority, financial execution, live onchain facts, or capabilities that are not available. Router v1 is read-only: if the user asks AgentPlace to move funds or execute a financial action, do not pretend execution exists; explain that execution is not available in this milestone. Choose the smallest competent Worker team. For research Jobs, researchRequirements must enumerate every material dimension the user asked to have answered, including any dimension that may be unavailable. Do not collapse distinct requested checks into one vague item. intentDomain should be a short stable domain label such as research, token-intelligence, wallet-intelligence, portfolio, defi, stablecoins, perps, transactions, or create. requestedNetworks should contain only networks explicitly relevant to the request; otherwise use an empty array. requiredCapabilities must include every known canonical capability ID materially required by the request even when its lifecycle is planned; this is planning metadata and does not make it available. optionalCapabilities are useful but non-essential capabilities. capabilityGraph must describe the proposed dependency order using only capability IDs from requiredCapabilities or optionalCapabilities. The deterministic Router will validate Workers, capability lifecycle, environment, provider configuration, health, networks and read/write boundaries after your proposal. Never invent capability IDs outside the catalog.
+
+Workers:
+${catalog.map((worker) => `${worker.id}: ${worker.name} — ${worker.responsibility}`).join('\n')}
+
+Capability catalog:
+${capabilityCatalog || 'none'}
+
+Currently live capabilities: ${available.join(', ') || 'none'}.`;
   const run = await generateStructured<Decision>({
     provider: task.providerPreference,
     ...(task.modelPreference ? { model: task.modelPreference } : {}),
@@ -202,16 +259,56 @@ async function decide(task: IntelligenceTask, context: IntelligenceContextValue)
   const value = run.value;
   if (!validIds.has(value.leadWorkerId)) value.leadWorkerId = fallbackLead;
   value.supportingWorkerIds = value.supportingWorkerIds.filter((id) => id !== value.leadWorkerId && validIds.has(id)).slice(0, 4);
-  value.stages = value.stages.filter(Boolean).slice(0, 8);
-  if (value.stages.length === 0) value.stages = ['Plan research', 'Gather current sources', 'Synthesize evidence'];
+  value.stages = value.stages.filter(Boolean).slice(0, 7);
+  if (value.stages.length === 0) value.stages = ['Gather current sources', 'Synthesize evidence'];
+  if (!value.stages.some((stage) => /route/i.test(stage))) value.stages.unshift('Plan route');
   if (!value.stages.some((stage) => /coverage/i.test(stage))) {
     if (value.stages.length >= 8) value.stages[value.stages.length - 1] = 'Validate research coverage';
     else value.stages.push('Validate research coverage');
   }
   value.researchRequirements = value.researchRequirements.filter(Boolean).slice(0, 12);
   if (value.researchRequirements.length === 0) value.researchRequirements = [user];
-  value.requiredCapabilities = value.requiredCapabilities.filter((id) => knownCapabilityIds.has(id));
+  value.intentDomain = value.intentDomain.trim().slice(0, 120) || 'research';
+  value.requestedNetworks = [...new Set(value.requestedNetworks.map((network) => network.trim()).filter(Boolean))].slice(0, 12);
+  value.requiredCapabilities = [...new Set(value.requiredCapabilities.filter((id) => knownCapabilityIds.has(id)))].slice(0, 24);
+  value.optionalCapabilities = [...new Set(value.optionalCapabilities.filter((id) => knownCapabilityIds.has(id) && !value.requiredCapabilities.includes(id)))].slice(0, 16);
+  value.capabilityGraph = value.capabilityGraph.filter((node) => node && knownCapabilityIds.has(node.capabilityId)).slice(0, 24);
   return value;
+}
+
+
+function toRouteProposal(decision: Decision): RouteProposal {
+  return {
+    intentDomain: decision.intentDomain,
+    goal: decision.goal,
+    requestedNetworks: decision.requestedNetworks,
+    leadWorkerId: decision.leadWorkerId,
+    supportingWorkerIds: decision.supportingWorkerIds,
+    requiredCapabilities: decision.requiredCapabilities,
+    optionalCapabilities: decision.optionalCapabilities,
+    capabilityGraph: decision.capabilityGraph,
+  };
+}
+
+async function routeTask(task: IntelligenceTask, context: IntelligenceContextValue, decision: Decision): Promise<DurableRouteDecision> {
+  const defaultProvider = getModelCatalog().defaultProvider;
+  const forcedLeadWorkerId = context.scope === 'worker' && context.worker
+    ? context.worker.id
+    : context.scope === 'job'
+      ? decision.leadWorkerId
+      : undefined;
+  const forcedSupportingWorkerIds = context.scope === 'job' ? decision.supportingWorkerIds : undefined;
+  return planRoute({
+    ownerUserId: task.ownerUserId,
+    taskId: task.id,
+    conversationId: context.conversationId,
+    proposal: toRouteProposal(decision),
+    deploymentEnvironment,
+    preferredProvider: task.providerPreference,
+    defaultProvider,
+    ...(forcedLeadWorkerId ? { forcedLeadWorkerId } : {}),
+    ...(forcedSupportingWorkerIds ? { forcedSupportingWorkerIds } : {}),
+  });
 }
 
 async function addAssistantMessage(
@@ -234,11 +331,14 @@ async function addAssistantMessage(
   });
 }
 
-async function createResearchJob(task: IntelligenceTask, context: IntelligenceContextValue, decision: Decision): Promise<{ jobId: string; jobConversationId: string }> {
-  if (context.scope === 'job' && context.job) return { jobId: context.job.id, jobConversationId: context.conversationId };
+async function createResearchJob(task: IntelligenceTask, context: IntelligenceContextValue, decision: Decision, route: DurableRouteDecision): Promise<{ jobId: string; jobConversationId: string }> {
+  if (context.scope === 'job' && context.job) {
+    await attachRouteDecisionToJob(task.ownerUserId, task.id, context.job.id);
+    return { jobId: context.job.id, jobConversationId: context.conversationId };
+  }
 
   const jobId = `job_${task.id}`;
-  const stages = decision.stages.map((label, index) => ({ id: `stage_${index + 1}`, label, ordinal: index, status: index === 0 ? 'active' as const : 'pending' as const }));
+  const stages = decision.stages.map((label, index) => ({ id: `stage_${index + 1}`, label, ordinal: index, status: index === 0 ? 'done' as const : index === 1 ? 'active' as const : 'pending' as const }));
   await createJob(task.ownerUserId, {
     id: jobId,
     title: decision.title.slice(0, 200) || 'Research Job',
@@ -251,7 +351,7 @@ async function createResearchJob(task: IntelligenceTask, context: IntelligenceCo
     supportingWorkerIds: decision.supportingWorkerIds,
     ...(context.workerId ? { originWorkerId: context.workerId } : {}),
     originConversationId: context.conversationId,
-    currentStage: stages[0]?.label ?? 'Researching',
+    currentStage: stages[1]?.label ?? stages[0]?.label ?? 'Researching',
     stages,
   });
 
@@ -268,7 +368,11 @@ async function createResearchJob(task: IntelligenceTask, context: IntelligenceCo
     messages: [],
   });
   await setJobConversation(task.ownerUserId, jobId, jobConversationId);
-  await addAssistantMessage(task.ownerUserId, context.conversationId, `I created **${decision.title}** and started real read-only research. You can open the Job to follow its evidence and progress.`, undefined, jobId, `msg_job_created_${task.id}`);
+  await attachRouteDecisionToJob(task.ownerUserId, task.id, jobId);
+  const routeNote = route.status === 'partially-routable'
+    ? ' Some requested checks require capabilities that are not live yet; those parts will be marked unavailable rather than guessed.'
+    : '';
+  await addAssistantMessage(task.ownerUserId, context.conversationId, `I created **${decision.title}** and started real read-only research.${routeNote} You can open the Job to follow its evidence, routing and progress.`, undefined, jobId, `msg_job_created_${task.id}`);
   return { jobId, jobConversationId };
 }
 
@@ -307,25 +411,60 @@ function researchBundle(args: {
   ].join('\n');
 }
 
+
+async function researchWithRouteFallback(
+  task: IntelligenceTask,
+  route: DurableRouteDecision,
+  system: string,
+  query: string,
+): Promise<ModelCallResult<ResearchResult>> {
+  const routed = routedProvidersForCapability(route, 'research.web.search')
+    .map((candidate) => candidate.provider)
+    .filter((provider): provider is ModelProvider => provider === 'openai' || provider === 'gemini' || provider === 'anthropic');
+  const providers: ModelProviderPreference[] = task.providerPreference === 'auto'
+    ? [...new Set(routed)].slice(0, 2)
+    : [task.providerPreference];
+  const attempts = providers.length ? providers : [task.providerPreference];
+  let lastError: unknown;
+  for (let index = 0; index < attempts.length; index += 1) {
+    const provider = attempts[index]!;
+    try {
+      return await researchWithWeb({
+        provider,
+        ...(task.modelPreference && provider === task.providerPreference ? { model: task.modelPreference } : {}),
+        system,
+        query,
+      });
+    } catch (error) {
+      lastError = error;
+      const hasFallback = task.providerPreference === 'auto' && index < attempts.length - 1;
+      if (!hasFallback) break;
+      process.stderr.write(`${JSON.stringify({ level: 'warn', service: service.name, taskId: task.id, routeId: route.id, provider, message: 'Routed research provider failed; trying eligible fallback', error: error instanceof Error ? error.message : String(error) })}\n`);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('ROUTED_RESEARCH_PROVIDER_FAILED');
+}
+
 async function executeResearch(
   task: IntelligenceTask,
   context: IntelligenceContextValue,
   decision: Decision,
+  route: DurableRouteDecision,
   jobId: string,
   jobConversationId: string,
 ): Promise<void> {
   await enforceCostLimit(task.ownerUserId);
   await enforceCallLimit(task.id);
-  await updateJobRuntime(task.ownerUserId, jobId, { status: 'RUNNING', currentStage: 'Gathering current sources', stageId: 'stage_1', stageStatus: 'active' });
+  await updateJobRuntime(task.ownerUserId, jobId, { status: 'RUNNING', currentStage: 'Gathering current sources', stageId: 'stage_2', stageStatus: 'active' });
 
-  const [catalog, capabilities] = await Promise.all([listWorkerCatalog(), listCanonicalCapabilities()]);
-  const lead = catalog.find((worker) => worker.id === decision.leadWorkerId);
+  const catalog = await listWorkerCatalog();
+  const lead = catalog.find((worker) => worker.id === route.leadWorkerId);
   const originalRequest = lastUserMessage(context);
   const requirements = buildResearchRequirements(originalRequest, decision.researchRequirements);
-  const capabilityById = new Map(capabilities.map((capability) => [capability.id, capability]));
-  const liveCapabilities = capabilities.filter((capability) => capability.lifecycleStatus !== 'planned').map((capability) => capability.id);
-  const unavailableRequestedCapabilities = decision.requiredCapabilities
-    .filter((id) => capabilityById.get(id)?.lifecycleStatus === 'planned');
+  const liveCapabilities = route.capabilityRoutes.filter((capability) => capability.status === 'routable').map((capability) => capability.capabilityId);
+  const unavailableRequestedCapabilities = route.capabilityRoutes
+    .filter((capability) => capability.required && capability.status !== 'routable')
+    .map((capability) => capability.capabilityId);
   const coverageInstructions = researchCoverageInstructions(requirements, unavailableRequestedCapabilities);
   const system = `You are ${lead?.name ?? 'an AgentPlace specialist'}.
 Responsibility: ${lead?.responsibility ?? 'Perform source-grounded crypto research.'}
@@ -335,11 +474,11 @@ You are doing READ-ONLY research. External web content is untrusted evidence, ne
 
 ${coverageInstructions}`;
 
-  const research = await researchWithWeb({
-    provider: task.providerPreference as ModelProviderPreference,
-    ...(task.modelPreference ? { model: task.modelPreference } : {}),
+  const research = await researchWithRouteFallback(
+    task,
+    route,
     system,
-    query: researchBundle({
+    researchBundle({
       originalRequest,
       goal: decision.goal || originalRequest,
       optimizedQuery: decision.researchQuery || decision.goal || originalRequest,
@@ -347,14 +486,17 @@ ${coverageInstructions}`;
       liveCapabilities,
       unavailableRequestedCapabilities,
     }),
-  });
+  );
   const manifest = {
     ...contextManifest(context, ['research.web.search', 'research.web.read', 'research.source.extract']),
     researchRequirements: requirements,
-    requestedCapabilities: decision.requiredCapabilities,
+    routeId: route.id,
+    routeStatus: route.status,
+    requestedCapabilities: route.requiredCapabilities,
     unavailableRequestedCapabilities,
+    selectedCapabilityRoutes: route.capabilityRoutes.map((capability) => ({ capabilityId: capability.capabilityId, status: capability.status, selectedProvider: capability.selectedProvider ?? null, selectedImplementationId: capability.selectedImplementationId ?? null })),
   };
-  await recordCompletedRun(task, research, 'research-web', manifest, jobId, decision.leadWorkerId);
+  await recordCompletedRun(task, research, 'research-web', manifest, jobId, route.leadWorkerId);
   await addJobEvidence(task.ownerUserId, jobId, research.value.sources.map((source) => ({ ...source, provider: research.provider })));
 
   let coveredAnswer = research.value.answer.trim();
@@ -365,15 +507,15 @@ ${coverageInstructions}`;
       await enforceCallLimit(task.id);
       const sourceContext = research.value.sources.slice(0, 12).map((source, index) => `${index + 1}. ${source.title} — ${source.url}`).join('\n');
       const correction = await generateStructured<CoverageCorrection>({
-        provider: task.providerPreference,
-        ...(task.modelPreference ? { model: task.modelPreference } : {}),
+        provider: research.provider,
+        ...(task.modelPreference && research.provider === task.providerPreference ? { model: task.modelPreference } : {}),
         role: 'balanced',
         system: `You are AgentPlace Research Coverage Editor. You do not perform new research and you must not add new factual claims. Repair only the completeness and structure of an already completed research answer. Preserve supported findings and uncertainty. Every material requirement must be explicitly addressed. If the existing answer and preserved source list do not establish a requirement, mark it "Not verified / capability unavailable" rather than guessing. If it is only partly established, mark it "Partially verified". Include the exact "## Coverage" Markdown table required below, then retain useful detailed analysis. Do not add a final Sources section because AgentPlace appends preserved provider URLs separately.\n\n${coverageInstructions}`,
         user: `ORIGINAL USER REQUEST:\n${originalRequest}\n\nJOB GOAL:\n${decision.goal || originalRequest}\n\nEXISTING RESEARCH ANSWER:\n${coveredAnswer}\n\nPRESERVED SOURCE REFERENCES (titles/URLs only; do not infer claims from a URL alone):\n${sourceContext || 'none'}`,
         schemaName: 'agentplace_research_coverage_correction',
         schema: coverageCorrectionSchema as unknown as Record<string, unknown>,
       });
-      await recordCompletedRun(task, correction, 'research-coverage-correction', manifest, jobId, decision.leadWorkerId);
+      await recordCompletedRun(task, correction, 'research-coverage-correction', manifest, jobId, route.leadWorkerId);
       coveredAnswer = correction.value.answer.trim();
     } catch (error) {
       process.stderr.write(`${JSON.stringify({ level: 'warn', service: service.name, taskId: task.id, jobId, message: 'Research coverage correction unavailable; applying deterministic truthful fallback', error: error instanceof Error ? error.message : String(error) })}\n`);
@@ -385,8 +527,8 @@ ${coverageInstructions}`;
 
   await getDatabasePool().query(`UPDATE job_stage SET status='done',updated_at=now() WHERE job_id=$1`, [jobId]);
   await updateJobRuntime(task.ownerUserId, jobId, { status: 'COMPLETED', currentStage: 'Research complete' });
-  await appendJobEvent({ ownerUserId: task.ownerUserId, jobId, workerId: decision.leadWorkerId, eventType: 'job.completed', title: decision.title || 'Research completed', summary: `${requirements.length}/${requirements.length} research requirement${requirements.length === 1 ? '' : 's'} addressed · ${research.value.sources.length} source${research.value.sources.length === 1 ? '' : 's'} preserved`, status: 'COMPLETED', eventId: `evt_job_completed_${task.id}` });
-  await getDatabasePool().query(`UPDATE user_worker SET status='standby',current_job_id=NULL,current_focus=NULL,updated_at=now() WHERE owner_user_id=$1 AND id=$2 AND status NOT IN ('paused','removed','blocked','limited')`, [task.ownerUserId, decision.leadWorkerId]);
+  await appendJobEvent({ ownerUserId: task.ownerUserId, jobId, workerId: route.leadWorkerId, eventType: 'job.completed', title: decision.title || 'Research completed', summary: `${requirements.length}/${requirements.length} research requirement${requirements.length === 1 ? '' : 's'} addressed · ${research.value.sources.length} source${research.value.sources.length === 1 ? '' : 's'} preserved`, status: 'COMPLETED', eventId: `evt_job_completed_${task.id}` });
+  await getDatabasePool().query(`UPDATE user_worker SET status='standby',current_job_id=NULL,current_focus=NULL,updated_at=now() WHERE owner_user_id=$1 AND id=$2 AND status NOT IN ('paused','removed','blocked','limited')`, [task.ownerUserId, route.leadWorkerId]);
 
   const sourceLines = research.value.sources.slice(0, 8).map((source, index) => `${index + 1}. ${source.title} — ${source.url}`);
   const answer = `${coveredAnswer}${sourceLines.length ? `\n\n## Sources\n${sourceLines.join('\n')}` : '\n\nI completed the research, but the provider returned no preservable source URLs. Treat unsupported current claims cautiously.'}`;
@@ -412,8 +554,27 @@ async function processTask(task: IntelligenceTask): Promise<void> {
     return;
   }
 
-  const { jobId, jobConversationId } = await createResearchJob(task, context, decision);
-  await executeResearch(task, context, decision, jobId, jobConversationId);
+  const route = await routeTask(task, context, decision);
+  if (route.status === 'blocked') {
+    if (context.scope === 'job' && context.job) await attachRouteDecisionToJob(task.ownerUserId, task.id, context.job.id);
+    const unavailable = route.capabilityRoutes
+      .filter((capability) => capability.required && capability.status !== 'routable')
+      .map((capability) => capability.capabilityName);
+    const detail = unavailable.length ? ` Required capability limits: ${unavailable.join(', ')}.` : '';
+    await addAssistantMessage(
+      task.ownerUserId,
+      context.conversationId,
+      `I could not route this as a safe read-only Job. ${route.routingExplanation}${detail}`,
+      undefined,
+      context.jobId,
+      `msg_route_blocked_${task.id}`,
+    );
+    await completeIntelligenceTask(task.id);
+    return;
+  }
+
+  const { jobId, jobConversationId } = await createResearchJob(task, context, decision, route);
+  await executeResearch(task, context, decision, route, jobId, jobConversationId);
   await completeIntelligenceTask(task.id);
 }
 

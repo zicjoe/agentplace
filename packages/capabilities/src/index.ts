@@ -2,6 +2,7 @@ import { getDatabasePool } from '@agent-place/db';
 
 export type CapabilityEffect = 'read' | 'write' | 'economic-write';
 export type CapabilityLifecycleStatus = 'planned' | 'schema-validated' | 'tested' | 'limited-production' | 'production-observed' | 'agentplace-verified';
+export type CapabilityHealthStatus = 'healthy' | 'degraded' | 'unavailable' | 'unknown';
 
 export interface CanonicalCapability {
   id: string;
@@ -21,9 +22,15 @@ export interface CapabilityImplementation {
   provider: string;
   name: string;
   version: string;
+  supportedNetworks: string[];
+  pricing: Record<string, unknown>;
   trustStatus: string;
-  healthStatus: 'healthy' | 'degraded' | 'unavailable' | 'unknown';
+  healthStatus: CapabilityHealthStatus;
   invocationKind: string;
+  knownFailureStates: string[];
+  priority: number;
+  enabled: boolean;
+  environmentEligibility: string[];
 }
 
 type CapabilityRow = {
@@ -31,9 +38,13 @@ type CapabilityRow = {
   input_schema:Record<string,unknown>; output_schema:Record<string,unknown>; lifecycle_status:CapabilityLifecycleStatus;
 };
 type ImplementationRow = {
-  id:string; canonical_capability_id:string; provider:string; name:string; version:string; trust_status:string;
-  health_status:'healthy'|'degraded'|'unavailable'|'unknown'; invocation_kind:string;
+  id:string; canonical_capability_id:string; provider:string; name:string; version:string; supported_networks:unknown; pricing:Record<string,unknown>;
+  trust_status:string; health_status:CapabilityHealthStatus; invocation_kind:string; known_failure_states:unknown; priority:number; enabled:boolean; environment_eligibility:unknown;
 };
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
 
 export async function listCanonicalCapabilities(): Promise<CanonicalCapability[]> {
   const result = await getDatabasePool().query<CapabilityRow>(
@@ -48,12 +59,15 @@ export async function listCanonicalCapabilities(): Promise<CanonicalCapability[]
 
 export async function listCapabilityImplementations(): Promise<CapabilityImplementation[]> {
   const result = await getDatabasePool().query<ImplementationRow>(
-    `SELECT id,canonical_capability_id,provider,name,version,trust_status,health_status,invocation_kind
-     FROM capability_implementation ORDER BY canonical_capability_id,provider,id`,
+    `SELECT id,canonical_capability_id,provider,name,version,supported_networks,pricing,trust_status,health_status,invocation_kind,
+            known_failure_states,priority,enabled,environment_eligibility
+     FROM capability_implementation ORDER BY canonical_capability_id,priority,provider,id`,
   );
   return result.rows.map((row)=>({
     id:row.id,canonicalCapabilityId:row.canonical_capability_id,provider:row.provider,name:row.name,version:row.version,
-    trustStatus:row.trust_status,healthStatus:row.health_status,invocationKind:row.invocation_kind,
+    supportedNetworks:strings(row.supported_networks),pricing:row.pricing,trustStatus:row.trust_status,healthStatus:row.health_status,
+    invocationKind:row.invocation_kind,knownFailureStates:strings(row.known_failure_states),priority:row.priority,enabled:row.enabled,
+    environmentEligibility:strings(row.environment_eligibility),
   }));
 }
 
@@ -65,4 +79,4 @@ export function configuredResearchProviders(): Array<'openai'|'gemini'|'anthropi
   return providers;
 }
 
-export const moduleManifest = { name:'capabilities', layer:'controlled-runtime', milestone:4, status:'active' } as const;
+export const moduleManifest = { name:'capabilities', layer:'controlled-runtime', milestone:5, status:'router-ready-registry' } as const;

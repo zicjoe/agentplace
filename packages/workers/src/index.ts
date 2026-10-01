@@ -8,6 +8,7 @@ export interface WorkerCatalogItem {
   id: string;
   slug: string;
   origin: WorkerOrigin;
+  trustStatus: string;
   creatorName: string;
   name: string;
   tagline: string;
@@ -37,7 +38,7 @@ export interface DurableUserWorker extends WorkerCatalogItem {
 }
 
 type CatalogRow = {
-  id: string; slug: string; origin: WorkerOrigin; creator_name: string; name: string; tagline: string; responsibility: string; category: string;
+  id: string; slug: string; origin: WorkerOrigin; trust_status: string; creator_name: string; name: string; tagline: string; responsibility: string; category: string;
   version_id: string; version: string; default_autonomy: string; mission: string; responsibilities: unknown; anti_jobs: unknown; expected_outputs: unknown;
   success_conditions: unknown; default_approval_boundary: string; default_capability_requirements: unknown;
 };
@@ -50,7 +51,7 @@ type UserWorkerRow = CatalogRow & {
 function strings(value: unknown): string[] { return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []; }
 function catalog(row: CatalogRow): WorkerCatalogItem {
   return {
-    id: row.id, slug: row.slug, origin: row.origin, creatorName: row.creator_name, name: row.name, tagline: row.tagline,
+    id: row.id, slug: row.slug, origin: row.origin, trustStatus: row.trust_status, creatorName: row.creator_name, name: row.name, tagline: row.tagline,
     responsibility: row.responsibility, category: row.category, versionId: row.version_id, version: row.version, defaultAutonomy: row.default_autonomy,
     jobContract: {
       mission: row.mission, responsibilities: strings(row.responsibilities), antiJobs: strings(row.anti_jobs), expectedOutputs: strings(row.expected_outputs),
@@ -67,7 +68,7 @@ function durable(row: UserWorkerRow): DurableUserWorker {
   return out;
 }
 
-const catalogSelect = `d.id,d.slug,d.origin,d.creator_name,d.name,d.tagline,d.responsibility,d.category,
+const catalogSelect = `d.id,d.slug,d.origin,d.trust_status,d.creator_name,d.name,d.tagline,d.responsibility,d.category,
   v.id AS version_id,v.version,v.default_autonomy,c.mission,c.responsibilities,c.anti_jobs,c.expected_outputs,c.success_conditions,
   c.default_approval_boundary,c.default_capability_requirements`;
 const catalogFrom = `FROM worker_definition d
