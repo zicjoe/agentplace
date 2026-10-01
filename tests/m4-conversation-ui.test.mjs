@@ -177,3 +177,49 @@ test('Job Worker links open a contextual Worker Workspace without installing or 
   assert.match(workspace, /Add from Discover/);
   assert.doesNotMatch(workspace, /installDurableWorker/);
 });
+
+test('research coverage contract cannot silently omit requested dimensions', () => {
+  const script = `
+    import assert from 'node:assert/strict';
+    import { buildResearchRequirements, hasResearchCoverage, appendCoverageFallback, researchCoverageInstructions } from './apps/worker/src/researchCoverage.ts';
+    const requirements = buildResearchRequirements('Compare tokens', ['Market context', 'Holder concentration', 'Smart-money activity', 'Holder concentration']);
+    assert.deepEqual(requirements, [
+      { id: 'R1', text: 'Market context' },
+      { id: 'R2', text: 'Holder concentration' },
+      { id: 'R3', text: 'Smart-money activity' },
+    ]);
+    const complete = '## Coverage\\n\\n| Requirement | Requested analysis | Status | Basis |\\n| --- | --- | --- | --- |\\n| R1 | Market context | Verified from available evidence | Sources |\\n| R2 | Holder concentration | Partially verified | Explorer only |\\n| R3 | Smart-money activity | Not verified / capability unavailable | wallet.performance.analyze is non-live |';
+    assert.ok(hasResearchCoverage(complete, requirements));
+    assert.ok(!hasResearchCoverage('## Coverage\\n\\n| R1 | x | y | z |', requirements));
+    const fallback = appendCoverageFallback('Existing research.', requirements, ['wallet.performance.analyze']);
+    assert.ok(hasResearchCoverage(fallback, requirements));
+    assert.ok(fallback.includes('Not verified / capability unavailable'));
+    assert.match(fallback, /wallet\.performance\.analyze/);
+    const instructions = researchCoverageInstructions(requirements, ['wallet.performance.analyze']);
+    assert.match(instructions, /every requirement ID/);
+    assert.match(instructions, /Do not omit/);
+  `;
+  const result = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', '--input-type=module', '-e', script], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('research runtime preserves original intent and validates coverage before completion', () => {
+  const worker = read('apps/worker/src/index.ts');
+  const roadmap = read('docs/ROADMAP.md');
+  assert.match(worker, /researchRequirements/);
+  assert.match(worker, /ORIGINAL USER REQUEST:/);
+  assert.match(worker, /JOB GOAL:/);
+  assert.match(worker, /OPTIMIZED SEARCH QUERY:/);
+  assert.match(worker, /REQUESTED BUT NON-LIVE CAPABILITIES:/);
+  assert.match(worker, /hasResearchCoverage\(coveredAnswer, requirements\)/);
+  assert.match(worker, /research-coverage-correction/);
+  assert.match(worker, /You do not perform new research and you must not add new factual claims/);
+  assert.match(worker, /appendCoverageFallback/);
+  const coverageIndex = worker.indexOf('if (!hasResearchCoverage(coveredAnswer, requirements))');
+  const completeIndex = worker.indexOf("status: 'COMPLETED', currentStage: 'Research complete'");
+  assert.ok(coverageIndex >= 0 && completeIndex > coverageIndex, 'Research complete must occur after coverage validation');
+  assert.match(roadmap, /Milestone 5B — Read-Only Crypto Intelligence Capability Expansion/);
+  assert.match(roadmap, /token\.holders\.analyze/);
+  assert.match(roadmap, /wallet\.performance\.analyze/);
+  assert.match(roadmap, /token\.security\.assess/);
+});

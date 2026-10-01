@@ -22,6 +22,9 @@ Milestone 4 makes AgentPlace's intelligence layer real without introducing finan
 - Context assembly that is scoped to the current user, conversation, Worker and Job.
 - AI timeout, per-task call ceiling, daily estimated-cost ceiling and bounded context/output.
 - Prompt-injection trust boundary: web content is evidence, never authority.
+- Research Coverage Contract: every material research requirement must be explicitly addressed before a Job can be shown as Research complete; unsupported dimensions are marked unverified/unavailable rather than silently omitted.
+- The Worker preserves the original user request and Job goal alongside the Manager's optimized search query so retrieval wording cannot silently narrow the authoritative research goal.
+- A bounded coverage-correction pass may reorganize existing findings without new research; if that pass is unavailable, a deterministic truthful fallback marks missing requirements as not verified instead of inventing facts.
 
 ## Explicit boundaries
 
@@ -44,5 +47,6 @@ The server-side environment may configure Gemini, OpenAI, or both. API keys stay
 5. Manager planning or Worker reasoning occurs through the Model Gateway.
 6. Research uses the live read-only web capability.
 7. Sources and ModelRun provenance are persisted.
-8. Job/Conversation/Activity state is updated in PostgreSQL.
-9. Web periodically rehydrates durable state; browser closure does not cancel the Job.
+8. The Worker validates explicit research-requirement coverage and, only when needed, performs one bounded no-new-research correction pass.
+9. Job/Conversation/Activity state is updated in PostgreSQL only after every material requirement has been explicitly addressed, including truthful unavailable/unverified statuses.
+10. Web periodically rehydrates durable state; browser closure does not cancel the Job.

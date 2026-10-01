@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — Milestone 4 research coverage contract
+
+- Added explicit per-Job research requirements so Manager planning preserves every material dimension of the user's request.
+- Kept the original request and Job goal authoritative alongside optimized search wording.
+- Added a required research `Coverage` table with truthful verified/partial/unverified statuses.
+- Added a bounded no-new-research coverage correction pass and deterministic safe fallback before `Research complete`.
+- Recorded requested/non-live capability context in ModelRun provenance without making planned capabilities executable.
+- Scheduled Milestone 5B for real provider-backed read-only crypto intelligence after Router v1.
+
 ## v0.5.0 — M4 Job-to-Worker cross-link correction (acceptance pending)
 
 - Make Lead and Supporting Worker references in Job Workspace explicitly navigable.

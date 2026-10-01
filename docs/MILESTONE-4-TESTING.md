@@ -41,17 +41,22 @@ Expected:
 - Job and answer restore after sign-in.
 - Repeat the research test from a brand-new Home conversation and confirm the result appears in that same conversation, not only when using an older one.
 
-### Truthfulness / unavailable capability
+### Truthfulness / unavailable capability + coverage contract
 
 Ask:
 
-> Compare BONK, WIF and POPCAT and check smart-money activity and holder concentration.
+> Compare BONK, WIF and POPCAT. Include current market context, holder concentration, smart-money activity, deployer history and security risks. Clearly distinguish what you can verify from public research from what requires dedicated onchain or wallet-intelligence capabilities. Do not invent unavailable data.
 
 Expected:
 
 - AgentPlace may research current public sources;
-- it must not invent holder analytics or wallet-clustering metrics when those dedicated capabilities are still planned;
-- response should distinguish public evidence from unavailable specialist capability depth.
+- the report contains a visible `Coverage` table that explicitly addresses every material requested dimension;
+- each requirement is classified as `Verified from available evidence`, `Partially verified`, or `Not verified / capability unavailable`;
+- it must not invent holder analytics, wallet-clustering/smart-money metrics, deployer conclusions, security scores or onchain state when preserved evidence does not establish them;
+- unavailable specialist depth is stated explicitly rather than silently omitted;
+- the original user request and Job goal remain authoritative even if the Manager generated a narrower optimized search query;
+- `Research complete` is shown only after the coverage contract is satisfied;
+- if the provider omitted the coverage table, AgentPlace may use one bounded correction pass that performs no new research and cannot create new factual claims.
 
 ### Failure safety
 
