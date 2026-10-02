@@ -12,3 +12,12 @@ Run after migration `0007_core_intelligence_fabric.sql` and API/Worker/Web deplo
 8. **No authority regression** — Job Workspace still states read-only/no financial authority and no financial action is created.
 
 M5B.1 is not frozen until the configured-provider tests relevant to the production deployment pass.
+
+## v0.7.1 zero-cost hardening acceptance
+
+1. **Blockscout holder concentration (no key):** on an Arbitrum/Base/Ethereum ERC-20 request, `token.holders.analyze` should route to Blockscout and preserve top-1/top-5/top-10/top-20 deterministic concentration metrics.
+2. **Etherscan free-tier:** with only `ETHERSCAN_API_KEY`, an EVM token deployer request should route to Etherscan and preserve creator + creation transaction evidence; wallet activity remains a bounded sample.
+3. **Alchemy free-tier:** with only `ALCHEMY_API_KEY`, a Solana token-holder request should calculate concentration from `getTokenHoldersAtSlot` + `getTokenSupply`; wallet profile may span supported launch networks.
+4. **The Graph:** only route `protocol.dex.metrics.read` when both Graph variables are configured and the request is Uniswap V3 on Arbitrum. Schema mismatch must become partial/unavailable evidence, never a fabricated metric.
+5. Missing optional keys must leave only those implementations ineligible; DEX Screener, DefiLlama and Blockscout continue operating.
+6. No provider result may create financial authority or an ownership/identity assertion.

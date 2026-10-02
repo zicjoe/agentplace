@@ -1,6 +1,6 @@
 # AgentPlace Milestone 5B.1 — Core Crypto Intelligence Fabric
 
-Version: **0.7.0**
+Version: **0.7.1**
 
 M5B.1 turns Router v1 capability decisions into real provider-backed read-only crypto intelligence. It does not add wallet authority, signing or financial execution.
 
@@ -10,8 +10,8 @@ M5B.1 turns Router v1 capability decisions into real provider-backed read-only c
 - First-class durable `intelligence_evidence` records, owner- and Job-scoped.
 - Structured Manager `intelligenceSubjects` for token, wallet, protocol and stablecoin targets.
 - Real provider adapters for CoinGecko, DEX Screener, Nansen, GoPlus, Birdeye, Bubblemaps, DefiLlama and Blockscout.
-- Free/no-key production paths for DEX Screener, DefiLlama and supported Blockscout explorers.
-- Key-gated eligibility for CoinGecko, Nansen, GoPlus, Birdeye and Bubblemaps. Missing credentials make only that implementation ineligible; they do not create fake data.
+- Free/no-key production paths for DEX Screener, DefiLlama and supported Blockscout explorers, including deterministic holder-concentration calculations from Blockscout raw balances.
+- Key-gated eligibility for CoinGecko, Nansen, GoPlus, Birdeye and Bubblemaps, plus free-tier Etherscan, Alchemy and schema-pinned The Graph connectors. Missing credentials make only that implementation ineligible; they do not create fake data.
 - Canonical token, wallet, smart-money, protocol/DeFi and stablecoin capability families.
 - Evidence normalization: capability, provider, implementation, network/address, status, fetched/observed time, source URL, structured data, derivation version and limitations.
 - Provider-attributed structured evidence is supplied to the existing grounded research synthesis alongside web research.
@@ -32,8 +32,11 @@ M5B.1 turns Router v1 capability decisions into real provider-backed read-only c
 | GoPlus | token security + deployer/owner signals | server-side app key + app secret; AgentPlace mints/refreshes access tokens automatically (static token override remains supported) |
 | Birdeye | Solana market/liquidity/holder enrichment | optional server key |
 | Bubblemaps | holder distribution + experimental relationship map | optional server key |
+| Etherscan V2 | EVM contract creator/deployer evidence + bounded wallet activity | optional free-tier `ETHERSCAN_API_KEY` |
+| Alchemy | multichain wallet profile + Solana holders/activity | optional free-tier `ALCHEMY_API_KEY` |
+| The Graph | schema-pinned Uniswap V3 Arbitrum DEX metrics | optional free-tier `THEGRAPH_API_KEY` + explicit subgraph ID |
 
-Exact paid-plan upgrades remain a product/cost decision. M5B.1 does not require subscribing to a paid plan.
+Exact paid-plan upgrades remain a product/cost decision. M5B.1 does not require subscribing to a paid plan. Chainbase was evaluated but is not routed by default because its Data Cloud production path requires query/schema-specific IDs; it remains a future adapter candidate.
 
 ## Truth boundaries
 

@@ -86,7 +86,10 @@ export function configuredIntelligenceProviders(): string[] {
   if (process.env.GOPLUS_ACCESS_TOKEN?.trim() || (process.env.GOPLUS_APP_KEY?.trim() && process.env.GOPLUS_APP_SECRET?.trim())) providers.add('goplus');
   if (process.env.BIRDEYE_API_KEY?.trim()) providers.add('birdeye');
   if (process.env.BUBBLEMAPS_API_KEY?.trim()) providers.add('bubblemaps');
+  if (process.env.ETHERSCAN_API_KEY?.trim()) providers.add('etherscan');
+  if (process.env.ALCHEMY_API_KEY?.trim()) providers.add('alchemy');
+  if (process.env.THEGRAPH_API_KEY?.trim() && process.env.THEGRAPH_UNISWAP_V3_ARBITRUM_SUBGRAPH_ID?.trim()) providers.add('thegraph');
   return [...providers];
 }
 
-export const moduleManifest = { name:'capabilities', layer:'controlled-runtime', milestone:'5B.1', status:'crypto-intelligence-registry' } as const;
+export const moduleManifest = { name:'capabilities', layer:'controlled-runtime', milestone:'5B.1', status:'zero-cost-first-crypto-intelligence-registry' } as const;

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.1 — M5B.1 Zero-Cost Intelligence Hardening
+
+- Added a free/no-cost-first intelligence path for Arbitrum/EVM and Solana without changing the M5B.1 read-only boundary.
+- Upgraded Blockscout holder evidence to deterministic AgentPlace top-1/top-5/top-10/top-20 concentration calculations from raw holder balances and reported token supply.
+- Added Etherscan V2 free-tier routing for EVM contract creator/deployer evidence and bounded wallet activity.
+- Added Alchemy free-tier routing for multichain wallet profiles, Solana holder concentration and Solana wallet activity.
+- Added a schema-pinned The Graph connector for Uniswap V3 on Arbitrum, activated only when both a Graph API key and explicit subgraph ID are configured.
+- Evaluated Chainbase for later Data Cloud adapters; it is deliberately not a default runtime dependency because useful queries require schema/query-specific IDs.
+- Kept Nansen, GoPlus, Birdeye, Bubblemaps and CoinGecko as optional enrichments rather than production prerequisites.
+- No signing, wallet authority, trading, bridge execution, custody or paid-provider requirement was added.
+
 ## 0.7.0 — Milestone 5B.1 Core Crypto Intelligence Fabric
 
 - Added provider-backed read-only crypto intelligence behind canonical Router capabilities.

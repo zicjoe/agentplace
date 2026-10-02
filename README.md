@@ -90,3 +90,8 @@ See `docs/MILESTONE-5B1-TESTING.md` for the acceptance checklist, `docs/MILESTON
 ### Model providers
 
 AgentPlace Model Gateway supports configured Gemini, OpenAI, and Anthropic Claude providers. Provider API keys are server-side only; the browser receives only the safe model catalog.
+
+
+### M5B.1 zero-cost-first intelligence
+
+AgentPlace v0.7.1 can use DEX Screener, DefiLlama and Blockscout without paid subscriptions, and can optionally activate free-tier Etherscan, Alchemy and schema-pinned The Graph integrations. Premium intelligence providers remain optional enrichments rather than production prerequisites.

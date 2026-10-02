@@ -62,12 +62,16 @@ function goPlusChain(value:string):string|undefined {
   return ({ethereum:'1',bnb:'56',arbitrum:'42161',base:'8453'} as Record<string,string>)[value];
 }
 function nansenNetwork(value:string):string { return value==='bnb'?'bnb':value; }
+function etherscanChainId(value:string):string|undefined { return ({ethereum:'1',bnb:'56',arbitrum:'42161',base:'8453'} as Record<string,string>)[value]; }
+function etherscanExplorer(value:string):string|undefined { return ({ethereum:'https://etherscan.io',bnb:'https://bscscan.com',arbitrum:'https://arbiscan.io',base:'https://basescan.org'} as Record<string,string>)[value]; }
+function blockscoutRoot(value:string):string|undefined { return ({ethereum:'https://eth.blockscout.com',base:'https://base.blockscout.com',arbitrum:'https://arbitrum.blockscout.com'} as Record<string,string>)[value]; }
+function alchemyPortfolioNetwork(value:string):string|undefined { return ({ethereum:'eth-mainnet',base:'base-mainnet',arbitrum:'arb-mainnet',bnb:'bnb-mainnet',solana:'sol-mainnet'} as Record<string,string>)[value]; }
 function jsonExcerpt(value:unknown, max=12000):JsonObject {
   const text=JSON.stringify(value);
   if (text.length<=max) return object(value);
   return { truncated:true, sha256:createHash('sha256').update(text).digest('hex'), excerpt:text.slice(0,max) };
 }
-function safeUrl(raw:string):string { try { const u=new URL(raw); u.searchParams.delete('x_cg_demo_api_key'); u.searchParams.delete('api_key'); u.searchParams.delete('key'); return u.toString(); } catch { return raw; } }
+function safeUrl(raw:string):string { try { const u=new URL(raw); for(const key of ['x_cg_demo_api_key','x_cg_pro_api_key','api_key','apikey','key']) u.searchParams.delete(key); return u.toString(); } catch { return raw; } }
 function headers(extra:Record<string,string>={}):HeadersInit { return { accept:'application/json', ...extra }; }
 function timeoutMs():number { return Math.max(5000, Number.parseInt(env('INTELLIGENCE_PROVIDER_TIMEOUT_MS')||'20000',10)||20000); }
 async function fetchJson(url:string, init:RequestInit={}):Promise<unknown> {
@@ -77,6 +81,24 @@ async function fetchJson(url:string, init:RequestInit={}):Promise<unknown> {
     if(!response.ok) throw new Error(`HTTP_${response.status}:${text.slice(0,300)}`);
     return text?JSON.parse(text) as unknown:{};
   } finally { clearTimeout(timer); }
+}
+
+async function rpcJson(url:string, method:string, params:unknown):Promise<JsonObject> {
+  const payload=object(await fetchJson(url,{method:'POST',headers:headers({'content-type':'application/json'}),body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})}));
+  if(payload.error) throw new Error(`RPC_${method}:${JSON.stringify(payload.error).slice(0,300)}`);
+  return payload;
+}
+function bigint(value:unknown):bigint|undefined {
+  if(typeof value==='bigint') return value;
+  if(typeof value==='number'&&Number.isFinite(value)&&Number.isInteger(value)&&value>=0) return BigInt(value);
+  if(typeof value==='string'&&/^\d+$/.test(value.trim())) { try { return BigInt(value.trim()); } catch { return undefined; } }
+  return undefined;
+}
+function concentrationMetrics(rawBalances:readonly bigint[], totalSupply:bigint):Record<string,unknown> {
+  if(totalSupply<=0n) return {};
+  const sorted=[...rawBalances].filter((value)=>value>=0n).sort((a,b)=>a===b?0:a>b?-1:1);
+  const pct=(count:number)=>{ const sum=sorted.slice(0,count).reduce((acc,value)=>acc+value,0n); return Number((sum*1000000n)/totalSupply)/10000; };
+  return {top1Pct:pct(1),top5Pct:pct(5),top10Pct:pct(10),top20Pct:pct(20),sampledHolders:sorted.length};
 }
 
 async function resolveToken(subject:IntelligenceSubject):Promise<ResolvedToken|null> {
@@ -215,12 +237,78 @@ async function birdeye(invocation:IntelligenceInvocation, subject:IntelligenceSu
   return makeEvidence(base,{status:'verified',summary:`Birdeye returned Solana ${invocation.capabilityId} intelligence.`,data:jsonExcerpt(payload),sourceUrl:`https://birdeye.so/token/${encodeURIComponent(resolved.address)}?chain=solana`,limitations:['Birdeye enrichment is provider-specific and is corroborative rather than sole proof of token safety.']});
 }
 
+async function etherscan(invocation:IntelligenceInvocation, subject:IntelligenceSubject, base:ReturnType<typeof evidenceBase>, resolved:ResolvedToken|null):Promise<IntelligenceEvidence> {
+  const key=env('ETHERSCAN_API_KEY'); if(!key) return makeEvidence(base,{status:'unavailable',summary:'Etherscan API key is not configured.'});
+  const network=resolved?.network||normalizedNetwork(subject.network); const chainId=etherscanChainId(network); const explorer=etherscanExplorer(network);
+  if(!chainId||!explorer) return makeEvidence(base,{status:'unavailable',summary:`Etherscan V2 is not mapped for ${network||'the unresolved network'}.`});
+  const api='https://api.etherscan.io/v2/api';
+  if(invocation.capabilityId==='token.deployer.analyze') {
+    if(!resolved) return makeEvidence(base,{status:'unavailable',summary:'Etherscan deployer analysis requires a resolved EVM token contract.'});
+    const creation=object(await fetchJson(`${api}?chainid=${chainId}&module=contract&action=getcontractcreation&contractaddresses=${encodeURIComponent(resolved.address)}&apikey=${encodeURIComponent(key)}`,{headers:headers()}));
+    const rows=array(creation.result).map(object); const row=rows[0]; const creator=string(row?.contractCreator)||string(row?.contractCreatorAddress); const txHash=string(row?.txHash)||string(row?.transactionHash);
+    if(!creator) return makeEvidence(base,{status:'unavailable',summary:'Etherscan returned no contract-creator record for this token.',data:jsonExcerpt(creation),sourceUrl:`${explorer}/address/${encodeURIComponent(resolved.address)}`});
+    const history=object(await fetchJson(`${api}?chainid=${chainId}&module=account&action=txlist&address=${encodeURIComponent(creator)}&startblock=0&endblock=99999999&page=1&offset=25&sort=asc&apikey=${encodeURIComponent(key)}`,{headers:headers()}));
+    const txs=array(history.result).map(object).slice(0,25);
+    return makeEvidence(base,{status:'verified',summary:`Etherscan identifies ${creator} as the contract creator; ${txs.length} earliest public transactions were preserved for deployer context.`,data:{contractAddress:resolved.address,creator,creationTxHash:txHash??null,creatorEarlyTransactions:txs},sourceUrl:`${explorer}/address/${encodeURIComponent(resolved.address)}`,limitations:['Contract creator evidence does not establish real-world identity, beneficial ownership, or malicious intent.','The preserved transaction sample is bounded and is not an exhaustive deployer-history audit.']});
+  }
+  if(invocation.capabilityId==='wallet.activity.analyze') {
+    const address=subject.address?.trim()||(/^0x[a-fA-F0-9]{40}$/.test(subject.query)?subject.query:''); if(!address) return makeEvidence(base,{status:'unavailable',summary:'Etherscan wallet activity requires an EVM address.'});
+    const [normal,erc20]=await Promise.all([
+      fetchJson(`${api}?chainid=${chainId}&module=account&action=txlist&address=${encodeURIComponent(address)}&startblock=0&endblock=99999999&page=1&offset=25&sort=desc&apikey=${encodeURIComponent(key)}`,{headers:headers()}),
+      fetchJson(`${api}?chainid=${chainId}&module=account&action=tokentx&address=${encodeURIComponent(address)}&startblock=0&endblock=99999999&page=1&offset=25&sort=desc&apikey=${encodeURIComponent(key)}`,{headers:headers()}),
+    ]);
+    const normalRows=array(object(normal).result).map(object); const tokenRows=array(object(erc20).result).map(object);
+    return makeEvidence(base,{status:'verified',summary:`Etherscan returned ${normalRows.length} recent normal transactions and ${tokenRows.length} recent ERC-20 transfers for this wallet.`,data:{normalTransactions:normalRows,erc20Transfers:tokenRows},sourceUrl:`${explorer}/address/${encodeURIComponent(address)}`,limitations:['This is a bounded recent-activity sample, not a complete behavioral or performance assessment.','Transaction activity does not establish wallet identity or intent.']});
+  }
+  return makeEvidence(base,{status:'unavailable',summary:`Etherscan adapter does not implement ${invocation.capabilityId}.`});
+}
+
+async function alchemy(invocation:IntelligenceInvocation, subject:IntelligenceSubject, base:ReturnType<typeof evidenceBase>, resolved:ResolvedToken|null):Promise<IntelligenceEvidence> {
+  const key=env('ALCHEMY_API_KEY'); if(!key) return makeEvidence(base,{status:'unavailable',summary:'Alchemy API key is not configured.'});
+  if(invocation.capabilityId==='token.holders.analyze') {
+    if(!resolved||resolved.network!=='solana') return makeEvidence(base,{status:'unavailable',summary:'Alchemy holder concentration in M5B.1 is currently limited to resolved Solana tokens.'});
+    const rpc=`https://solana-mainnet.g.alchemy.com/v2/${encodeURIComponent(key)}`; const slotPayload=await rpcJson(rpc,'getSlot',[]); const slot=number(slotPayload.result); if(slot===undefined) return makeEvidence(base,{status:'unavailable',summary:'Alchemy did not return a current Solana slot.'});
+    const [holdersPayload,supplyPayload]=await Promise.all([rpcJson(rpc,'getTokenHoldersAtSlot',{mint:resolved.address,slot,limit:1000,sortBy:'balance_desc'}),rpcJson(rpc,'getTokenSupply',[resolved.address])]);
+    const holders=array(object(holdersPayload.result).holders).map(object); const supply=object(object(supplyPayload.result).value); const totalSupplyRaw=bigint(supply.amount); const balances=holders.map((row)=>bigint(row.balanceRaw)).filter((value):value is bigint=>value!==undefined);
+    const concentration=totalSupplyRaw===undefined?{}:concentrationMetrics(balances,totalSupplyRaw);
+    const topHolders=holders.slice(0,20).map((row)=>({holder:string(row.holder),owner:string(row.owner),balanceRaw:string(row.balanceRaw),balanceUi:string(row.balanceUi)}));
+    return makeEvidence(base,{status:holders.length?'verified':'partial',summary:holders.length?`Alchemy returned ${holders.length} ranked Solana token holders; top-10 concentration ${number(concentration.top10Pct)??'n/a'}%.`:'Alchemy returned no holder rows for this Solana token.',data:{slot,totalSupplyRaw:string(supply.amount),decimals:number(supply.decimals),uiAmountString:string(supply.uiAmountString),concentration,topHolders},sourceUrl:'https://www.alchemy.com/docs/chains/solana/solana-api-endpoints/get-token-holders-at-slot',limitations:['Concentration is an AgentPlace deterministic calculation from provider-returned balances and token supply.','Holder addresses are not identity claims; program, LP, treasury, burn or exchange addresses are not automatically excluded.']});
+  }
+  if(invocation.capabilityId==='wallet.profile') {
+    const address=subject.address?.trim()||subject.query.trim(); if(!address) return makeEvidence(base,{status:'unavailable',summary:'Alchemy wallet profile requires an address.'});
+    const requested=normalizedNetwork(subject.network); const networks=requested?[alchemyPortfolioNetwork(requested)].filter((value):value is string=>!!value):['eth-mainnet','base-mainnet','arb-mainnet','bnb-mainnet','sol-mainnet'];
+    if(!networks.length) return makeEvidence(base,{status:'unavailable',summary:`Alchemy Portfolio API is not mapped for ${requested}.`});
+    const payload=object(await fetchJson(`https://api.g.alchemy.com/data/v1/${encodeURIComponent(key)}/assets/tokens/by-address`,{method:'POST',headers:headers({'content-type':'application/json'}),body:JSON.stringify({addresses:[{address,networks}],withMetadata:true,withPrices:true,includeNativeTokens:true,includeErc20Tokens:true,includeBlockMetadata:false})}));
+    const tokens=array(object(payload.data).tokens).map(object); const partialErrors=array(object(payload.error).partialErrors);
+    return makeEvidence(base,{status:tokens.length?'verified':partialErrors.length?'partial':'unavailable',summary:`Alchemy returned ${tokens.length} current token-balance record(s) across ${networks.length} requested network(s).`,data:{tokens:tokens.slice(0,100),partialErrors},sourceUrl:'https://www.alchemy.com/docs/data/portfolio-apis/portfolio-api-endpoints/portfolio-api-endpoints/get-tokens-by-address',limitations:['Portfolio data is current provider-indexed state and is not a performance score or ownership attribution.','Partial network errors are preserved rather than silently discarded.']});
+  }
+  if(invocation.capabilityId==='wallet.activity.analyze') {
+    const network=normalizedNetwork(subject.network); const address=subject.address?.trim()||subject.query.trim(); if(network!=='solana'||!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return makeEvidence(base,{status:'unavailable',summary:'Alchemy wallet activity in M5B.1 is currently limited to a resolved Solana wallet address.'});
+    const rpc=`https://solana-mainnet.g.alchemy.com/v2/${encodeURIComponent(key)}`; const payload=await rpcJson(rpc,'getSignaturesForAddress',[address,{limit:50}]); const rows=array(payload.result).map(object);
+    return makeEvidence(base,{status:rows.length?'verified':'partial',summary:`Alchemy returned ${rows.length} recent Solana signatures for this wallet.`,data:{signatures:rows},sourceUrl:'https://www.alchemy.com/docs/solana/solana-api-overview',limitations:['Signature history is a bounded activity sample and is not a wallet-performance or identity assessment.']});
+  }
+  return makeEvidence(base,{status:'unavailable',summary:`Alchemy adapter does not implement ${invocation.capabilityId}.`});
+}
+
+async function theGraph(invocation:IntelligenceInvocation, subject:IntelligenceSubject, base:ReturnType<typeof evidenceBase>):Promise<IntelligenceEvidence> {
+  const key=env('THEGRAPH_API_KEY'); const subgraphId=env('THEGRAPH_UNISWAP_V3_ARBITRUM_SUBGRAPH_ID');
+  if(!key||!subgraphId) return makeEvidence(base,{status:'unavailable',summary:'The Graph Uniswap V3 Arbitrum connector is not configured.'});
+  const network=normalizedNetwork(subject.network); if(network!=='arbitrum'||!/uniswap/i.test(subject.query)) return makeEvidence(base,{status:'unavailable',summary:'This schema-pinned The Graph connector is limited to Uniswap V3 on Arbitrum.'});
+  const query='query AgentPlaceUniswapV3Metrics { factories(first: 1) { id poolCount txCount totalVolumeUSD totalFeesUSD totalValueLockedUSD } bundles(first: 1) { id ethPriceUSD } }';
+  const payload=object(await fetchJson(`https://gateway.thegraph.com/api/subgraphs/id/${encodeURIComponent(subgraphId)}`,{method:'POST',headers:headers({'content-type':'application/json',Authorization:`Bearer ${key}`}),body:JSON.stringify({query,operationName:'AgentPlaceUniswapV3Metrics',variables:{}})}));
+  const errors=array(payload.errors); const data=object(payload.data); const factories=array(data.factories).map(object);
+  if(errors.length||!factories.length) return makeEvidence(base,{status:'partial',summary:'The Graph query did not return a complete schema-pinned Uniswap V3 metric set.',data:{errors,data:jsonExcerpt(data)},sourceUrl:`https://thegraph.com/explorer/subgraphs/${encodeURIComponent(subgraphId)}?chain=arbitrum-one&view=Query`,limitations:['Subgraph schemas and deployments can change; schema mismatch is preserved as partial evidence.']});
+  const factory=factories[0]??{}; return makeEvidence(base,{status:'verified',summary:`The Graph returned Uniswap V3 Arbitrum factory metrics: ${string(factory.poolCount)??'n/a'} pools and ${string(factory.totalVolumeUSD)??'n/a'} USD cumulative volume.`,data:{factory,bundles:array(data.bundles).map(object)},sourceUrl:`https://thegraph.com/explorer/subgraphs/${encodeURIComponent(subgraphId)}?chain=arbitrum-one&view=Query`,limitations:['These are schema-pinned subgraph observations, not a universal DEX safety or profitability assessment.']});
+}
+
 async function blockscout(invocation:IntelligenceInvocation, subject:IntelligenceSubject, base:ReturnType<typeof evidenceBase>, resolved:ResolvedToken|null):Promise<IntelligenceEvidence> {
   if(!resolved) return makeEvidence(base,{status:'unavailable',summary:'Blockscout requires a resolved token address and network.'});
-  const roots:Record<string,string>={ethereum:'https://eth.blockscout.com/api/v2',base:'https://base.blockscout.com/api/v2',arbitrum:'https://arbitrum.blockscout.com/api/v2'}; const root=roots[resolved.network];
-  if(!root) return makeEvidence(base,{status:'unavailable',summary:`Blockscout verification is not configured for ${resolved.network}.`});
-  const url=`${root}/tokens/${encodeURIComponent(resolved.address)}/holders`; const payload=await fetchJson(url,{headers:headers()});
-  return makeEvidence(base,{status:'verified',summary:'Blockscout returned independent token-holder data.',data:jsonExcerpt(payload),sourceUrl:`${root.replace('/api/v2','')}/token/${encodeURIComponent(resolved.address)}`,limitations:['Explorer data is used as an independent raw-chain verification path, not identity attribution.']});
+  const root=blockscoutRoot(resolved.network); if(!root) return makeEvidence(base,{status:'unavailable',summary:`Blockscout verification is not configured for ${resolved.network}.`});
+  const tokenPayload=object(await fetchJson(`${root}/api?module=token&action=getToken&contractaddress=${encodeURIComponent(resolved.address)}`,{headers:headers()})); const token=object(tokenPayload.result);
+  const holderPayload=object(await fetchJson(`${root}/api?module=token&action=getTokenHolders&contractaddress=${encodeURIComponent(resolved.address)}&page=1&offset=100`,{headers:headers()})); const holderRows=array(holderPayload.result).map(object);
+  const totalSupplyRaw=bigint(token.totalSupply); const rawBalances=holderRows.map((row)=>bigint(row.value)).filter((value):value is bigint=>value!==undefined); const concentration=totalSupplyRaw===undefined?{}:concentrationMetrics(rawBalances,totalSupplyRaw);
+  const topHolders=holderRows.map((row)=>({address:string(row.address),value:string(row.value)})).slice(0,20); const top10=number(concentration.top10Pct);
+  return makeEvidence(base,{status:holderRows.length?'verified':'partial',summary:holderRows.length?`Blockscout returned ${holderRows.length} sampled holders; AgentPlace calculated top-10 concentration at ${top10??'n/a'}%.`:'Blockscout returned no token-holder rows.',data:{token:{name:string(token.name),symbol:string(token.symbol),decimals:string(token.decimals),totalSupply:string(token.totalSupply),type:string(token.type)},concentration,topHolders},sourceUrl:`${root}/token/${encodeURIComponent(resolved.address)}`,limitations:['Concentration is a deterministic AgentPlace calculation from Blockscout holder balances and reported total supply.','The first 100 holder rows are a bounded sample; LP, treasury, burn, bridge, exchange and contract addresses are not automatically excluded.','Explorer data is raw onchain evidence, not identity attribution.']});
 }
 
 
@@ -270,6 +358,9 @@ export async function collectRoutedIntelligence(args:{ownerUserId:string;jobId:s
         else if(invocation.provider==='bubblemaps') evidence=await bubblemaps(invocation,subject,base,resolved);
         else if(invocation.provider==='birdeye') evidence=await birdeye(invocation,subject,base,resolved);
         else if(invocation.provider==='blockscout') evidence=await blockscout(invocation,subject,base,resolved);
+        else if(invocation.provider==='etherscan') evidence=await etherscan(invocation,subject,base,resolved);
+        else if(invocation.provider==='alchemy') evidence=await alchemy(invocation,subject,base,resolved);
+        else if(invocation.provider==='thegraph') evidence=await theGraph(invocation,subject,base);
         else if(invocation.provider==='agentplace' && invocation.capabilityId==='smartmoney.accumulation.detect') evidence=deriveAccumulation(base,out);
         else evidence=makeEvidence(base,{status:'unavailable',summary:`No M5B.1 direct invocation adapter is registered for ${invocation.provider}.`});
       } catch(error) {
@@ -298,4 +389,4 @@ export function intelligenceEvidencePrompt(evidence:readonly IntelligenceEvidenc
   ].filter(Boolean).join('\n')).join('\n\n');
 }
 
-export const moduleManifest={name:'intelligence',layer:'controlled-runtime',milestone:'5B.1',status:'core-intelligence-fabric'} as const;
+export const moduleManifest={name:'intelligence',layer:'controlled-runtime',milestone:'5B.1',status:'zero-cost-first-core-intelligence-fabric'} as const;
