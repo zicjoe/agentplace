@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1 — M5B.1 Network Alias Routing Fix
+
+- Canonicalized common human network names before deterministic Router eligibility, including `Arbitrum One` -> `arbitrum`, so chain-aware providers are not incorrectly marked unavailable.
+- Applied the same normalization inside the intelligence runtime so routed subjects resolve against the same canonical network identifiers used by capability manifests.
+- Added regression coverage for display-name aliases and common chain IDs; no database migration, provider key, dependency or authority change.
+
 ## 0.7.1 — M5B.1 Zero-Cost Intelligence Hardening
 
 - Added a free/no-cost-first intelligence path for Arbitrum/EVM and Solana without changing the M5B.1 read-only boundary.

@@ -52,9 +52,13 @@ function number(value:unknown):number|undefined {
   return undefined;
 }
 function normalizedNetwork(value:string|undefined):string {
-  const v=(value??'').trim().toLowerCase();
-  if (v==='eth') return 'ethereum'; if (v==='bsc'||v==='binance'||v==='bnb chain') return 'bnb';
-  if (v==='sol'||v==='solana') return 'solana'; if (v==='arb') return 'arbitrum'; return v;
+  const v=(value??'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');
+  if (['ethereum','eth','ethereum mainnet','1'].includes(v)) return 'ethereum';
+  if (['base','base mainnet','8453'].includes(v)) return 'base';
+  if (['arbitrum','arb','arbitrum one','arbitrum mainnet','arb one','42161'].includes(v)) return 'arbitrum';
+  if (['bnb','bsc','bnb chain','binance','binance smart chain','56'].includes(v)) return 'bnb';
+  if (['solana','sol','solana mainnet','solana mainnet beta'].includes(v)) return 'solana';
+  return v;
 }
 function dexscreenerNetwork(value:string):string { return value==='bnb'?'bsc':value; }
 function bubblemapsNetwork(value:string):string { return value==='ethereum'?'eth':value==='bnb'?'bsc':value; }

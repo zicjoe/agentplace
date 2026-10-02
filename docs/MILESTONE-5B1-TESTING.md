@@ -21,3 +21,8 @@ M5B.1 is not frozen until the configured-provider tests relevant to the producti
 4. **The Graph:** only route `protocol.dex.metrics.read` when both Graph variables are configured and the request is Uniswap V3 on Arbitrum. Schema mismatch must become partial/unavailable evidence, never a fabricated metric.
 5. Missing optional keys must leave only those implementations ineligible; DEX Screener, DefiLlama and Blockscout continue operating.
 6. No provider result may create financial authority or an ownership/identity assertion.
+
+
+## Network alias regression
+
+For chain-aware provider tests, human network labels such as `Arbitrum One`, `Arbitrum Mainnet`, `ARB`, `Base Mainnet`, `BNB Chain`, and `Solana Mainnet` must normalize to canonical AgentPlace network IDs before Router eligibility and provider execution. A display-name alias must never make an otherwise eligible implementation appear unavailable.

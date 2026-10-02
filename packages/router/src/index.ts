@@ -120,6 +120,16 @@ function unique(values: readonly string[], max = 32): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, max);
 }
 
+function normalizeNetwork(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  if (['ethereum','eth','ethereum mainnet','1'].includes(normalized)) return 'ethereum';
+  if (['base','base mainnet','8453'].includes(normalized)) return 'base';
+  if (['arbitrum','arb','arbitrum one','arbitrum mainnet','arb one','42161'].includes(normalized)) return 'arbitrum';
+  if (['bnb','bsc','bnb chain','binance','binance smart chain','56'].includes(normalized)) return 'bnb';
+  if (['solana','sol','solana mainnet','solana mainnet beta'].includes(normalized)) return 'solana';
+  return normalized;
+}
+
 function isLiveLifecycle(status: CanonicalCapability['lifecycleStatus'], environment: DeploymentEnvironment): boolean {
   if (status === 'limited-production' || status === 'production-observed' || status === 'agentplace-verified') return true;
   if ((environment === 'development' || environment === 'testnet') && status === 'tested') return true;
@@ -128,14 +138,14 @@ function isLiveLifecycle(status: CanonicalCapability['lifecycleStatus'], environ
 
 function networkEligible(implementation: CapabilityImplementation, requestedNetworks: readonly string[]): boolean {
   if (!implementation.supportedNetworks.length) return true;
-  const supported = new Set(implementation.supportedNetworks.map((network) => network.toLowerCase()));
+  const supported = new Set(implementation.supportedNetworks.map((network) => normalizeNetwork(network)));
   if (!requestedNetworks.length) {
     // A chain-specific implementation must not be selected before the request
     // has a resolved network. Multi-network implementations that cover the
     // five AgentPlace launch networks remain eligible.
     return ['ethereum','base','arbitrum','bnb','solana'].every((network) => supported.has(network));
   }
-  return requestedNetworks.some((network) => supported.has(network.toLowerCase()));
+  return requestedNetworks.some((network) => supported.has(normalizeNetwork(network)));
 }
 
 function providerConfigured(provider: string, configuredProviders: ReadonlySet<string>): boolean {
@@ -363,7 +373,7 @@ export async function planRoute(args: {
   const requiredCapabilities = unique([...researchCore, ...args.proposal.requiredCapabilities.filter((id) => knownIds.has(id))], 24);
   const optionalCapabilities = unique(args.proposal.optionalCapabilities.filter((id) => knownIds.has(id) && !requiredCapabilities.includes(id)), 16);
   const requestedCapabilities = [...requiredCapabilities, ...optionalCapabilities];
-  const requestedNetworks = unique(args.proposal.requestedNetworks, 12);
+  const requestedNetworks = unique(args.proposal.requestedNetworks.map(normalizeNetwork), 12);
   const candidateWorkers = workerCandidates(catalog, compatibility, requestedCapabilities);
   const team = pickTeam({
     catalog,

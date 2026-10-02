@@ -34,3 +34,15 @@ test('M5B.1 free-tier adapters preserve bounded truth claims',()=>{
   assert.match(intel,/schema-pinned The Graph connector is limited to Uniswap V3 on Arbitrum/);
   assert.match(intel,/LP, treasury, burn, bridge, exchange and contract addresses are not automatically excluded/);
 });
+
+
+test('M5B.1 canonicalizes human network aliases before provider eligibility and intelligence resolution',()=>{
+  const router=readFileSync('packages/router/src/index.ts','utf8');
+  const intel=readFileSync('packages/intelligence/src/index.ts','utf8');
+  assert.match(router,/arbitrum one/);
+  assert.match(router,/42161/);
+  assert.match(router,/args\.proposal\.requestedNetworks\.map\(normalizeNetwork\)/);
+  assert.match(intel,/arbitrum one/);
+  assert.match(intel,/42161/);
+  assert.match(intel,/solana mainnet beta/);
+});
