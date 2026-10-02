@@ -164,9 +164,27 @@ async function nansen(invocation:IntelligenceInvocation, subject:IntelligenceSub
   return makeEvidence(base,{status,summary:`Nansen ${invocation.capabilityId} returned ${rows.length||Object.keys(object(d.data)).length} structured record(s).`,data:jsonExcerpt(payload),sourceUrl:'https://app.nansen.ai',limitations:[invocation.capabilityId==='wallet.cluster.analyze'?'Related-wallet evidence shows first-degree relationships; it does not prove common ownership.':'Nansen labels/segments are provider-defined intelligence and should be attributed as such.']});
 }
 
+let goPlusTokenCache:{token:string;expiresAt:number}|null=null;
+async function goPlusAccessToken():Promise<string> {
+  const staticToken=env('GOPLUS_ACCESS_TOKEN'); if(staticToken) return staticToken;
+  const appKey=env('GOPLUS_APP_KEY'); const appSecret=env('GOPLUS_APP_SECRET');
+  if(!appKey||!appSecret) return '';
+  if(goPlusTokenCache && goPlusTokenCache.expiresAt>Date.now()) return goPlusTokenCache.token;
+  const time=Math.floor(Date.now()/1000);
+  const sign=createHash('sha1').update(`${appKey}${time}${appSecret}`).digest('hex');
+  const payload=object(await fetchJson('https://api.gopluslabs.io/api/v1/token',{method:'POST',headers:headers({'content-type':'application/json'}),body:JSON.stringify({app_key:appKey,sign,time})}));
+  const result=object(payload.result); const token=string(result.access_token); const expiresIn=number(result.expires_in);
+  if(!token) throw new Error(`GoPlus token exchange returned no access token (code=${number(payload.code)??'unknown'} message=${string(payload.message)??'unknown'}).`);
+  if(expiresIn && expiresIn>0) {
+    const lifetimeMs=expiresIn*1000; const refreshSkewMs=Math.min(60000,Math.max(5000,lifetimeMs*0.1));
+    goPlusTokenCache={token,expiresAt:Date.now()+Math.max(1000,lifetimeMs-refreshSkewMs)};
+  }
+  return token;
+}
+
 async function goPlus(invocation:IntelligenceInvocation, subject:IntelligenceSubject, base:ReturnType<typeof evidenceBase>, resolved:ResolvedToken|null):Promise<IntelligenceEvidence> {
   if(!resolved) return makeEvidence(base,{status:'unavailable',summary:'GoPlus requires a resolved token address and network.'});
-  const token=env('GOPLUS_ACCESS_TOKEN'); if(!token) return makeEvidence(base,{status:'unavailable',summary:'GoPlus access token is not configured.'});
+  const token=await goPlusAccessToken(); if(!token) return makeEvidence(base,{status:'unavailable',summary:'GoPlus credentials are not configured.'});
   const h=headers({Authorization:`Bearer ${token}`}); const chain=goPlusChain(resolved.network); let url='';
   if(resolved.network==='solana') url=`https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses=${encodeURIComponent(resolved.address)}`;
   else if(chain) url=`https://api.gopluslabs.io/api/v1/token_security/${chain}?contract_addresses=${encodeURIComponent(resolved.address)}`;

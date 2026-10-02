@@ -14,7 +14,7 @@ const migration=readFileSync('packages/db/migrations/0007_core_intelligence_fabr
 for(const token of ['intelligence_evidence','token.market.read','token.liquidity.analyze','token.security.assess','smartmoney.flow.read','protocol.tvl.read','stablecoin.supply.read','dexscreener-token-market-v1','nansen-token-holders-v1','goplus-token-security-v1','bubblemaps-token-map-v1','defillama-protocol-tvl-v1']) if(!migration.includes(token)) throw new Error(`M5B.1 migration missing ${token}`);
 
 const intel=readFileSync('packages/intelligence/src/index.ts','utf8');
-for(const token of ['collectRoutedIntelligence','intelligenceEvidencePrompt','api.dexscreener.com','api.nansen.ai','api.gopluslabs.io','api.bubblemaps.io','yields.llama.fi','stablecoins.llama.fi','deriveAccumulation','does not prove common ownership']) if(!intel.includes(token)) throw new Error(`M5B.1 intelligence fabric missing ${token}`);
+for(const token of ['collectRoutedIntelligence','intelligenceEvidencePrompt','api.dexscreener.com','api.nansen.ai','api.gopluslabs.io','GOPLUS_APP_KEY','GOPLUS_APP_SECRET','api/v1/token','expires_in','api.bubblemaps.io','yields.llama.fi','stablecoins.llama.fi','deriveAccumulation','does not prove common ownership']) if(!intel.includes(token)) throw new Error(`M5B.1 intelligence fabric missing ${token}`);
 
 const worker=readFileSync('apps/worker/src/index.ts','utf8');
 for(const token of ['intelligenceSubjects','collectRoutedIntelligence','STRUCTURED PROVIDER INTELLIGENCE','structuredIntelligenceEvidence']) if(!worker.includes(token)) throw new Error(`M5B.1 Worker integration missing ${token}`);

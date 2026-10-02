@@ -29,7 +29,7 @@ M5B.1 turns Router v1 capability decisions into real provider-backed read-only c
 | Blockscout | independent EVM holder verification on supported explorer networks | no key |
 | CoinGecko | market aggregation | optional server key |
 | Nansen | holders, wallet profile/performance/activity, Smart Money | optional server key |
-| GoPlus | token security + deployer/owner signals | optional server token |
+| GoPlus | token security + deployer/owner signals | server-side app key + app secret; AgentPlace mints/refreshes access tokens automatically (static token override remains supported) |
 | Birdeye | Solana market/liquidity/holder enrichment | optional server key |
 | Bubblemaps | holder distribution + experimental relationship map | optional server key |
 

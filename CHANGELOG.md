@@ -5,6 +5,7 @@
 - Added provider-backed read-only crypto intelligence behind canonical Router capabilities.
 - Added durable owner-scoped `intelligence_evidence` provenance with provider, implementation, subject, network/address, timestamps, normalized data, derivation metadata and limitations.
 - Added direct adapters for CoinGecko, DEX Screener, Nansen, GoPlus, Birdeye, Bubblemaps, DefiLlama and Blockscout.
+- Corrected GoPlus authentication to support console-issued app key/app secret credentials and automatically mint/refresh expiring bearer tokens server-side; static bearer tokens remain an optional override.
 - Added token market/liquidity/holders/deployer/security, wallet profile/performance/activity, Smart Money, protocol/DeFi and stablecoin capability families.
 - Added bounded AgentPlace-derived Smart Money accumulation from preserved provider evidence without creating a proprietary Smart Money score.
 - Kept wallet clustering experimental/test-only and prohibited ownership inference from related-wallet/cluster evidence.

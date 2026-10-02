@@ -22,6 +22,8 @@ test('M5B.1 Router provider eligibility is configuration-aware',()=>{
   const router=readFileSync('packages/router/src/index.ts','utf8');
   assert.match(caps,/configuredIntelligenceProviders/);
   assert.match(caps,/NANSEN_API_KEY/);
+  assert.match(caps,/GOPLUS_APP_KEY/);
+  assert.match(caps,/GOPLUS_APP_SECRET/);
   assert.match(caps,/GOPLUS_ACCESS_TOKEN/);
   assert.match(caps,/\['agentplace','dexscreener','defillama','blockscout'\]/);
   assert.match(router,/configuredIntelligenceProviders/);
@@ -41,4 +43,15 @@ test('M5B.1 exposes structured evidence progressively without authority expansio
   assert.match(api,/intelligence-evidence/);
   assert.match(web,/Structured crypto intelligence/);
   assert.match(web,/not an instruction or financial authorization/);
+});
+
+
+test('M5B.1 GoPlus supports console credentials with automatic token minting',()=>{
+  const intel=readFileSync('packages/intelligence/src/index.ts','utf8');
+  assert.match(intel,/GOPLUS_APP_KEY/);
+  assert.match(intel,/GOPLUS_APP_SECRET/);
+  assert.match(intel,/api\/v1\/token/);
+  assert.match(intel,/createHash\('sha1'\)/);
+  assert.match(intel,/expires_in/);
+  assert.match(intel,/GOPLUS_ACCESS_TOKEN/);
 });

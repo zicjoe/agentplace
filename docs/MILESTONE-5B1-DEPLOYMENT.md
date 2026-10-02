@@ -9,6 +9,6 @@
 
 ## Server-only provider variables
 
-Optional: `COINGECKO_DEMO_API_KEY` or `COINGECKO_API_KEY`, `NANSEN_API_KEY`, `GOPLUS_ACCESS_TOKEN`, `BIRDEYE_API_KEY`, `BUBBLEMAPS_API_KEY`.
+Optional: `COINGECKO_DEMO_API_KEY` or `COINGECKO_API_KEY`, `NANSEN_API_KEY`, `GOPLUS_APP_KEY` + `GOPLUS_APP_SECRET` (preferred; AgentPlace mints/refreshes the bearer token automatically), optional `GOPLUS_ACCESS_TOKEN` override, `BIRDEYE_API_KEY`, `BUBBLEMAPS_API_KEY`.
 
 Never expose them as `VITE_*` values. DEX Screener, DefiLlama and supported Blockscout paths require no key.
