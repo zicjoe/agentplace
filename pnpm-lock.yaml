@@ -17,36 +17,36 @@ importers:
 
   apps/api:
     dependencies:
-      '@agent-place/capabilities':
-        specifier: workspace:*
-        version: link:../../packages/capabilities
       '@agent-place/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@agent-place/capabilities':
+        specifier: workspace:*
+        version: link:../../packages/capabilities
       '@agent-place/context':
         specifier: workspace:*
         version: link:../../packages/context
       '@agent-place/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@agent-place/jobs':
-        specifier: workspace:*
-        version: link:../../packages/jobs
       '@agent-place/intelligence':
         specifier: workspace:*
         version: link:../../packages/intelligence
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
       '@agent-place/router':
         specifier: workspace:*
         version: link:../../packages/router
-      '@agent-place/workers':
-        specifier: workspace:*
-        version: link:../../packages/workers
       '@agent-place/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@agent-place/workers':
+        specifier: workspace:*
+        version: link:../../packages/workers
 
   apps/scheduler:
     dependencies:
@@ -99,12 +99,12 @@ importers:
       '@agent-place/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@agent-place/jobs':
-        specifier: workspace:*
-        version: link:../../packages/jobs
       '@agent-place/intelligence':
         specifier: workspace:*
         version: link:../../packages/intelligence
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
@@ -133,8 +133,8 @@ importers:
         specifier: 8.23.0
         version: 8.23.0
       viem:
-        specifier: 2.56.8
-        version: 2.56.8(typescript@5.9.3)(zod@4.6.5)
+        specifier: 2.57.0
+        version: 2.57.0(typescript@5.9.3)(zod@4.6.5)
     devDependencies:
       '@types/pg':
         specifier: 8.23.1
@@ -177,13 +177,13 @@ importers:
 
   packages/execution: {}
 
-  packages/jobs:
+  packages/intelligence:
     dependencies:
       '@agent-place/db':
         specifier: workspace:*
         version: link:../db
 
-  packages/intelligence:
+  packages/jobs:
     dependencies:
       '@agent-place/db':
         specifier: workspace:*
@@ -925,8 +925,8 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
-  viem@2.56.8:
-    resolution: {integrity: sha512-vD1DsnYxySMml5/02m/+boWQYfZtWug2VYzm6+hdVT+VDmULBZfpoh9gPDAENdMMBmQKW/2QJ/1DuZaslBJDAg==}
+  viem@2.57.0:
+    resolution: {integrity: sha512-rt6hAjfNvsQTTOfogPm6j0MC9sqgPu/UCt//aaKAB2B3L7i5dt8QdLLPiTCQflUuxYnCQrZKBRcFlC/PGCa5ww==}
     peerDependencies:
       typescript: '>=5.0.4'
     peerDependenciesMeta:
@@ -1527,7 +1527,7 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  viem@2.56.8(typescript@5.9.3)(zod@4.6.5):
+  viem@2.57.0(typescript@5.9.3)(zod@4.6.5):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
