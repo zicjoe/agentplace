@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/api",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -26,6 +26,7 @@
     "@agent-place/jobs": "workspace:*",
     "@agent-place/capabilities": "workspace:*",
     "@agent-place/models": "workspace:*",
-    "@agent-place/router": "workspace:*"
+    "@agent-place/router": "workspace:*",
+    "@agent-place/intelligence": "workspace:*"
   }
 }

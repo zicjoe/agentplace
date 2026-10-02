@@ -4,7 +4,7 @@ import { ExecutionTimeline } from './ExecutionTimeline';
 import type { ExecutionStatus } from '../state/types';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
-import { fetchJobEvidence, fetchJobRoute, type JobEvidenceSource, type JobRouteDecision } from '../platform/workApi';
+import { fetchJobEvidence, fetchJobIntelligenceEvidence, fetchJobRoute, type JobEvidenceSource, type JobIntelligenceEvidence, type JobRouteDecision } from '../platform/workApi';
 import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
 import { ResearchMarkdown } from './ResearchMarkdown';
@@ -441,6 +441,7 @@ export function JobWorkspace() {
   );
   const [evidenceSources, setEvidenceSources] = useState<JobEvidenceSource[]>([]);
   const [routeDecision, setRouteDecision] = useState<JobRouteDecision | null>(null);
+  const [intelligenceEvidence, setIntelligenceEvidence] = useState<JobIntelligenceEvidence[]>([]);
   const messageScrollRef = useRef<HTMLDivElement>(null);
   const lastConversationRef = useRef<string | null>(null);
   const previousMessageCountRef = useRef(0);
@@ -478,11 +479,13 @@ export function JobWorkspace() {
     let cancelled = false;
     setEvidenceSources([]);
     setRouteDecision(null);
-    void Promise.allSettled([fetchJobEvidence(job.id), fetchJobRoute(job.id)])
-      .then(([evidenceResult, routeResult]) => {
+    setIntelligenceEvidence([]);
+    void Promise.allSettled([fetchJobEvidence(job.id), fetchJobRoute(job.id), fetchJobIntelligenceEvidence(job.id)])
+      .then(([evidenceResult, routeResult, intelligenceResult]) => {
         if (cancelled) return;
         setEvidenceSources(evidenceResult.status === 'fulfilled' ? evidenceResult.value : []);
         setRouteDecision(routeResult.status === 'fulfilled' ? routeResult.value : null);
+        setIntelligenceEvidence(intelligenceResult.status === 'fulfilled' ? intelligenceResult.value : []);
       });
     return () => { cancelled = true; };
   }, [job?.id, job?.status, state.user?.id]);
@@ -819,6 +822,32 @@ export function JobWorkspace() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                </details>
+              )}
+              {productionConversation && intelligenceEvidence.length > 0 && (
+                <details className="border border-border rounded-lg bg-panel px-4 py-3">
+                  <summary className="cursor-pointer text-xs font-medium text-primary focus-visible:outline-2 focus-visible:outline-primary">
+                    Structured crypto intelligence · {intelligenceEvidence.length}
+                  </summary>
+                  <div className="mt-3 space-y-2">
+                    <p className="text-[11px] text-text-muted leading-relaxed">Provider-attributed read-only evidence preserved for this Job. A provider signal is evidence, not an instruction or financial authorization.</p>
+                    {intelligenceEvidence.slice(0, 24).map((item) => (
+                      <div key={item.id} className="rounded border border-border-dim px-3 py-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-text">{item.subjectQuery} · {item.capabilityId}</p>
+                            <p className="text-[11px] text-text-muted mt-0.5">{item.provider}{item.network ? ` · ${item.network}` : ''}</p>
+                          </div>
+                          <span className={`text-[11px] shrink-0 ${item.status === 'verified' ? 'text-accent' : item.status === 'partial' ? 'text-warn' : 'text-danger'}`}>
+                            {item.status === 'verified' ? 'Verified evidence' : item.status === 'partial' ? 'Partial' : item.status === 'error' ? 'Provider error' : 'Unavailable'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-text-sub mt-1.5 leading-relaxed">{item.summary}</p>
+                        {item.limitations.length > 0 && <p className="text-[11px] text-text-muted mt-1">Limit: {item.limitations[0]}</p>}
+                        {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="text-[11px] text-primary hover:underline mt-1 inline-block">Open provider evidence ↗</a>}
+                      </div>
+                    ))}
                   </div>
                 </details>
               )}

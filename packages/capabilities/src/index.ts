@@ -79,4 +79,14 @@ export function configuredResearchProviders(): Array<'openai'|'gemini'|'anthropi
   return providers;
 }
 
-export const moduleManifest = { name:'capabilities', layer:'controlled-runtime', milestone:5, status:'router-ready-registry' } as const;
+export function configuredIntelligenceProviders(): string[] {
+  const providers = new Set<string>(['agentplace','dexscreener','defillama','blockscout']);
+  if (process.env.COINGECKO_API_KEY?.trim() || process.env.COINGECKO_DEMO_API_KEY?.trim()) providers.add('coingecko');
+  if (process.env.NANSEN_API_KEY?.trim()) providers.add('nansen');
+  if (process.env.GOPLUS_ACCESS_TOKEN?.trim()) providers.add('goplus');
+  if (process.env.BIRDEYE_API_KEY?.trim()) providers.add('birdeye');
+  if (process.env.BUBBLEMAPS_API_KEY?.trim()) providers.add('bubblemaps');
+  return [...providers];
+}
+
+export const moduleManifest = { name:'capabilities', layer:'controlled-runtime', milestone:'5B.1', status:'crypto-intelligence-registry' } as const;

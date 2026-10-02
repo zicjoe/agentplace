@@ -1,4 +1,5 @@
 import {
+  configuredIntelligenceProviders,
   configuredResearchProviders,
   listCanonicalCapabilities,
   listCapabilityImplementations,
@@ -126,18 +127,20 @@ function isLiveLifecycle(status: CanonicalCapability['lifecycleStatus'], environ
 }
 
 function networkEligible(implementation: CapabilityImplementation, requestedNetworks: readonly string[]): boolean {
-  if (!requestedNetworks.length || !implementation.supportedNetworks.length) return true;
+  if (!implementation.supportedNetworks.length) return true;
   const supported = new Set(implementation.supportedNetworks.map((network) => network.toLowerCase()));
+  if (!requestedNetworks.length) {
+    // A chain-specific implementation must not be selected before the request
+    // has a resolved network. Multi-network implementations that cover the
+    // five AgentPlace launch networks remain eligible.
+    return ['ethereum','base','arbitrum','bnb','solana'].every((network) => supported.has(network));
+  }
   return requestedNetworks.some((network) => supported.has(network.toLowerCase()));
 }
 
 function providerConfigured(provider: string, configuredProviders: ReadonlySet<string>): boolean {
   if (provider === 'agentplace') return true;
-  if (provider === 'openai' || provider === 'gemini' || provider === 'anthropic') return configuredProviders.has(provider);
-  // Router v1 only knows how to validate the internal research path and the
-  // three hosted model providers. M5B will add explicit configuration
-  // contracts for onchain/data providers before they can become routable.
-  return false;
+  return configuredProviders.has(provider);
 }
 
 function implementationTrustEligible(trustStatus: string): boolean {
@@ -372,7 +375,7 @@ export async function planRoute(args: {
     ...(args.forcedLeadWorkerId ? { forcedLeadWorkerId: args.forcedLeadWorkerId } : {}),
     ...(args.forcedSupportingWorkerIds ? { forcedSupportingWorkerIds: args.forcedSupportingWorkerIds } : {}),
   });
-  const configuredProviders = new Set<string>(configuredResearchProviders());
+  const configuredProviders = new Set<string>([...configuredResearchProviders(), ...configuredIntelligenceProviders()]);
   const providerPreference = args.preferredProvider;
   const defaultProvider = args.defaultProvider ?? 'auto';
   const capabilityRoutes: RouteCapabilityDecision[] = [];

@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/worker",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -25,6 +25,7 @@
     "@agent-place/models": "workspace:*",
     "@agent-place/shared": "workspace:*",
     "@agent-place/workers": "workspace:*",
-    "@agent-place/router": "workspace:*"
+    "@agent-place/router": "workspace:*",
+    "@agent-place/intelligence": "workspace:*"
   }
 }

@@ -129,6 +129,18 @@ export async function fetchJobEvidence(jobId:string):Promise<JobEvidenceSource[]
   return data.sources;
 }
 
+
+export interface JobIntelligenceEvidence {
+  id:string; jobId:string; taskId:string; capabilityId:string; implementationId:string; provider:string;
+  subjectKind:'token'|'wallet'|'protocol'|'stablecoin'; subjectQuery:string; network?:string; address?:string;
+  status:'verified'|'partial'|'unavailable'|'error'; summary:string; data:Record<string,unknown>; sourceUrl?:string;
+  observedAt:string; fetchedAt:string; freshnessSeconds?:number; providerConfidence?:number; derivationVersion?:string; limitations:string[];
+}
+export async function fetchJobIntelligenceEvidence(jobId:string):Promise<JobIntelligenceEvidence[]> {
+  const data=await request<{evidence:JobIntelligenceEvidence[]}>(`/api/v1/jobs/${encodeURIComponent(jobId)}/intelligence-evidence`);
+  return data.evidence;
+}
+
 export interface RouteCandidateImplementation {
   implementationId:string;
   provider:string;

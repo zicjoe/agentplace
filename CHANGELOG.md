@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0 — Milestone 5B.1 Core Crypto Intelligence Fabric
+
+- Added provider-backed read-only crypto intelligence behind canonical Router capabilities.
+- Added durable owner-scoped `intelligence_evidence` provenance with provider, implementation, subject, network/address, timestamps, normalized data, derivation metadata and limitations.
+- Added direct adapters for CoinGecko, DEX Screener, Nansen, GoPlus, Birdeye, Bubblemaps, DefiLlama and Blockscout.
+- Added token market/liquidity/holders/deployer/security, wallet profile/performance/activity, Smart Money, protocol/DeFi and stablecoin capability families.
+- Added bounded AgentPlace-derived Smart Money accumulation from preserved provider evidence without creating a proprietary Smart Money score.
+- Kept wallet clustering experimental/test-only and prohibited ownership inference from related-wallet/cluster evidence.
+- Fed structured provider evidence into the existing grounded research synthesis and exposed it progressively in Job Workspace.
+- Added no wallet authority, signing, trading, bridging or autonomous capital movement.
+
 ## 0.6.0 — Production Milestone 5 Router v1
 
 - Added durable Route Decisions linking intelligence tasks to validated Worker/capability/provider routing state.

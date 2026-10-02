@@ -32,6 +32,9 @@ importers:
       '@agent-place/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs
+      '@agent-place/intelligence':
+        specifier: workspace:*
+        version: link:../../packages/intelligence
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
@@ -99,6 +102,9 @@ importers:
       '@agent-place/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs
+      '@agent-place/intelligence':
+        specifier: workspace:*
+        version: link:../../packages/intelligence
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
@@ -172,6 +178,12 @@ importers:
   packages/execution: {}
 
   packages/jobs:
+    dependencies:
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
+
+  packages/intelligence:
     dependencies:
       '@agent-place/db':
         specifier: workspace:*

@@ -6,11 +6,11 @@ AgentPlace is a multichain conversational operating system and economic coordina
 
 ## Current status
 
-**v0.6.0 — Production Milestone 5: Router v1**
+**v0.7.0 — Milestone 5B.1: Core Crypto Intelligence Fabric**
 
-AgentPlace now combines the frozen M4 intelligence foundation with a durable deterministic Router. The Manager proposes intent, Worker candidates and capability requirements; Router v1 validates capability lifecycle, read/write effect, environment/network eligibility, provider configuration/health and Worker compatibility before a Job is allowed to run.
+AgentPlace now combines the frozen M5 deterministic Router with a provider-backed crypto intelligence fabric. Token, wallet, Smart Money, protocol/DeFi and stablecoin capabilities can route to eligible direct providers and preserve structured provider-attributed evidence alongside grounded web research.
 
-Current production Jobs remain **read-only**. Router v1 does not grant wallet authority, sign transactions or enable financial execution. Explicit model/provider selections are preserved; AgentPlace Auto may use a bounded eligible fallback for hosted web research.
+Current production Jobs remain **read-only**. M5B.1 does not grant wallet authority, sign transactions or enable financial execution. Provider credentials stay server-side; missing credentials make only the affected implementation ineligible rather than producing synthetic data.
 
 ## Architecture
 
@@ -23,6 +23,7 @@ AgentPlace API (Railway)
    ├─ durable Conversation API
    ├─ Worker + Job APIs
    ├─ durable Route Decision inspection
+   ├─ structured intelligence evidence inspection
    ├─ factual Activity projection
    └─ application authorization
         │
@@ -39,6 +40,7 @@ PostgreSQL (Railway-compatible)
    ├─ job / job_worker / job_stage
    ├─ canonical_capability / capability_implementation
    ├─ worker_capability_route / route_decision
+   ├─ intelligence_evidence
    └─ domain_event
 ```
 
@@ -70,9 +72,9 @@ Local endpoints:
 - API through the web/same-origin proxy: `http://localhost:5173/api/v1/config`
 - API health (direct): `http://127.0.0.1:8787/health`
 
-For a clean v0.6.0 checkout, `pnpm install --frozen-lockfile` should be used.
+For a clean v0.7.0 checkout, `pnpm install --frozen-lockfile` should be used.
 
-See `docs/MILESTONE-5-TESTING.md` for the acceptance checklist, `docs/MILESTONE-5-DEPLOYMENT.md` for deployment, and `.env.example` for variables.
+See `docs/MILESTONE-5B1-TESTING.md` for the acceptance checklist, `docs/MILESTONE-5B1-DEPLOYMENT.md` for deployment, and `.env.example` for variables.
 
 ## Locked safety principles
 
