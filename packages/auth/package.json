@@ -20,7 +20,7 @@
   "dependencies": {
     "@agent-place/db": "workspace:*",
     "better-auth": "1.7.5",
-    "kysely": "0.28.17",
+    "kysely": "0.29.6",
     "pg": "8.23.0",
     "viem": "2.56.8"
   },
