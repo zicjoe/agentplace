@@ -120,13 +120,27 @@ function unique(values: readonly string[], max = 32): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, max);
 }
 
-function normalizeNetwork(value: string): string {
+export function canonicalizeNetworkId(value: string): string {
   const normalized = value.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
-  if (['ethereum','eth','ethereum mainnet','1'].includes(normalized)) return 'ethereum';
-  if (['base','base mainnet','8453'].includes(normalized)) return 'base';
-  if (['arbitrum','arb','arbitrum one','arbitrum mainnet','arb one','42161'].includes(normalized)) return 'arbitrum';
-  if (['bnb','bsc','bnb chain','binance','binance smart chain','56'].includes(normalized)) return 'bnb';
-  if (['solana','sol','solana mainnet','solana mainnet beta'].includes(normalized)) return 'solana';
+  if (!normalized) return '';
+
+  // Preserve explicit test networks as distinct IDs so mainnet-only intelligence
+  // implementations can never be selected for them by accident.
+  if (/\barbitrum\b/.test(normalized) && /\bsepolia\b|\btestnet\b/.test(normalized)) return 'arbitrum-sepolia';
+  if (/\bbase\b/.test(normalized) && /\bsepolia\b|\btestnet\b/.test(normalized)) return 'base-sepolia';
+  if (/\b(?:ethereum|eth)\b/.test(normalized) && /\bsepolia\b|\bholesky\b|\btestnet\b/.test(normalized)) return normalized.includes('holesky') ? 'ethereum-holesky' : 'ethereum-sepolia';
+  if (/\b(?:bnb|bsc|binance smart chain)\b/.test(normalized) && /\btestnet\b/.test(normalized)) return 'bnb-testnet';
+  if (/\bsolana\b/.test(normalized) && /\bdevnet\b/.test(normalized)) return 'solana-devnet';
+  if (/\bsolana\b/.test(normalized) && /\btestnet\b/.test(normalized)) return 'solana-testnet';
+
+  // The Manager may decorate a network with a display name or chain ID, e.g.
+  // "Arbitrum One (42161)". Canonical routing must not depend on exact prose.
+  if (/\b42161\b/.test(normalized) || /\barbitrum\b/.test(normalized) || normalized === 'arb' || normalized === 'arb one') return 'arbitrum';
+  if (/\b8453\b/.test(normalized) || /\bbase\b/.test(normalized)) return 'base';
+  if (/\b56\b/.test(normalized) || /\bbnb\b/.test(normalized) || /\bbsc\b/.test(normalized) || /\bbinance smart chain\b/.test(normalized)) return 'bnb';
+  if (/\b1\b/.test(normalized) && /\b(?:chain|chain id|mainnet|ethereum|eth)\b/.test(normalized)) return 'ethereum';
+  if (/\bethereum\b/.test(normalized) || normalized === 'eth') return 'ethereum';
+  if (/\bsolana\b/.test(normalized) || normalized === 'sol') return 'solana';
   return normalized;
 }
 
@@ -138,14 +152,14 @@ function isLiveLifecycle(status: CanonicalCapability['lifecycleStatus'], environ
 
 function networkEligible(implementation: CapabilityImplementation, requestedNetworks: readonly string[]): boolean {
   if (!implementation.supportedNetworks.length) return true;
-  const supported = new Set(implementation.supportedNetworks.map((network) => normalizeNetwork(network)));
+  const supported = new Set(implementation.supportedNetworks.map((network) => canonicalizeNetworkId(network)));
   if (!requestedNetworks.length) {
     // A chain-specific implementation must not be selected before the request
     // has a resolved network. Multi-network implementations that cover the
     // five AgentPlace launch networks remain eligible.
     return ['ethereum','base','arbitrum','bnb','solana'].every((network) => supported.has(network));
   }
-  return requestedNetworks.some((network) => supported.has(normalizeNetwork(network)));
+  return requestedNetworks.some((network) => supported.has(canonicalizeNetworkId(network)));
 }
 
 function providerConfigured(provider: string, configuredProviders: ReadonlySet<string>): boolean {
@@ -373,7 +387,7 @@ export async function planRoute(args: {
   const requiredCapabilities = unique([...researchCore, ...args.proposal.requiredCapabilities.filter((id) => knownIds.has(id))], 24);
   const optionalCapabilities = unique(args.proposal.optionalCapabilities.filter((id) => knownIds.has(id) && !requiredCapabilities.includes(id)), 16);
   const requestedCapabilities = [...requiredCapabilities, ...optionalCapabilities];
-  const requestedNetworks = unique(args.proposal.requestedNetworks.map(normalizeNetwork), 12);
+  const requestedNetworks = unique(args.proposal.requestedNetworks.map(canonicalizeNetworkId), 12);
   const candidateWorkers = workerCandidates(catalog, compatibility, requestedCapabilities);
   const team = pickTeam({
     catalog,
@@ -440,7 +454,7 @@ export async function planRoute(args: {
       capabilityRoutes.push({
         capabilityId, capabilityName: capability.name, required, effect: capability.effect, lifecycleStatus: capability.lifecycleStatus,
         status: 'unavailable', reason: implementations.some((implementation) => implementation.canonicalCapabilityId === capabilityId)
-          ? 'No implementation is currently eligible for this environment/provider/network.'
+          ? `No implementation is currently eligible. ${candidates.slice(0, 4).map((candidate) => `${candidate.provider}: ${candidate.reason}`).join(' | ')}`
           : 'No implementation is registered for this live capability.',
         candidates, compatibleWorkerIds,
       });

@@ -26,3 +26,11 @@ M5B.1 is not frozen until the configured-provider tests relevant to the producti
 ## Network alias regression
 
 For chain-aware provider tests, human network labels such as `Arbitrum One`, `Arbitrum Mainnet`, `ARB`, `Base Mainnet`, `BNB Chain`, and `Solana Mainnet` must normalize to canonical AgentPlace network IDs before Router eligibility and provider execution. A display-name alias must never make an otherwise eligible implementation appear unavailable.
+
+
+### Network canonicalization regression
+
+- Manager emits canonical network IDs rather than display labels.
+- `Arbitrum One`, `Arbitrum One (42161)`, and `Arbitrum Mainnet / chain 42161` canonicalize to `arbitrum`.
+- Explicit testnets remain distinct and cannot accidentally route to mainnet-only intelligence implementations.
+- If no implementation is eligible, advanced route detail includes per-provider rejection reasons rather than only a generic message.

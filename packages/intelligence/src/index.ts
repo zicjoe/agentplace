@@ -53,11 +53,18 @@ function number(value:unknown):number|undefined {
 }
 function normalizedNetwork(value:string|undefined):string {
   const v=(value??'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');
-  if (['ethereum','eth','ethereum mainnet','1'].includes(v)) return 'ethereum';
-  if (['base','base mainnet','8453'].includes(v)) return 'base';
-  if (['arbitrum','arb','arbitrum one','arbitrum mainnet','arb one','42161'].includes(v)) return 'arbitrum';
-  if (['bnb','bsc','bnb chain','binance','binance smart chain','56'].includes(v)) return 'bnb';
-  if (['solana','sol','solana mainnet','solana mainnet beta'].includes(v)) return 'solana';
+  if(!v) return '';
+  if(/\barbitrum\b/.test(v)&&/\bsepolia\b|\btestnet\b/.test(v)) return 'arbitrum-sepolia';
+  if(/\bbase\b/.test(v)&&/\bsepolia\b|\btestnet\b/.test(v)) return 'base-sepolia';
+  if(/\b(?:ethereum|eth)\b/.test(v)&&/\bsepolia\b|\bholesky\b|\btestnet\b/.test(v)) return v.includes('holesky')?'ethereum-holesky':'ethereum-sepolia';
+  if(/\b(?:bnb|bsc|binance smart chain)\b/.test(v)&&/\btestnet\b/.test(v)) return 'bnb-testnet';
+  if(/\bsolana\b/.test(v)&&/\bdevnet\b/.test(v)) return 'solana-devnet';
+  if(/\bsolana\b/.test(v)&&/\btestnet\b/.test(v)) return 'solana-testnet';
+  if(/\b42161\b/.test(v)||/\barbitrum\b/.test(v)||v==='arb'||v==='arb one') return 'arbitrum';
+  if(/\b8453\b/.test(v)||/\bbase\b/.test(v)) return 'base';
+  if(/\b56\b/.test(v)||/\bbnb\b/.test(v)||/\bbsc\b/.test(v)||/\bbinance smart chain\b/.test(v)) return 'bnb';
+  if((/\b1\b/.test(v)&&/\b(?:chain|chain id|mainnet|ethereum|eth)\b/.test(v))||/\bethereum\b/.test(v)||v==='eth') return 'ethereum';
+  if(/\bsolana\b/.test(v)||v==='sol') return 'solana';
   return v;
 }
 function dexscreenerNetwork(value:string):string { return value==='bnb'?'bsc':value; }

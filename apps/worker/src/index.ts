@@ -26,6 +26,7 @@ import {
 } from '@agent-place/models';
 import {
   attachRouteDecisionToJob,
+  canonicalizeNetworkId,
   planRoute,
   routedProvidersForCapability,
   type DurableRouteDecision,
@@ -69,14 +70,14 @@ const decisionSchema = {
     clarifyingQuestion: { type: 'string' },
     stages: { type: 'array', items: { type: 'string' } },
     intentDomain: { type: 'string' },
-    requestedNetworks: { type: 'array', items: { type: 'string' } },
+    requestedNetworks: { type: 'array', items: { type: 'string', enum: ['ethereum','base','arbitrum','bnb','solana','ethereum-sepolia','ethereum-holesky','base-sepolia','arbitrum-sepolia','bnb-testnet','solana-devnet','solana-testnet'] } },
     requiredCapabilities: { type: 'array', items: { type: 'string' } },
     optionalCapabilities: { type: 'array', items: { type: 'string' } },
     intelligenceSubjects: {
       type: 'array',
       items: {
         type: 'object', additionalProperties: false,
-        properties: { kind: { type: 'string', enum: ['token','wallet','protocol','stablecoin'] }, query: { type: 'string' }, network: { type: 'string' }, address: { type: 'string' } },
+        properties: { kind: { type: 'string', enum: ['token','wallet','protocol','stablecoin'] }, query: { type: 'string' }, network: { type: 'string', enum: ['','ethereum','base','arbitrum','bnb','solana','ethereum-sepolia','ethereum-holesky','base-sepolia','arbitrum-sepolia','bnb-testnet','solana-devnet','solana-testnet'] }, address: { type: 'string' } },
         required: ['kind','query','network','address'],
       },
     },
@@ -246,7 +247,7 @@ async function decide(task: IntelligenceTask, context: IntelligenceContextValue)
   const available = capabilities.filter((capability) => capability.lifecycleStatus !== 'planned').map((capability) => capability.id);
   const knownCapabilityIds = new Set(capabilities.map((capability) => capability.id));
   const capabilityCatalog = capabilities.map((capability) => `${capability.id} [${capability.lifecycleStatus}] — ${capability.purpose}`).join('\n');
-  const system = `You are AgentPlace Manager, the orchestration intelligence for a crypto Worker operating system. Convert the user's request into a bounded structured proposal for the deterministic AgentPlace Router. Use a Job for requests needing current research, comparison, multiple steps, evidence, or specialist work. Use direct only for simple conversational guidance that does not require current external facts. Never claim wallet authority, financial execution, live onchain facts, or capabilities that are not available. Router v1 is read-only: if the user asks AgentPlace to move funds or execute a financial action, do not pretend execution exists; explain that execution is not available in this milestone. Choose the smallest competent Worker team. For research Jobs, researchRequirements must enumerate every material dimension the user asked to have answered, including any dimension that may be unavailable. Do not collapse distinct requested checks into one vague item. intentDomain should be a short stable domain label such as research, token-intelligence, wallet-intelligence, portfolio, defi, stablecoins, perps, transactions, or create. requestedNetworks should contain only networks explicitly relevant to the request; otherwise use an empty array. requiredCapabilities must include every known canonical capability ID materially required by the request even when its lifecycle is planned; this is planning metadata and does not make it available. optionalCapabilities are useful but non-essential capabilities. capabilityGraph must describe the proposed dependency order using only capability IDs from requiredCapabilities or optionalCapabilities. intelligenceSubjects must identify the concrete assets/addresses/protocols needed by routed intelligence capabilities. Use kind token for tokens, wallet for wallet addresses, protocol for DeFi protocols, and stablecoin for stablecoins. query should be a concise symbol/name/address. Include network/address when the user supplies them or they are unambiguous; otherwise leave those strings empty so the intelligence fabric can resolve safely. Do not invent contract addresses. The deterministic Router will validate Workers, capability lifecycle, environment, provider configuration, health, networks and read/write boundaries after your proposal. Never invent capability IDs outside the catalog.
+  const system = `You are AgentPlace Manager, the orchestration intelligence for a crypto Worker operating system. Convert the user's request into a bounded structured proposal for the deterministic AgentPlace Router. Use a Job for requests needing current research, comparison, multiple steps, evidence, or specialist work. Use direct only for simple conversational guidance that does not require current external facts. Never claim wallet authority, financial execution, live onchain facts, or capabilities that are not available. Router v1 is read-only: if the user asks AgentPlace to move funds or execute a financial action, do not pretend execution exists; explain that execution is not available in this milestone. Choose the smallest competent Worker team. For research Jobs, researchRequirements must enumerate every material dimension the user asked to have answered, including any dimension that may be unavailable. Do not collapse distinct requested checks into one vague item. intentDomain should be a short stable domain label such as research, token-intelligence, wallet-intelligence, portfolio, defi, stablecoins, perps, transactions, or create. requestedNetworks should contain only networks explicitly relevant to the request; otherwise use an empty array. Always use canonical network IDs exactly: ethereum, base, arbitrum, bnb, solana, or the explicit testnet IDs allowed by the schema. Never put display labels such as \"Arbitrum One (42161)\" into requestedNetworks. requiredCapabilities must include every known canonical capability ID materially required by the request even when its lifecycle is planned; this is planning metadata and does not make it available. optionalCapabilities are useful but non-essential capabilities. capabilityGraph must describe the proposed dependency order using only capability IDs from requiredCapabilities or optionalCapabilities. intelligenceSubjects must identify the concrete assets/addresses/protocols needed by routed intelligence capabilities. Use kind token for tokens, wallet for wallet addresses, protocol for DeFi protocols, and stablecoin for stablecoins. query should be a concise symbol/name/address. Include network/address when the user supplies them or they are unambiguous; otherwise leave those strings empty so the intelligence fabric can resolve safely. Do not invent contract addresses. The deterministic Router will validate Workers, capability lifecycle, environment, provider configuration, health, networks and read/write boundaries after your proposal. Never invent capability IDs outside the catalog.
 
 Workers:
 ${catalog.map((worker) => `${worker.id}: ${worker.name} — ${worker.responsibility}`).join('\n')}
@@ -281,10 +282,10 @@ Currently live capabilities: ${available.join(', ') || 'none'}.`;
   value.researchRequirements = value.researchRequirements.filter(Boolean).slice(0, 12);
   if (value.researchRequirements.length === 0) value.researchRequirements = [user];
   value.intentDomain = value.intentDomain.trim().slice(0, 120) || 'research';
-  value.requestedNetworks = [...new Set(value.requestedNetworks.map((network) => network.trim()).filter(Boolean))].slice(0, 12);
+  value.requestedNetworks = [...new Set(value.requestedNetworks.map(canonicalizeNetworkId).filter(Boolean))].slice(0, 12);
   value.requiredCapabilities = [...new Set(value.requiredCapabilities.filter((id) => knownCapabilityIds.has(id)))].slice(0, 24);
   value.optionalCapabilities = [...new Set(value.optionalCapabilities.filter((id) => knownCapabilityIds.has(id) && !value.requiredCapabilities.includes(id)))].slice(0, 16);
-  value.intelligenceSubjects = value.intelligenceSubjects.filter((subject) => subject && ['token','wallet','protocol','stablecoin'].includes(subject.kind) && subject.query?.trim()).map((subject) => ({ kind: subject.kind, query: subject.query.trim().slice(0,200), ...(subject.network?.trim() ? { network: subject.network.trim().slice(0,80) } : {}), ...(subject.address?.trim() ? { address: subject.address.trim().slice(0,200) } : {}) })).slice(0,12);
+  value.intelligenceSubjects = value.intelligenceSubjects.filter((subject) => subject && ['token','wallet','protocol','stablecoin'].includes(subject.kind) && subject.query?.trim()).map((subject) => { const network = subject.network?.trim() ? canonicalizeNetworkId(subject.network) : ''; return { kind: subject.kind, query: subject.query.trim().slice(0,200), ...(network ? { network } : {}), ...(subject.address?.trim() ? { address: subject.address.trim().slice(0,200) } : {}) }; }).slice(0,12);
   value.capabilityGraph = value.capabilityGraph.filter((node) => node && knownCapabilityIds.has(node.capabilityId)).slice(0, 24);
   return value;
 }

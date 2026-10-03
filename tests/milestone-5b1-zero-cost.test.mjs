@@ -39,10 +39,26 @@ test('M5B.1 free-tier adapters preserve bounded truth claims',()=>{
 test('M5B.1 canonicalizes human network aliases before provider eligibility and intelligence resolution',()=>{
   const router=readFileSync('packages/router/src/index.ts','utf8');
   const intel=readFileSync('packages/intelligence/src/index.ts','utf8');
-  assert.match(router,/arbitrum one/);
+
+  // Assert the actual canonicalization wiring rather than depending on comment
+  // capitalization or stale helper names. Runtime behavior is covered below.
+  assert.match(router,/canonicalizeNetworkId/);
   assert.match(router,/42161/);
-  assert.match(router,/args\.proposal\.requestedNetworks\.map\(normalizeNetwork\)/);
-  assert.match(intel,/arbitrum one/);
+  assert.match(router,/args\.proposal\.requestedNetworks\.map\(canonicalizeNetworkId\)/);
+  assert.match(intel,/function normalizedNetwork/);
   assert.match(intel,/42161/);
-  assert.match(intel,/solana mainnet beta/);
+  assert.ok(intel.includes("v==='arb one'"));
+  assert.ok(intel.includes("v==='sol'"));
+});
+
+
+test('M5B.1 runtime network canonicalizer accepts decorated mainnet labels without collapsing testnets', async()=>{
+  const { canonicalizeNetworkId } = await import('../packages/router/dist/index.js');
+  assert.equal(canonicalizeNetworkId('Arbitrum One'), 'arbitrum');
+  assert.equal(canonicalizeNetworkId('Arbitrum One (42161)'), 'arbitrum');
+  assert.equal(canonicalizeNetworkId('Arbitrum Mainnet / chain 42161'), 'arbitrum');
+  assert.equal(canonicalizeNetworkId('ARB'), 'arbitrum');
+  assert.equal(canonicalizeNetworkId('Arbitrum Sepolia'), 'arbitrum-sepolia');
+  assert.equal(canonicalizeNetworkId('Base Mainnet (8453)'), 'base');
+  assert.equal(canonicalizeNetworkId('Solana Mainnet Beta'), 'solana');
 });
