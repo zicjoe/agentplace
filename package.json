@@ -1,6 +1,6 @@
 {
   "name": "agent-place",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "AgentPlace \u2014 multichain operating system and economic coordination layer for autonomous crypto Workers.",
   "type": "module",

@@ -3,6 +3,16 @@
 - Harden M5B.1 network routing: Manager structured output now uses canonical network IDs, Router canonicalization accepts decorated mainnet labels such as `Arbitrum One (42161)`, explicit testnets stay distinct, and unavailable routes expose provider-specific eligibility reasons for diagnosis.
 # Changelog
 
+## 0.8.1 — M5B.2.2 Telegraph Capability Mapping + Evidence Normalization
+
+- Added deterministic Telegraph-to-AgentPlace capability mapping using an explicit semantic allowlist over existing canonical capabilities only.
+- Unknown or semantically unmatched Telegraph intents/services remain unmapped; M5B.2.2 does not create new canonical capabilities.
+- Added deterministic endpoint selection with fail-closed ambiguous/discovery-incomplete states rather than guessing which Telegraph endpoint satisfies a capability.
+- Kept Telegraph's Base Sepolia protocol/payment network separate from the intelligence subject network; subject-network support is preserved only when discovery metadata actually declares it.
+- Added Telegraph result normalization into the existing AgentPlace IntelligenceEvidence shape with explicit service, intent, environment, trust, signal, timing, warnings, result and limitation provenance.
+- Exposed the existing owner-scoped intelligence evidence persistence helper for later M5B.2.3 wiring without adding a second evidence store.
+- Added no Router registration, paid inference, x402 signing, wallet authority, database migration, paid dependency or UI change.
+
 ## 0.8.0 — M5B.2.1 Telegraph Adapter + Discovery
 
 - Added a dedicated `@agent-place/telegraph` controlled-runtime package for free, read-only Telegraph testnet discovery.

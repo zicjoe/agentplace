@@ -363,7 +363,7 @@ function deriveAccumulation(base:ReturnType<typeof evidenceBase>, prior:readonly
   return makeEvidence(base,{status:'verified',summary:`AgentPlace derived ${direction} from Nansen field ${strongest.key}=${strongest.value}.`,data:{direction,metric:strongest,sourceEvidenceId:source.id,sourceProvider:'nansen'},...(source.sourceUrl?{sourceUrl:source.sourceUrl}:{}),derivationVersion:'agentplace-smartmoney-accumulation-v1',limitations:['This is a bounded deterministic derivation from provider-defined Smart Money evidence, not an AgentPlace wallet-quality score.']});
 }
 
-async function persist(ownerUserId:string,evidence:IntelligenceEvidence):Promise<void> {
+export async function persistIntelligenceEvidence(ownerUserId:string,evidence:IntelligenceEvidence):Promise<void> {
   await getDatabasePool().query(`INSERT INTO intelligence_evidence(id,owner_user_id,job_id,task_id,capability_id,implementation_id,provider,subject_kind,subject_query,network,address,status,summary,data,source_url,observed_at,fetched_at,freshness_seconds,provider_confidence,derivation_version,limitations)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21::jsonb)
     ON CONFLICT(id) DO NOTHING`,[evidence.id,ownerUserId,evidence.jobId,evidence.taskId,evidence.capabilityId,evidence.implementationId,evidence.provider,evidence.subjectKind,evidence.subjectQuery,evidence.network??null,evidence.address??null,evidence.status,evidence.summary,JSON.stringify(evidence.data),evidence.sourceUrl??null,evidence.observedAt,evidence.fetchedAt,evidence.freshnessSeconds??null,evidence.providerConfidence??null,evidence.derivationVersion??null,JSON.stringify(evidence.limitations)]);
@@ -397,7 +397,7 @@ export async function collectRoutedIntelligence(args:{ownerUserId:string;jobId:s
       } catch(error) {
         evidence=makeEvidence(base,{status:'error',summary:`${invocation.provider} intelligence request failed.`,data:{error:error instanceof Error?error.message:String(error)},limitations:['Provider failure was preserved instead of being converted into a factual finding.']});
       }
-      await persist(args.ownerUserId,evidence); out.push(evidence);
+      await persistIntelligenceEvidence(args.ownerUserId,evidence); out.push(evidence);
     }
   }
   return out;

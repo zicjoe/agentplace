@@ -6,11 +6,11 @@ AgentPlace is a multichain conversational operating system and economic coordina
 
 ## Current status
 
-**v0.8.0 — Milestone 5B.2.1: Telegraph Adapter + Discovery**
+**v0.8.1 — Milestone 5B.2.2: Telegraph Capability Mapping + Evidence Normalization**
 
-M5B.1 remains frozen. AgentPlace now also has a dedicated production-quality Telegraph testnet discovery adapter that reads Telegraph's free public Node, miner-dispatcher and Engine catalog surfaces and normalizes their availability without turning Telegraph into AgentPlace's top-level router.
+M5B.1 remains frozen. AgentPlace now has a production-quality Telegraph testnet adapter that discovers current Telegraph supply, deterministically maps only exact compatible service semantics into existing AgentPlace canonical capabilities, and normalizes Telegraph responses into the existing IntelligenceEvidence contract without turning Telegraph into AgentPlace's top-level router.
 
-M5B.2.1 is **discovery-only and read-only**. It does not map Telegraph services into canonical AgentPlace capabilities yet, persist Telegraph IntelligenceEvidence, invoke paid inference, sign x402 payments, grant wallet authority or enable financial execution. Telegraph remains `experimental` / `testnet` / `executionAuthority = none` until later M5B.2 acceptance gates pass.
+M5B.2.2 remains **read-only**. Telegraph capability mappings are an explicit semantic allowlist over the existing AgentPlace vocabulary; unknown Telegraph intents stay unmapped and no new canonical capability is created silently. Normalized Telegraph output is structurally compatible with owner-scoped IntelligenceEvidence persistence, but paid inference, x402 signing, Router registration and financial authority remain disabled until later M5B.2 gates.
 
 ## Architecture
 
@@ -72,7 +72,7 @@ Local endpoints:
 - API through the web/same-origin proxy: `http://localhost:5173/api/v1/config`
 - API health (direct): `http://127.0.0.1:8787/health`
 
-For a clean v0.8.0 checkout, `pnpm install --frozen-lockfile` should be used.
+For a clean v0.8.1 checkout, `pnpm install --frozen-lockfile` should be used.
 
 See `docs/MILESTONE-5B2-TESTING.md` for the current acceptance checklist, `docs/MILESTONE-5B2-DEPLOYMENT.md` for deployment, and `.env.example` for variables.
 
@@ -97,6 +97,6 @@ AgentPlace Model Gateway supports configured Gemini, OpenAI, and Anthropic Claud
 AgentPlace v0.7.1 can use DEX Screener, DefiLlama and Blockscout without paid subscriptions, and can optionally activate free-tier Etherscan, Alchemy and schema-pinned The Graph integrations. Premium intelligence providers remain optional enrichments rather than production prerequisites.
 
 
-### M5B.2.1 Telegraph discovery
+### M5B.2.2 Telegraph mapping + evidence
 
-`@agent-place/telegraph` discovers Telegraph testnet supply through free public metadata endpoints. Run `pnpm telegraph:discover` to perform a no-payment live discovery smoke from an environment with outbound access. Paid inference and service-spend custody are deliberately deferred for explicit product/security approval.
+`@agent-place/telegraph` discovers Telegraph testnet supply through free public metadata endpoints, maps only exact compatible service intents/capabilities to existing AgentPlace canonical capabilities, keeps protocol settlement network separate from the intelligence subject network, and normalizes Telegraph result envelopes into provider-attributed evidence. Run `pnpm telegraph:discover` for a no-payment live discovery smoke. Router registration and paid inference remain deliberately deferred.

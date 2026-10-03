@@ -1,48 +1,48 @@
 # Milestone 5B.2 Deployment
 
-## M5B.2.1
+## M5B.2.2
 
-M5B.2.1 is additive and read-only.
+M5B.2.2 is additive and read-only.
 
-### Database
+It introduces no database migration and no required Railway variable.
 
-No migration is required. The discovery snapshot is not persisted in this slice.
-
-### Railway variables
-
-No new Railway variable is required for the documented Telegraph testnet defaults.
-
-Optional server-side operational overrides are:
+The existing Telegraph discovery defaults remain:
 
 ```text
-TELEGRAPH_NODE_URL
-TELEGRAPH_ENGINE_URL
-TELEGRAPH_DISPATCHER_URL
-TELEGRAPH_TIMEOUT_MS
-TELEGRAPH_MAX_RESPONSE_BYTES
+TELEGRAPH_NODE_URL=https://devnode.telegraphprotocol.com
+TELEGRAPH_ENGINE_URL=https://devnode.telegraphprotocol.com/engine
+TELEGRAPH_DISPATCHER_URL=https://devnode.telegraphprotocol.com/miner-dispatcher
 ```
 
-The defaults use Telegraph's documented `devnode.telegraphprotocol.com` testnet surfaces, including the `/miner-dispatcher` mount.
+These values are optional overrides; the adapter has the documented testnet defaults built in. Existing optional timeout/response-size settings remain supported.
 
-Do **not** add a Telegraph EVM/Solana private key, x402 payment signer, or payment library for M5B.2.1. Paid Telegraph inference remains outside this slice pending an explicit AgentPlace service-spend/custody decision.
+Do not add Telegraph payment private keys, payment-signing variables or x402 libraries for M5B.2.2.
 
-### Normal deployment flow
+## Normal deployment flow
 
 ```bash
+pnpm install --frozen-lockfile
 pnpm check
 git add .
-git commit -m "feat: add M5B2.1 Telegraph testnet discovery adapter"
+git commit -m "feat: add M5B2.2 Telegraph capability mapping and evidence"
 git push origin main
 ```
 
-The existing Railway migration/pre-deploy process remains unchanged.
+Railway does not need a new migration for this release.
 
-### Runtime smoke
-
-If outbound access to Telegraph is available from the environment, run:
+## Optional no-payment smoke
 
 ```bash
 pnpm telegraph:discover
 ```
 
-This is a free public discovery check only. It does not validate paid inference or M5B.2.2 capability mapping.
+This validates current public Telegraph discovery availability only. It does not make a paid inference request.
+
+## Production posture after deploy
+
+- AgentPlace Router behavior is unchanged.
+- Existing M5B.1 providers remain unchanged.
+- Telegraph is not yet registered as routable capability supply.
+- Telegraph mappings/evidence normalizers are ready for M5B.2.3 wiring.
+- No user-facing UX change is introduced.
+- No wallet, signer, Agent Account, execution or policy authority is granted to Telegraph.

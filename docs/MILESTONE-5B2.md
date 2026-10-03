@@ -1,86 +1,118 @@
 # Milestone 5B.2 — Telegraph Protocol Integration
 
-Status: M5B.2.1 implemented; M5B.2.2–M5B.2.4 intentionally pending.
+Status: M5B.2.1 and M5B.2.2 implemented. M5B.2.3–M5B.2.4 pending.
 
 ## Locked boundary
 
 Telegraph is an external implementation/network beneath the AgentPlace Router. It does not replace the AgentPlace Manager, canonical capability vocabulary, deterministic Router, Worker ownership, Job state, authority, evidence normalization, or provider fallback.
 
-M5B.2 is read-only intelligence. Telegraph receives no wallet authority, signer authority, Agent Account control, provider secrets, or ability to change AgentPlace policy. Telegraph output is evidence, never authority.
+M5B.2 remains read-only intelligence. Telegraph receives no wallet authority, signer authority, Agent Account control, provider secrets, or ability to change AgentPlace policy. Telegraph output is evidence, never authority.
 
-Initial metadata is fixed to:
+Initial metadata remains fixed to:
 
 - provider: `telegraph`
 - environment: `testnet`
 - trust level: `experimental`
 - execution authority: `none`
-- protocol network: `base-sepolia`
+- protocol/payment network: `base-sepolia`
 
-## Current Telegraph architecture researched for M5B.2.1
+The Telegraph protocol/payment network must never be confused with the blockchain/network that an intelligence result is about.
 
-Telegraph models inference demand as canonical Telegraph **Intents** and supply as registered **miners**. Telegraph's Engine can perform its own miner routing, while its dispatcher exposes the live registered integrations and a dynamically generated OpenAPI description. Telegraph also exposes a Daemon for autonomous signal generation and an MCP server that wraps Node, Engine, Daemon, and dynamically discovered miner tools.
+## Current Telegraph architecture
 
-AgentPlace must not adopt Telegraph's Intent/miner vocabulary as its own canonical domain model. M5B.2.2 will map selected Telegraph services into existing AgentPlace canonical capabilities only where semantics match.
+Telegraph models inference demand as Telegraph **Intents** and supply as registered **miners/services**. Telegraph's Engine can perform its own routing, while the dispatcher exposes the live integration registry and dynamic OpenAPI metadata. Telegraph also exposes a Daemon and MCP server.
 
-The documented testnet currently uses `https://devnode.telegraphprotocol.com`, with Engine under `/engine`. Telegraph documents Base Sepolia as the payment/testnet network. Current Telegraph testnet documentation also notes that the testnet is single-signer and does not yet provide the production BFT validator threshold; therefore AgentPlace keeps Telegraph experimental/testnet even when individual endpoints are healthy.
+AgentPlace does not adopt Telegraph Intents/miner vocabulary as its canonical product model. AgentPlace owns the canonical capability vocabulary and maps only compatible Telegraph service semantics underneath it.
 
-## M5B.2.1 implementation
+The documented testnet currently uses `https://devnode.telegraphprotocol.com`. Paid Engine/miner calls use x402. The current AgentPlace slice does not enable that payment path.
 
-`@agent-place/telegraph` is a controlled-runtime discovery adapter. A discovery snapshot reads only free public metadata endpoints:
+## M5B.2.1 — Adapter + Discovery
+
+`@agent-place/telegraph` discovers free public metadata from:
 
 - Node `GET /status`
-- mounted dispatcher `GET /miner-dispatcher/healthz`
-- mounted dispatcher `GET /miner-dispatcher/integrations`
-- Engine `GET /v1/miners`
-- Engine `GET /v1/intents`
-- mounted dispatcher `GET /miner-dispatcher/openapi.json`
+- dispatcher `GET /miner-dispatcher/healthz`
+- dispatcher `GET /miner-dispatcher/integrations`
+- Engine `GET /engine/v1/miners`
+- Engine `GET /engine/v1/intents`
+- dispatcher `GET /miner-dispatcher/openapi.json`
 
-The adapter:
+Discovery is bounded, fail-closed, and never invokes discovered upstream miner URLs directly.
 
-- normalizes miner/service identity, declared capabilities, supported Telegraph intents, endpoint schemas, advertised price metadata, and on-chain metadata;
-- merges overlapping dispatcher and Engine catalog records without fabricating missing values;
-- records per-source availability and HTTP status;
-- bounds request time and response size;
-- treats missing discovery sources as degraded/unavailable instead of inventing supply;
-- tolerates the documented current testnet `intent_registry` gap as partial discovery;
-- never invokes a discovered upstream miner URL directly;
-- does not perform paid inference or x402 payment;
-- does not add any Telegraph implementation to the AgentPlace Router yet;
-- does not persist IntelligenceEvidence yet, because capability mapping/evidence normalization belongs to M5B.2.2.
+## M5B.2.2 — Capability Mapping + Evidence Normalization
 
-No UI surface changes are introduced.
+M5B.2.2 adds a deterministic mapping layer over the discovery snapshot.
 
-## Why M5B.2.1 does not use Telegraph's auto-router
+### Capability mapping rules
 
-Telegraph's Engine offers an auto-routed inference path. AgentPlace will not make that a competing top-level router. In M5B.2.3, AgentPlace's deterministic Router must first select an eligible `telegraph:<service>` implementation for an AgentPlace canonical capability. Any Telegraph-internal routing used after that point must remain subordinate to that exact implementation contract and must not silently broaden capability, authority, network, or spend.
+- Only existing AgentPlace canonical capabilities may be produced.
+- Mapping uses an explicit semantic allowlist of Telegraph intent/capability names.
+- Unknown Telegraph semantics remain unmapped.
+- AgentPlace does not silently create new canonical capabilities.
+- A Telegraph service with multiple endpoints is mapped only when one endpoint can be selected deterministically from declared endpoint semantics.
+- Ambiguous endpoint selection becomes `ambiguous` and is not router-ready.
+- Missing endpoint metadata becomes `discovery-incomplete` and is not router-ready.
+- Telegraph activation status is preserved; inactive/disabled supply is not router-ready.
+- The Base Sepolia Telegraph protocol/payment network is never treated as an intelligence subject-network declaration.
+- Intelligence subject-network hints are preserved only when current discovery schemas or intent names actually declare them.
 
-## Payment boundary discovered during research
+The mapping layer prepares stable `telegraph:<service>:<capability>:<endpoint-hash>` implementation identifiers for the next Router milestone, but M5B.2.2 does not register those implementations with Router v1.
 
-Telegraph's paid Engine/miner calls use x402, where payment is authentication. Telegraph's MCP instructions currently require a payment private key for paid calls. AgentPlace M5B.2.1 deliberately implements none of that.
+### Evidence normalization
 
-Before any paid Telegraph invocation is enabled, the product owner must approve an AgentPlace-controlled service-spend design covering custody/signing, service budgets, payment asset/network, per-call limits, accounting, failure/refund behavior, and secret isolation. No arbitrary Telegraph service may receive existing Nansen, GoPlus, Etherscan, Alchemy, or other provider credentials.
+`normalizeTelegraphEvidence()` converts a Telegraph result envelope into the existing AgentPlace IntelligenceEvidence structure while preserving:
+
+- canonical AgentPlace capability;
+- stable Telegraph implementation ID;
+- provider = `telegraph`;
+- exact Telegraph service/miner attribution where available;
+- endpoint and Telegraph Intent;
+- `testnet` environment;
+- `experimental` trust posture;
+- `executionAuthority = none`;
+- Telegraph protocol network;
+- signal hash and retrievable signal URL where available;
+- provider timestamp;
+- reported cost and latency metadata;
+- warnings;
+- provider label/reason fields when declared by Telegraph signal mapping;
+- raw/normalized result payload with bounded serialization;
+- limitations and error/unavailable state.
+
+Telegraph warnings produce partial evidence. Telegraph errors remain errors. Missing results remain unavailable. AgentPlace does not upgrade those states into factual findings.
+
+Provider confidence is copied into the normalized top-level confidence field only when Telegraph's declared confidence-field value is already a finite value in the unambiguous `[0,1]` range. Otherwise it remains in provider data and AgentPlace does not invent a conversion.
+
+The existing `intelligence_evidence` table remains the single evidence store. The owner-scoped persistence helper is now exported for later M5B.2.3 invocation wiring; no second Telegraph-specific evidence database is introduced.
+
+## Why Telegraph's auto-router is still not AgentPlace's Router
+
+Telegraph's Engine can auto-route requests. AgentPlace will not make that a competing top-level router. M5B.2.3 must first let AgentPlace Router select an eligible Telegraph implementation for an AgentPlace canonical capability. Telegraph internal behavior after that point must remain subordinate to the selected implementation contract.
+
+## Payment boundary
+
+Telegraph paid calls use x402, where payment is authentication. Telegraph's MCP setup can use a payment private key. AgentPlace does not adopt that custody model by default.
+
+Before paid Telegraph invocation is enabled, the product owner must approve an AgentPlace-controlled service-spend design covering custody/signing, service budgets, payment asset/network, per-call limits, accounting, failure/refund behavior and secret isolation.
+
+M5B.2.2 adds no payment signer, x402 library, paid dependency or Telegraph payment secret.
 
 ## Remaining sequence
 
-### M5B.2.2 — Capability Mapping + Evidence Normalization
-
-- inspect live Telegraph services discovered through M5B.2.1;
-- map only semantically compatible services to existing AgentPlace canonical capabilities;
-- stop for approval before adding a genuinely new canonical capability;
-- normalize Telegraph output into owner-scoped `IntelligenceEvidence` with explicit provider/service/testnet attribution and limitations;
-- keep paid calls disabled unless the service-spend decision has been approved.
-
 ### M5B.2.3 — Router Integration + Fallback
 
-- register mapped `telegraph:<service>` implementations as experimental/testnet supply;
-- reuse Router v1 lifecycle/environment/network/configuration/health/trust eligibility;
-- make native/provider M5B.1 implementations remain independently routable;
-- ensure Telegraph outage/malformed output cannot take down an existing capability.
+- register only mapped, eligible Telegraph implementations beneath Router v1;
+- preserve environment, trust, network, provider configuration and health gates;
+- keep existing M5B.1 providers independently routable;
+- invoke only the Telegraph service/endpoint selected by AgentPlace;
+- persist normalized Telegraph evidence through the existing owner-scoped evidence path;
+- ensure Telegraph failure cannot take down another eligible implementation;
+- keep payment disabled unless the separate service-spend decision is approved.
 
-### M5B.2.4 — Testnet Acceptance + M5B Freeze
+### M5B.2.4 — Testnet Acceptance + Freeze
 
-- validate discovery and mapped invocation against current Telegraph testnet;
+- validate current Telegraph discovery and mapped invocation against the real testnet;
 - validate malformed/offline/partial/fallback behavior;
 - validate evidence provenance and owner isolation;
-- validate no payment/authority expansion beyond the approved boundary;
-- freeze M5B only after production acceptance passes.
+- validate no payment or authority expansion beyond the approved boundary;
+- freeze M5B only after live testnet acceptance passes.
