@@ -1,3 +1,4 @@
+- Surface all deterministic holder concentration metrics (top-1/top-5/top-10/top-20) in structured evidence summaries for Blockscout and Alchemy instead of showing only top-10.
 - Harden M5B.1 network routing: Manager structured output now uses canonical network IDs, Router canonicalization accepts decorated mainnet labels such as `Arbitrum One (42161)`, explicit testnets stay distinct, and unavailable routes expose provider-specific eligibility reasons for diagnosis.
 # Changelog
 

@@ -22,6 +22,10 @@ test('M5B.1 calculates holder concentration deterministically from raw evidence'
   assert.match(intel,/top5Pct/);
   assert.match(intel,/top10Pct/);
   assert.match(intel,/top20Pct/);
+  assert.match(intel,/top-1 \${number\(concentration\.top1Pct\)/);
+  assert.match(intel,/top-5 \${number\(concentration\.top5Pct\)/);
+  assert.match(intel,/top-10 \${number\(concentration\.top10Pct\)/);
+  assert.match(intel,/top-20 \${number\(concentration\.top20Pct\)/);
   assert.match(intel,/getTokenHoldersAtSlot/);
   assert.match(intel,/getTokenSupply/);
   assert.match(intel,/getTokenHolders/);
