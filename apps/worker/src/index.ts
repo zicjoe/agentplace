@@ -34,7 +34,7 @@ import {
 } from '@agent-place/router';
 import { defineService, parseEnvironmentContract } from '@agent-place/shared';
 import { listWorkerCatalog } from '@agent-place/workers';
-import { collectRoutedIntelligence, intelligenceEvidencePrompt, type IntelligenceSubject } from '@agent-place/intelligence';
+import { collectRoutedIntelligence, intelligenceEvidencePrompt, refreshTelegraphDiscovery, telegraphDiscoveryConfig, type IntelligenceSubject } from '@agent-place/intelligence';
 import {
   appendCoverageFallback,
   buildResearchRequirements,
@@ -46,7 +46,7 @@ import {
 export const service = defineService({
   name: 'agent-place-worker',
   runtimeClass: 'worker',
-  version: '0.7.0',
+  version: '0.8.0',
   milestone: 5,
 });
 
@@ -610,6 +610,15 @@ async function processTask(task: IntelligenceTask): Promise<void> {
 
 async function loop(): Promise<void> {
   process.stdout.write(`${JSON.stringify({ level: 'info', service: service.name, message: 'AgentPlace intelligence worker started', version: service.version })}\n`);
+  const telegraphConfig = telegraphDiscoveryConfig();
+  if (telegraphConfig.enabled) {
+    try {
+      const snapshot = await refreshTelegraphDiscovery(telegraphConfig);
+      process.stdout.write(`${JSON.stringify({ level: snapshot.status === 'healthy' ? 'info' : 'warn', service: service.name, providerNetwork: 'telegraph', networkEnvironment: snapshot.environment, status: snapshot.status, minerCount: snapshot.minerCount, intentCount: snapshot.intentCount, errors: snapshot.errors, message: 'Telegraph live discovery refreshed' })}\n`);
+    } catch (error) {
+      process.stderr.write(`${JSON.stringify({ level: 'warn', service: service.name, providerNetwork: 'telegraph', message: 'Telegraph live discovery refresh failed; existing AgentPlace routing remains available', error: error instanceof Error ? error.message : String(error) })}\n`);
+    }
+  }
   while (!stopping) {
     const task = await claimNextIntelligenceTask().catch((error: unknown) => {
       process.stderr.write(`${JSON.stringify({ level: 'error', service: service.name, message: 'Task claim failed', error: error instanceof Error ? error.message : String(error) })}\n`);

@@ -1,3 +1,12 @@
+## 0.8.0 — Milestone 5B.2.1 Telegraph live discovery
+
+- Froze the accepted M5B.1 Core Intelligence Fabric after production cross-provider acceptance.
+- Added a Telegraph live-network discovery adapter for public Miner, Intent and Daemon-health surfaces.
+- Added durable `telegraph_discovery_snapshot` state via additive migration `0009_telegraph_live_discovery.sql`.
+- Production Worker now refreshes Telegraph discovery at startup without blocking existing AgentPlace routing when Telegraph is degraded or unavailable.
+- Kept Telegraph non-routable in this slice: no paid inference, x402 signer, wallet authority or user-capital movement was introduced.
+- Kept the external network environment configuration-driven so the adapter can be promoted when Telegraph Mainnet becomes available without rewriting AgentPlace routing architecture.
+
 - Chain verified deployer evidence into dependent wallet-activity intelligence so a Manager subject like `creator/deployer of ARB contract ...` is deterministically bound to the verified EVM creator address before provider execution.
 - Surface all deterministic holder concentration metrics (top-1/top-5/top-10/top-20) in structured evidence summaries for Blockscout and Alchemy instead of showing only top-10.
 - Harden M5B.1 network routing: Manager structured output now uses canonical network IDs, Router canonicalization accepts decorated mainnet labels such as `Arbitrum One (42161)`, explicit testnets stay distinct, and unavailable routes expose provider-specific eligibility reasons for diagnosis.
