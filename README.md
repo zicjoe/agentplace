@@ -6,11 +6,11 @@ AgentPlace is a multichain conversational operating system and economic coordina
 
 ## Current status
 
-**v0.7.0 — Milestone 5B.1: Core Crypto Intelligence Fabric**
+**v0.8.0 — Milestone 5B.2.1: Telegraph Adapter + Discovery**
 
-AgentPlace now combines the frozen M5 deterministic Router with a provider-backed crypto intelligence fabric. Token, wallet, Smart Money, protocol/DeFi and stablecoin capabilities can route to eligible direct providers and preserve structured provider-attributed evidence alongside grounded web research.
+M5B.1 remains frozen. AgentPlace now also has a dedicated production-quality Telegraph testnet discovery adapter that reads Telegraph's free public Node, miner-dispatcher and Engine catalog surfaces and normalizes their availability without turning Telegraph into AgentPlace's top-level router.
 
-Current production Jobs remain **read-only**. M5B.1 does not grant wallet authority, sign transactions or enable financial execution. Provider credentials stay server-side; missing credentials make only the affected implementation ineligible rather than producing synthetic data.
+M5B.2.1 is **discovery-only and read-only**. It does not map Telegraph services into canonical AgentPlace capabilities yet, persist Telegraph IntelligenceEvidence, invoke paid inference, sign x402 payments, grant wallet authority or enable financial execution. Telegraph remains `experimental` / `testnet` / `executionAuthority = none` until later M5B.2 acceptance gates pass.
 
 ## Architecture
 
@@ -72,9 +72,9 @@ Local endpoints:
 - API through the web/same-origin proxy: `http://localhost:5173/api/v1/config`
 - API health (direct): `http://127.0.0.1:8787/health`
 
-For a clean v0.7.0 checkout, `pnpm install --frozen-lockfile` should be used.
+For a clean v0.8.0 checkout, `pnpm install --frozen-lockfile` should be used.
 
-See `docs/MILESTONE-5B1-TESTING.md` for the acceptance checklist, `docs/MILESTONE-5B1-DEPLOYMENT.md` for deployment, and `.env.example` for variables.
+See `docs/MILESTONE-5B2-TESTING.md` for the current acceptance checklist, `docs/MILESTONE-5B2-DEPLOYMENT.md` for deployment, and `.env.example` for variables.
 
 ## Locked safety principles
 
@@ -95,3 +95,8 @@ AgentPlace Model Gateway supports configured Gemini, OpenAI, and Anthropic Claud
 ### M5B.1 zero-cost-first intelligence
 
 AgentPlace v0.7.1 can use DEX Screener, DefiLlama and Blockscout without paid subscriptions, and can optionally activate free-tier Etherscan, Alchemy and schema-pinned The Graph integrations. Premium intelligence providers remain optional enrichments rather than production prerequisites.
+
+
+### M5B.2.1 Telegraph discovery
+
+`@agent-place/telegraph` discovers Telegraph testnet supply through free public metadata endpoints. Run `pnpm telegraph:discover` to perform a no-payment live discovery smoke from an environment with outbound access. Paid inference and service-spend custody are deliberately deferred for explicit product/security approval.

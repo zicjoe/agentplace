@@ -1,13 +1,48 @@
-# Milestone 5B.2.1 deployment
+# Milestone 5B.2 Deployment
 
-M5B.2.1 is a normal additive AgentPlace deployment.
+## M5B.2.1
 
-1. Run `pnpm check` locally.
-2. Commit and push the accepted replacement repository.
-3. Railway's established API pre-deploy hook runs `pnpm migrate`, applying `0009_telegraph_live_discovery.sql` automatically.
-4. Configure the Worker-only Telegraph discovery variables documented in `.env.example`.
-5. Redeploy/restart the Worker and verify the live discovery log.
+M5B.2.1 is additive and read-only.
 
-There is no manual migration command for the normal production flow.
+### Database
 
-The discovery adapter defaults to Telegraph's current live public node but remains configuration-driven. When Telegraph Mainnet becomes publicly available, promotion must be a deliberate provider/environment decision and must not silently reuse testnet service-spend configuration.
+No migration is required. The discovery snapshot is not persisted in this slice.
+
+### Railway variables
+
+No new Railway variable is required for the documented Telegraph testnet defaults.
+
+Optional server-side operational overrides are:
+
+```text
+TELEGRAPH_NODE_URL
+TELEGRAPH_ENGINE_URL
+TELEGRAPH_DISPATCHER_URL
+TELEGRAPH_TIMEOUT_MS
+TELEGRAPH_MAX_RESPONSE_BYTES
+```
+
+The defaults use Telegraph's documented `devnode.telegraphprotocol.com` testnet surfaces, including the `/miner-dispatcher` mount.
+
+Do **not** add a Telegraph EVM/Solana private key, x402 payment signer, or payment library for M5B.2.1. Paid Telegraph inference remains outside this slice pending an explicit AgentPlace service-spend/custody decision.
+
+### Normal deployment flow
+
+```bash
+pnpm check
+git add .
+git commit -m "feat: add M5B2.1 Telegraph testnet discovery adapter"
+git push origin main
+```
+
+The existing Railway migration/pre-deploy process remains unchanged.
+
+### Runtime smoke
+
+If outbound access to Telegraph is available from the environment, run:
+
+```bash
+pnpm telegraph:discover
+```
+
+This is a free public discovery check only. It does not validate paid inference or M5B.2.2 capability mapping.

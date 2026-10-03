@@ -32,18 +32,3 @@ A capability being Testnet-verified does not make it Mainnet-autonomy-eligible. 
 ## Milestone 2 identity/data configuration
 
 Production data mode is `api`. Better Auth uses `BETTER_AUTH_URL` as the public web origin and the web app keeps `/api/auth` same-origin through the local Vite proxy or the Vercel proxy. Railway hosts the core API/PostgreSQL path. `AGENT_PLACE_API_ORIGIN` belongs only in the Vercel server environment and must not be exposed as a `VITE_*` secret. Mainnet execution/autonomy remain disabled.
-
-## Milestone 5B.2 Telegraph network environment
-
-AgentPlace production may connect to Telegraph's live public network independently of the AgentPlace deployment environment. `TELEGRAPH_NETWORK_ENVIRONMENT` describes the external Telegraph network, while `AGENT_PLACE_ENV` continues to govern AgentPlace's own authority and Mainnet safety rules.
-
-For M5B.2.1, the production Worker performs free, read-only discovery against Telegraph's current live public network. As of October 2026, Telegraph's public production network is not Mainnet yet; Telegraph publicly lists Mainnet for January 2027. Therefore the current live integration value is `public-testnet`, not a mock, local node or AgentPlace staging environment.
-
-The current discovery configuration is server-side only:
-
-- `TELEGRAPH_DISCOVERY_ENABLED=true`
-- `TELEGRAPH_NETWORK_ENVIRONMENT=public-testnet`
-- `TELEGRAPH_NODE_URL=https://devnode.telegraphprotocol.com`
-- `TELEGRAPH_DISCOVERY_TIMEOUT_MS=12000`
-
-M5B.2.1 does not configure a Telegraph payer key and does not make paid inference routable. Paid x402 service spend is a later M5B.2 step with a separate AgentPlace-controlled service-spend boundary; it must never reuse a user wallet or ordinary Agent Account signing authority.

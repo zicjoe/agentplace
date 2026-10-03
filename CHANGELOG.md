@@ -1,16 +1,16 @@
-## 0.8.0 — Milestone 5B.2.1 Telegraph live discovery
-
-- Froze the accepted M5B.1 Core Intelligence Fabric after production cross-provider acceptance.
-- Added a Telegraph live-network discovery adapter for public Miner, Intent and Daemon-health surfaces.
-- Added durable `telegraph_discovery_snapshot` state via additive migration `0009_telegraph_live_discovery.sql`.
-- Production Worker now refreshes Telegraph discovery at startup without blocking existing AgentPlace routing when Telegraph is degraded or unavailable.
-- Kept Telegraph non-routable in this slice: no paid inference, x402 signer, wallet authority or user-capital movement was introduced.
-- Kept the external network environment configuration-driven so the adapter can be promoted when Telegraph Mainnet becomes available without rewriting AgentPlace routing architecture.
-
 - Chain verified deployer evidence into dependent wallet-activity intelligence so a Manager subject like `creator/deployer of ARB contract ...` is deterministically bound to the verified EVM creator address before provider execution.
 - Surface all deterministic holder concentration metrics (top-1/top-5/top-10/top-20) in structured evidence summaries for Blockscout and Alchemy instead of showing only top-10.
 - Harden M5B.1 network routing: Manager structured output now uses canonical network IDs, Router canonicalization accepts decorated mainnet labels such as `Arbitrum One (42161)`, explicit testnets stay distinct, and unavailable routes expose provider-specific eligibility reasons for diagnosis.
 # Changelog
+
+## 0.8.0 — M5B.2.1 Telegraph Adapter + Discovery
+
+- Added a dedicated `@agent-place/telegraph` controlled-runtime package for free, read-only Telegraph testnet discovery.
+- Discover Telegraph Node status, dispatcher health/integrations/live OpenAPI, and Engine miner/intent catalogs without invoking paid inference.
+- Normalize service/miner metadata into a bounded discovery snapshot with explicit `experimental`, `testnet`, and `executionAuthority = none` posture.
+- Treat the documented current Telegraph testnet intent-registry gap as degraded/partial state instead of inventing missing data.
+- Added fail-closed tests/verifier coverage and a safe `pnpm telegraph:discover` smoke command.
+- Added no Router capability mapping, IntelligenceEvidence persistence, wallet authority, signing, x402 payment, database migration, paid dependency, or UI change.
 
 ## 0.7.1 — M5B.1 Network Alias Routing Fix
 

@@ -421,5 +421,3 @@ export function intelligenceEvidencePrompt(evidence:readonly IntelligenceEvidenc
 }
 
 export const moduleManifest={name:'intelligence',layer:'controlled-runtime',milestone:'5B.1',status:'zero-cost-first-core-intelligence-fabric'} as const;
-
-export * from './telegraph.js';

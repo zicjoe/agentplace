@@ -1,34 +1,38 @@
-# Milestone 5B.2 testing
+# Milestone 5B.2 Testing
 
-## M5B.2.1 live discovery acceptance
+## M5B.2.1 automated acceptance
 
-After `pnpm check` passes and the replacement ZIP is deployed, let Railway apply migration `0009_telegraph_live_discovery.sql` through the existing API pre-deploy migration hook.
+Run the repository contract:
 
-Configure the production Worker with:
-
-```text
-TELEGRAPH_DISCOVERY_ENABLED=true
-TELEGRAPH_NETWORK_ENVIRONMENT=public-testnet
-TELEGRAPH_NODE_URL=https://devnode.telegraphprotocol.com
-TELEGRAPH_DISCOVERY_TIMEOUT_MS=12000
+```bash
+pnpm check
 ```
 
-No Telegraph payment key is required for this slice.
+M5B.2.1 adds tests for:
 
-On Worker startup, inspect the Railway log for `Telegraph live discovery refreshed`. Expected behavior:
+- successful free discovery from Node, dispatcher, Engine and dynamic OpenAPI surfaces;
+- merging dispatcher and Engine miner metadata;
+- preserving testnet/experimental/no-authority metadata;
+- documented `intent_registry` failure degrading discovery without inventing intents;
+- total Telegraph discovery failure becoming `unavailable` and producing no routable supply claim;
+- discovered upstream miner URLs remaining metadata only;
+- absence of Telegraph x402 signer/private-key implementation.
 
-- `networkEnvironment` is `public-testnet`;
-- `status` is `healthy` when Miners, Intents and Daemon health all respond;
-- `status` may be `degraded` if a Telegraph public discovery surface is temporarily unavailable;
-- `minerCount` and `intentCount` reflect live responses rather than fixtures;
-- existing AgentPlace Jobs continue working if Telegraph discovery is unavailable.
+## Optional live discovery smoke
 
-The database should contain a current row in `telegraph_discovery_snapshot` after a successful Worker startup refresh.
+The free discovery adapter can be checked against the current configured Telegraph testnet without enabling payment:
 
-## Truth and security checks
+```bash
+pnpm telegraph:discover
+```
 
-- No `TELEGRAPH_EVM_PRIVATE_KEY` is required or consumed in M5B.2.1.
-- No Telegraph implementation is inserted into `capability_implementation` yet.
-- No paid inference request is issued by the discovery adapter.
-- Remote Telegraph node URLs must use HTTPS and may not contain embedded credentials.
-- The adapter preserves upstream failures in the snapshot `errors` field.
+Expected behavior:
+
+- exit 0 when at least one miner/service catalog is discovered, with `healthy` or `degraded` status;
+- print only public discovery metadata and source statuses;
+- exit 1 when no Telegraph miner/service catalog can be discovered;
+- never request a payment signature or private key.
+
+A degraded result is valid when a nonessential testnet discovery surface is down. In particular, Telegraph currently documents `/engine/v1/intents` as potentially failing on testnet because of an `intent_registry` schema gap. The adapter must keep the available miner catalog and disclose the limitation.
+
+Live Telegraph availability is external state. Do not claim testnet acceptance from mocked tests alone; M5B.2.4 requires a real testnet acceptance run.
