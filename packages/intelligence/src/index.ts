@@ -111,6 +111,23 @@ function concentrationMetrics(rawBalances:readonly bigint[], totalSupply:bigint)
   const pct=(count:number)=>{ const sum=sorted.slice(0,count).reduce((acc,value)=>acc+value,0n); return Number((sum*1000000n)/totalSupply)/10000; };
   return {top1Pct:pct(1),top5Pct:pct(5),top10Pct:pct(10),top20Pct:pct(20),sampledHolders:sorted.length};
 }
+function intelligenceDependencyRank(capabilityId:string):number {
+  if(capabilityId==='token.deployer.analyze') return 0;
+  if(capabilityId==='wallet.activity.analyze') return 2;
+  return 1;
+}
+function bindWalletSubjectFromPriorEvidence(subject:IntelligenceSubject, prior:readonly IntelligenceEvidence[]):IntelligenceSubject {
+  if(subject.kind!=='wallet'||subject.address?.trim()||!/\b(?:creator|deployer)\b/i.test(subject.query)) return subject;
+  const requestedNetwork=normalizedNetwork(subject.network);
+  const candidates=prior
+    .filter((item)=>item.capabilityId==='token.deployer.analyze'&&item.status==='verified'&&(!requestedNetwork||item.network===requestedNetwork))
+    .map((item)=>({address:string(item.data.creator),network:item.network}))
+    .filter((item):item is {address:string;network:string|undefined}=>!!item.address&&/^0x[a-fA-F0-9]{40}$/.test(item.address));
+  const unique=[...new Map(candidates.map((item)=>[`${item.network??''}:${item.address.toLowerCase()}`,item])).values()];
+  if(unique.length!==1) return subject;
+  const match=unique[0]!;
+  return {...subject,address:match.address,...(!subject.network?.trim()&&match.network?{network:match.network}:{})};
+}
 
 async function resolveToken(subject:IntelligenceSubject):Promise<ResolvedToken|null> {
   const query=subject.query.trim(); const requested=normalizedNetwork(subject.network);
@@ -353,13 +370,14 @@ async function persist(ownerUserId:string,evidence:IntelligenceEvidence):Promise
 }
 
 export async function collectRoutedIntelligence(args:{ownerUserId:string;jobId:string;taskId:string;subjects:readonly IntelligenceSubject[];invocations:readonly IntelligenceInvocation[]}):Promise<IntelligenceEvidence[]> {
-  const subjects=args.subjects.slice(0,12); const invocations=args.invocations.slice(0,24); const out:IntelligenceEvidence[]=[];
+  const subjects=args.subjects.slice(0,12); const invocations=[...args.invocations.slice(0,24)].sort((left,right)=>intelligenceDependencyRank(left.capabilityId)-intelligenceDependencyRank(right.capabilityId)); const out:IntelligenceEvidence[]=[];
   const resolution=new Map<string,ResolvedToken|null>();
   for(const subject of subjects) if(subject.kind==='token'||subject.kind==='stablecoin') resolution.set(`${subject.kind}:${subject.query}:${subject.network??''}:${subject.address??''}`,await resolveToken(subject).catch(()=>null));
   for(const invocation of invocations) {
     const capability=invocation.capabilityId;
     const kinds:IntelSubjectKindCompat = capability.startsWith('wallet.') ? ['wallet'] : capability.startsWith('protocol.') ? ['protocol'] : capability.startsWith('stablecoin.') ? ['stablecoin'] : ['token','stablecoin'];
-    for(const subject of subjects.filter((item)=>kinds.includes(item.kind)).slice(0,6)) {
+    for(const rawSubject of subjects.filter((item)=>kinds.includes(item.kind)).slice(0,6)) {
+      const subject=bindWalletSubjectFromPriorEvidence(rawSubject,out);
       const resolved=resolution.get(`${subject.kind}:${subject.query}:${subject.network??''}:${subject.address??''}`)??null; const base=evidenceBase({jobId:args.jobId,taskId:args.taskId,invocation,subject,resolved});
       let evidence:IntelligenceEvidence;
       try {

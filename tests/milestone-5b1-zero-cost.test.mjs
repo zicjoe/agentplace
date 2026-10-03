@@ -66,3 +66,14 @@ test('M5B.1 runtime network canonicalizer accepts decorated mainnet labels witho
   assert.equal(canonicalizeNetworkId('Base Mainnet (8453)'), 'base');
   assert.equal(canonicalizeNetworkId('Solana Mainnet Beta'), 'solana');
 });
+
+
+test('M5B.1 chains verified deployer evidence into dependent wallet activity without identity inference',()=>{
+  const intel=readFileSync('packages/intelligence/src/index.ts','utf8');
+  assert.match(intel,/bindWalletSubjectFromPriorEvidence/);
+  assert.match(intel,/token\.deployer\.analyze/);
+  assert.match(intel,/wallet\.activity\.analyze/);
+  assert.match(intel,/item\.status==='verified'/);
+  assert.match(intel,/unique\.length!==1/);
+  assert.match(intel,/\^0x\[a-fA-F0-9\]\{40\}\$/);
+});

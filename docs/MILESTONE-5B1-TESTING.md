@@ -34,3 +34,10 @@ For chain-aware provider tests, human network labels such as `Arbitrum One`, `Ar
 - `Arbitrum One`, `Arbitrum One (42161)`, and `Arbitrum Mainnet / chain 42161` canonicalize to `arbitrum`.
 - Explicit testnets remain distinct and cannot accidentally route to mainnet-only intelligence implementations.
 - If no implementation is eligible, advanced route detail includes per-provider rejection reasons rather than only a generic message.
+
+
+### Deployer-to-wallet evidence chaining regression
+
+- When `token.deployer.analyze` verifies exactly one EVM creator/deployer address for the same network, a dependent `wallet.activity.analyze` subject that explicitly refers to that creator/deployer may bind to that preserved address.
+- The binding is deterministic, same-Job, same-network evidence chaining; it does not infer real-world identity or beneficial ownership.
+- If zero or multiple creator candidates exist, AgentPlace must leave wallet activity unresolved rather than guess.
