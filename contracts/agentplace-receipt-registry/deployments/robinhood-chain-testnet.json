@@ -1,0 +1,13 @@
+{
+  "network": "Robinhood Chain Testnet",
+  "chainId": 46630,
+  "contract": "AgentPlaceReceiptRegistry",
+  "contractAddress": "0xa7AFd49f777ec937B73e5A2FAAaabbF383987Ecd",
+  "deploymentTransactionHash": null,
+  "deployerAddress": null,
+  "deployedAt": null,
+  "explorerUrl": "https://explorer.testnet.chain.robinhood.com/address/0xa7AFd49f777ec937B73e5A2FAAaabbF383987Ecd",
+  "verificationStatus": "verified-partial-match",
+  "compilerVersion": "v0.8.24+commit.e11b9ed9",
+  "optimizationEnabled": false
+}

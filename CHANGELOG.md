@@ -1,13 +1,21 @@
-- Chain verified deployer evidence into dependent wallet-activity intelligence so a Manager subject like `creator/deployer of ARB contract ...` is deterministically bound to the verified EVM creator address before provider execution.
-- Surface all deterministic holder concentration metrics (top-1/top-5/top-10/top-20) in structured evidence summaries for Blockscout and Alchemy instead of showing only top-10.
-- Harden M5B.1 network routing: Manager structured output now uses canonical network IDs, Router canonicalization accepts decorated mainnet labels such as `Arbitrum One (42161)`, explicit testnets stay distinct, and unavailable routes expose provider-specific eligibility reasons for diagnosis.
 # Changelog
 
-## Submission viewport/layout fix — 2026-10-04
+## Submission documentation + deployment record — 2026-10-04
 
-- Fixed Guest Home clipping at normal browser zoom and shorter desktop viewport heights by giving the Home workspace its own vertical scroll owner.
-- Preserved vertical centering when the full Home experience fits while allowing the content to expand naturally and remain reachable when it does not.
-- Kept the global shell fixed and workspace-scoped scrolling intact; no Router, intelligence, Telegraph, auth, wallet, authority, database or environment behavior changed.
+- Reworked the root README into a judge/developer-facing product overview covering AgentPlace's Worker/Job/Router model, current provider-backed intelligence, trust boundaries, repository architecture, production deployment and honest current-vs-roadmap status.
+- Recorded the deployed `AgentPlaceReceiptRegistry` address on Robinhood Chain Testnet and linked the public explorer page.
+- Recorded the explorer-reported Solidity compiler, optimization posture and source-verification status without inventing unknown deployer/transaction metadata.
+- Updated the receipt-registry deployment verifier and Foundry optimizer setting to match the actual deployed testnet artifact.
+- No application runtime, database schema, Router, intelligence, authentication, wallet or authority behavior changed.
+
+## Submission contract patch — Robinhood Chain Receipt Registry — 2026-10-04
+
+- Added `AgentPlaceReceiptRegistry`, a non-custodial append-only Solidity registry for privacy-safe AgentPlace Job receipt commitments on Robinhood Chain Testnet.
+- Kept full Jobs, conversations, provider evidence, user data and secrets offchain; only receipt/job/evidence hashes plus immutable anchor metadata are stored onchain.
+- Added explicit anchorer authorization, duplicate/zero-hash rejection, two-step ownership transfer and no fund-transfer, proxy, upgrade, delegatecall or arbitrary-call surface.
+- Added dependency-free Foundry tests, a Robinhood Chain Testnet deployment manifest, repository verification coverage and a deployment/security runbook.
+- No database migration, paid service, wallet-execution authority, Router behavior or existing M5B functionality changed.
+
 
 ## Submission branding patch — 2026-10-04
 
@@ -50,6 +58,9 @@
 
 ## 0.7.1 — M5B.1 Network Alias Routing Fix
 
+- Chained verified deployer evidence into dependent wallet-activity intelligence so a Manager subject like `creator/deployer of ARB contract ...` is deterministically bound to the verified EVM creator address before provider execution.
+- Surfaced all deterministic holder concentration metrics (top-1/top-5/top-10/top-20) in structured evidence summaries for Blockscout and Alchemy instead of showing only top-10.
+- Hardened M5B.1 network routing: Manager structured output uses canonical network IDs, Router canonicalization accepts decorated mainnet labels such as `Arbitrum One (42161)`, explicit testnets stay distinct, and unavailable routes expose provider-specific eligibility reasons for diagnosis.
 - Canonicalized common human network names before deterministic Router eligibility, including `Arbitrum One` -> `arbitrum`, so chain-aware providers are not incorrectly marked unavailable.
 - Applied the same normalization inside the intelligence runtime so routed subjects resolve against the same canonical network identifiers used by capability manifests.
 - Added regression coverage for display-name aliases and common chain IDs; no database migration, provider key, dependency or authority change.

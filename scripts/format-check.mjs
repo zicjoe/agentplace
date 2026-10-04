@@ -10,6 +10,7 @@ const included = new Set([
   ".yml",
   ".yaml",
   ".sql",
+  ".sol",
   ".css",
   ".html",
   ".example",
