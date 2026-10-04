@@ -3,6 +3,12 @@
 - Harden M5B.1 network routing: Manager structured output now uses canonical network IDs, Router canonicalization accepts decorated mainnet labels such as `Arbitrum One (42161)`, explicit testnets stay distinct, and unavailable routes expose provider-specific eligibility reasons for diagnosis.
 # Changelog
 
+## Submission viewport/layout fix — 2026-10-04
+
+- Fixed Guest Home clipping at normal browser zoom and shorter desktop viewport heights by giving the Home workspace its own vertical scroll owner.
+- Preserved vertical centering when the full Home experience fits while allowing the content to expand naturally and remain reachable when it does not.
+- Kept the global shell fixed and workspace-scoped scrolling intact; no Router, intelligence, Telegraph, auth, wallet, authority, database or environment behavior changed.
+
 ## Submission branding patch — 2026-10-04
 
 - Replaced temporary `AP` text marks with the approved AgentPlace logo across the desktop sidebar, mobile header, Manager conversation avatar, Job Workspace and intelligence task states.
