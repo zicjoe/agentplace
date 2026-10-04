@@ -7,6 +7,7 @@ import {
   type CapabilityImplementation,
 } from '@agent-place/capabilities';
 import { getDatabasePool } from '@agent-place/db';
+import { telegraphRouterImplementations } from '@agent-place/telegraph/runtime';
 import { listWorkerCatalog, type WorkerCatalogItem } from '@agent-place/workers';
 
 export type DeploymentEnvironment = 'development' | 'testnet' | 'staging-mainnet-readonly' | 'production-mainnet';
@@ -167,7 +168,11 @@ function providerConfigured(provider: string, configuredProviders: ReadonlySet<s
   return configuredProviders.has(provider);
 }
 
-function implementationTrustEligible(trustStatus: string): boolean {
+function implementationTrustEligible(implementation: CapabilityImplementation): boolean {
+  const trustStatus = implementation.trustStatus.trim().toLowerCase();
+  if (trustStatus === 'experimental') {
+    return implementation.provider === 'telegraph' && implementation.invocationKind === 'telegraph-direct-x402';
+  }
   return new Set([
     'tested',
     'simulation-verified',
@@ -175,7 +180,11 @@ function implementationTrustEligible(trustStatus: string): boolean {
     'limited-production',
     'production-observed',
     'agentplace-verified',
-  ]).has(trustStatus.trim().toLowerCase());
+  ]).has(trustStatus);
+}
+
+function implementationTrustRank(implementation: CapabilityImplementation): number {
+  return implementation.trustStatus.trim().toLowerCase() === 'experimental' ? 10 : 0;
 }
 
 function implementationEligibility(args: {
@@ -186,7 +195,7 @@ function implementationEligibility(args: {
 }): { eligible: boolean; reason: string } {
   const { implementation } = args;
   if (!implementation.enabled) return { eligible: false, reason: 'Implementation disabled.' };
-  if (!implementationTrustEligible(implementation.trustStatus)) {
+  if (!implementationTrustEligible(implementation)) {
     return { eligible: false, reason: `Implementation trust state ${implementation.trustStatus || 'unknown'} is not eligible.` };
   }
   if (implementation.healthStatus === 'unavailable') return { eligible: false, reason: 'Provider implementation unavailable.' };
@@ -216,6 +225,8 @@ function sortImplementations(
     const leftProvider = providerPreference !== 'auto' && left.implementation.provider === providerPreference ? 0 : 1;
     const rightProvider = providerPreference !== 'auto' && right.implementation.provider === providerPreference ? 0 : 1;
     if (leftProvider !== rightProvider) return leftProvider - rightProvider;
+    const trust = implementationTrustRank(left.implementation) - implementationTrustRank(right.implementation);
+    if (trust !== 0) return trust;
     const health = healthRank(left.implementation.healthStatus) - healthRank(right.implementation.healthStatus);
     if (health !== 0) return health;
     const priority = left.implementation.priority - right.implementation.priority;
@@ -375,12 +386,14 @@ export async function planRoute(args: {
   forcedLeadWorkerId?: string;
   forcedSupportingWorkerIds?: string[];
 }): Promise<DurableRouteDecision> {
-  const [capabilities, implementations, catalog, compatibility] = await Promise.all([
+  const [capabilities, implementations, catalog, compatibility, telegraphImplementations] = await Promise.all([
     listCanonicalCapabilities(),
     listCapabilityImplementations(),
     listWorkerCatalog(),
     listWorkerCompatibility(),
+    telegraphRouterImplementations(),
   ]);
+  const allImplementations: CapabilityImplementation[] = [...implementations, ...telegraphImplementations];
   const capabilityById = new Map(capabilities.map((capability) => [capability.id, capability]));
   const knownIds = new Set(capabilities.map((capability) => capability.id));
   const researchCore = ['research.web.search', 'research.web.read', 'research.source.extract'].filter((id) => knownIds.has(id));
@@ -423,7 +436,7 @@ export async function planRoute(args: {
       });
       continue;
     }
-    const rawCandidates = implementations.filter((implementation) => implementation.canonicalCapabilityId === capabilityId).map((implementation) => {
+    const rawCandidates = allImplementations.filter((implementation) => implementation.canonicalCapabilityId === capabilityId).map((implementation) => {
       const eligibility = implementationEligibility({ implementation, deploymentEnvironment: args.deploymentEnvironment, requestedNetworks, configuredProviders });
       const explicitProviderMismatch = providerPreference !== 'auto'
         && (implementation.provider === 'openai' || implementation.provider === 'gemini' || implementation.provider === 'anthropic')
@@ -453,7 +466,7 @@ export async function planRoute(args: {
     if (!selected) {
       capabilityRoutes.push({
         capabilityId, capabilityName: capability.name, required, effect: capability.effect, lifecycleStatus: capability.lifecycleStatus,
-        status: 'unavailable', reason: implementations.some((implementation) => implementation.canonicalCapabilityId === capabilityId)
+        status: 'unavailable', reason: allImplementations.some((implementation) => implementation.canonicalCapabilityId === capabilityId)
           ? `No implementation is currently eligible. ${candidates.slice(0, 4).map((candidate) => `${candidate.provider}: ${candidate.reason}`).join(' | ')}`
           : 'No implementation is registered for this live capability.',
         candidates, compatibleWorkerIds,
@@ -560,4 +573,4 @@ export function routedProvidersForCapability(route: DurableRouteDecision, capabi
   });
 }
 
-export const moduleManifest = { name: 'router', layer: 'controlled-runtime', milestone: 5, status: 'router-v1' } as const;
+export const moduleManifest = { name: 'router', layer: 'controlled-runtime', milestone: '5B.2.3', status: 'router-v1-with-experimental-telegraph-fallback' } as const;

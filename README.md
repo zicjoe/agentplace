@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="apps/web/public/brand/agentplace-icon-512.png" alt="AgentPlace logo" width="120" />
+</p>
+
 # AgentPlace
 
 **Let your crypto work for you.**
@@ -6,11 +10,11 @@ AgentPlace is a multichain conversational operating system and economic coordina
 
 ## Current status
 
-**v0.8.1 — Milestone 5B.2.2: Telegraph Capability Mapping + Evidence Normalization**
+**v0.8.2 — Milestone 5B.2.3: Telegraph Router Integration + Bounded x402 Fallback**
 
-M5B.1 remains frozen. AgentPlace now has a production-quality Telegraph testnet adapter that discovers current Telegraph supply, deterministically maps only exact compatible service semantics into existing AgentPlace canonical capabilities, and normalizes Telegraph responses into the existing IntelligenceEvidence contract without turning Telegraph into AgentPlace's top-level router.
+M5B.1 remains frozen. Telegraph testnet supply now plugs underneath AgentPlace Router v1 as dynamic experimental read-only implementations. AgentPlace still owns canonical capabilities, deterministic eligibility/ordering and fallback; trusted existing M5B.1 providers rank ahead of Telegraph.
 
-M5B.2.2 remains **read-only**. Telegraph capability mappings are an explicit semantic allowlist over the existing AgentPlace vocabulary; unknown Telegraph intents stay unmapped and no new canonical capability is created silently. Normalized Telegraph output is structurally compatible with owner-scoped IntelligenceEvidence persistence, but paid inference, x402 signing, Router registration and financial authority remain disabled until later M5B.2 gates.
+M5B.2.3 adds direct Telegraph service inference through a tightly bounded AgentPlace-owned x402 service-payment wallet on Base Sepolia. This pays only for external intelligence service calls; it is not a user wallet, Agent Account or financial authority path. Results continue into owner-scoped IntelligenceEvidence and provider failure falls through to the next Router-eligible implementation where available.
 
 ## Architecture
 
@@ -41,6 +45,7 @@ PostgreSQL (Railway-compatible)
    ├─ canonical_capability / capability_implementation
    ├─ worker_capability_route / route_decision
    ├─ intelligence_evidence
+   ├─ telegraph_service_payment
    └─ domain_event
 ```
 
@@ -72,7 +77,7 @@ Local endpoints:
 - API through the web/same-origin proxy: `http://localhost:5173/api/v1/config`
 - API health (direct): `http://127.0.0.1:8787/health`
 
-For a clean v0.8.1 checkout, `pnpm install --frozen-lockfile` should be used.
+For a clean v0.8.2 checkout, `pnpm install --frozen-lockfile` should be used.
 
 See `docs/MILESTONE-5B2-TESTING.md` for the current acceptance checklist, `docs/MILESTONE-5B2-DEPLOYMENT.md` for deployment, and `.env.example` for variables.
 
@@ -97,6 +102,6 @@ AgentPlace Model Gateway supports configured Gemini, OpenAI, and Anthropic Claud
 AgentPlace v0.7.1 can use DEX Screener, DefiLlama and Blockscout without paid subscriptions, and can optionally activate free-tier Etherscan, Alchemy and schema-pinned The Graph integrations. Premium intelligence providers remain optional enrichments rather than production prerequisites.
 
 
-### M5B.2.2 Telegraph mapping + evidence
+### M5B.2.3 Telegraph routing + bounded x402 service payment
 
-`@agent-place/telegraph` discovers Telegraph testnet supply through free public metadata endpoints, maps only exact compatible service intents/capabilities to existing AgentPlace canonical capabilities, keeps protocol settlement network separate from the intelligence subject network, and normalizes Telegraph result envelopes into provider-attributed evidence. Run `pnpm telegraph:discover` for a no-payment live discovery smoke. Router registration and paid inference remain deliberately deferred.
+`@agent-place/telegraph` discovers and maps Telegraph testnet supply, exposes only router-ready mapped implementations beneath AgentPlace Router, and invokes the exact Router-selected Telegraph service through the documented direct inference surface. A dedicated Worker-only Base Sepolia service-payment boundary hard-caps spend at $0.02/call, $0.10/job and 10 calls/job; no user wallet or Agent Account is used. Run `pnpm telegraph:discover` for free discovery and `pnpm telegraph:payment-status` to print only safe public payment-wallet status. Live paid testnet acceptance is M5B.2.4.

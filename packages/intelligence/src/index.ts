@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getDatabasePool } from '@agent-place/db';
+import { normalizeTelegraphMappedInvocation } from '@agent-place/telegraph/runtime';
 
 export type IntelligenceSubjectKind = 'token' | 'wallet' | 'protocol' | 'stablecoin';
 export interface IntelligenceSubject {
@@ -13,6 +14,11 @@ export interface IntelligenceInvocation {
   capabilityId: string;
   implementationId: string;
   provider: string;
+}
+
+export interface IntelligenceRouteInvocation {
+  capabilityId: string;
+  candidates: IntelligenceInvocation[];
 }
 
 export type IntelligenceEvidenceStatus = 'verified' | 'partial' | 'unavailable' | 'error';
@@ -369,38 +375,83 @@ export async function persistIntelligenceEvidence(ownerUserId:string,evidence:In
     ON CONFLICT(id) DO NOTHING`,[evidence.id,ownerUserId,evidence.jobId,evidence.taskId,evidence.capabilityId,evidence.implementationId,evidence.provider,evidence.subjectKind,evidence.subjectQuery,evidence.network??null,evidence.address??null,evidence.status,evidence.summary,JSON.stringify(evidence.data),evidence.sourceUrl??null,evidence.observedAt,evidence.fetchedAt,evidence.freshnessSeconds??null,evidence.providerConfidence??null,evidence.derivationVersion??null,JSON.stringify(evidence.limitations)]);
 }
 
-export async function collectRoutedIntelligence(args:{ownerUserId:string;jobId:string;taskId:string;subjects:readonly IntelligenceSubject[];invocations:readonly IntelligenceInvocation[]}):Promise<IntelligenceEvidence[]> {
-  const subjects=args.subjects.slice(0,12); const invocations=[...args.invocations.slice(0,24)].sort((left,right)=>intelligenceDependencyRank(left.capabilityId)-intelligenceDependencyRank(right.capabilityId)); const out:IntelligenceEvidence[]=[];
+async function invokeIntelligenceCandidate(args:{
+  ownerUserId:string;
+  jobId:string;
+  taskId:string;
+  invocation:IntelligenceInvocation;
+  subject:IntelligenceSubject;
+  base:ReturnType<typeof evidenceBase>;
+  resolved:ResolvedToken|null;
+  prior:readonly IntelligenceEvidence[];
+}):Promise<IntelligenceEvidence> {
+  const { invocation, subject, base, resolved }=args;
+  if(invocation.provider==='dexscreener') return dexScreener(invocation,subject,base,resolved);
+  if(invocation.provider==='coingecko') return coinGecko(invocation,subject,base,resolved);
+  if(invocation.provider==='defillama') return defillama(invocation,subject,base);
+  if(invocation.provider==='nansen') return nansen(invocation,subject,base,resolved);
+  if(invocation.provider==='goplus') return goPlus(invocation,subject,base,resolved);
+  if(invocation.provider==='bubblemaps') return bubblemaps(invocation,subject,base,resolved);
+  if(invocation.provider==='birdeye') return birdeye(invocation,subject,base,resolved);
+  if(invocation.provider==='blockscout') return blockscout(invocation,subject,base,resolved);
+  if(invocation.provider==='etherscan') return etherscan(invocation,subject,base,resolved);
+  if(invocation.provider==='alchemy') return alchemy(invocation,subject,base,resolved);
+  if(invocation.provider==='thegraph') return theGraph(invocation,subject,base);
+  if(invocation.provider==='telegraph') {
+    const telegraphSubject:IntelligenceSubject=resolved
+      ? {...subject,...(!subject.address?.trim()?{address:resolved.address}:{}),...(!subject.network?.trim()?{network:resolved.network}:{})}
+      : subject;
+    return normalizeTelegraphMappedInvocation({
+      ownerUserId:args.ownerUserId,
+      jobId:args.jobId,
+      taskId:args.taskId,
+      capabilityId:invocation.capabilityId,
+      implementationId:invocation.implementationId,
+      subject:telegraphSubject,
+    });
+  }
+  if(invocation.provider==='agentplace' && invocation.capabilityId==='smartmoney.accumulation.detect') return deriveAccumulation(base,args.prior);
+  return makeEvidence(base,{status:'unavailable',summary:`No structured intelligence invocation adapter is registered for ${invocation.provider}.`});
+}
+
+export async function collectRoutedIntelligenceWithFallback(args:{ownerUserId:string;jobId:string;taskId:string;subjects:readonly IntelligenceSubject[];routes:readonly IntelligenceRouteInvocation[]}):Promise<IntelligenceEvidence[]> {
+  const subjects=args.subjects.slice(0,12);
+  const routes=[...args.routes.slice(0,24)].sort((left,right)=>intelligenceDependencyRank(left.capabilityId)-intelligenceDependencyRank(right.capabilityId));
+  const out:IntelligenceEvidence[]=[];
   const resolution=new Map<string,ResolvedToken|null>();
   for(const subject of subjects) if(subject.kind==='token'||subject.kind==='stablecoin') resolution.set(`${subject.kind}:${subject.query}:${subject.network??''}:${subject.address??''}`,await resolveToken(subject).catch(()=>null));
-  for(const invocation of invocations) {
-    const capability=invocation.capabilityId;
+  for(const route of routes) {
+    const capability=route.capabilityId;
     const kinds:IntelSubjectKindCompat = capability.startsWith('wallet.') ? ['wallet'] : capability.startsWith('protocol.') ? ['protocol'] : capability.startsWith('stablecoin.') ? ['stablecoin'] : ['token','stablecoin'];
+    const candidates=route.candidates.filter((candidate)=>candidate.capabilityId===capability).slice(0,8);
     for(const rawSubject of subjects.filter((item)=>kinds.includes(item.kind)).slice(0,6)) {
       const subject=bindWalletSubjectFromPriorEvidence(rawSubject,out);
-      const resolved=resolution.get(`${subject.kind}:${subject.query}:${subject.network??''}:${subject.address??''}`)??null; const base=evidenceBase({jobId:args.jobId,taskId:args.taskId,invocation,subject,resolved});
-      let evidence:IntelligenceEvidence;
-      try {
-        if(invocation.provider==='dexscreener') evidence=await dexScreener(invocation,subject,base,resolved);
-        else if(invocation.provider==='coingecko') evidence=await coinGecko(invocation,subject,base,resolved);
-        else if(invocation.provider==='defillama') evidence=await defillama(invocation,subject,base);
-        else if(invocation.provider==='nansen') evidence=await nansen(invocation,subject,base,resolved);
-        else if(invocation.provider==='goplus') evidence=await goPlus(invocation,subject,base,resolved);
-        else if(invocation.provider==='bubblemaps') evidence=await bubblemaps(invocation,subject,base,resolved);
-        else if(invocation.provider==='birdeye') evidence=await birdeye(invocation,subject,base,resolved);
-        else if(invocation.provider==='blockscout') evidence=await blockscout(invocation,subject,base,resolved);
-        else if(invocation.provider==='etherscan') evidence=await etherscan(invocation,subject,base,resolved);
-        else if(invocation.provider==='alchemy') evidence=await alchemy(invocation,subject,base,resolved);
-        else if(invocation.provider==='thegraph') evidence=await theGraph(invocation,subject,base);
-        else if(invocation.provider==='agentplace' && invocation.capabilityId==='smartmoney.accumulation.detect') evidence=deriveAccumulation(base,out);
-        else evidence=makeEvidence(base,{status:'unavailable',summary:`No M5B.1 direct invocation adapter is registered for ${invocation.provider}.`});
-      } catch(error) {
-        evidence=makeEvidence(base,{status:'error',summary:`${invocation.provider} intelligence request failed.`,data:{error:error instanceof Error?error.message:String(error)},limitations:['Provider failure was preserved instead of being converted into a factual finding.']});
+      const resolved=resolution.get(`${subject.kind}:${subject.query}:${subject.network??''}:${subject.address??''}`)??null;
+      for(const invocation of candidates) {
+        const base=evidenceBase({jobId:args.jobId,taskId:args.taskId,invocation,subject,resolved});
+        let evidence:IntelligenceEvidence;
+        try {
+          evidence=await invokeIntelligenceCandidate({ownerUserId:args.ownerUserId,jobId:args.jobId,taskId:args.taskId,invocation,subject,base,resolved,prior:out});
+        } catch(error) {
+          evidence=makeEvidence(base,{status:'error',summary:`${invocation.provider} intelligence request failed.`,data:{error:error instanceof Error?error.message:String(error)},limitations:['Provider failure was preserved instead of being converted into a factual finding.']});
+        }
+        await persistIntelligenceEvidence(args.ownerUserId,evidence);
+        out.push(evidence);
+        if(evidence.status==='verified'||evidence.status==='partial') break;
       }
-      await persistIntelligenceEvidence(args.ownerUserId,evidence); out.push(evidence);
     }
   }
   return out;
+}
+
+export async function collectRoutedIntelligence(args:{ownerUserId:string;jobId:string;taskId:string;subjects:readonly IntelligenceSubject[];invocations:readonly IntelligenceInvocation[]}):Promise<IntelligenceEvidence[]> {
+  return collectRoutedIntelligenceWithFallback({
+    ownerUserId:args.ownerUserId,
+    jobId:args.jobId,
+    taskId:args.taskId,
+    subjects:args.subjects,
+    routes:args.invocations.map((invocation)=>({capabilityId:invocation.capabilityId,candidates:[invocation]})),
+  });
 }
 type IntelSubjectKindCompat=IntelligenceSubjectKind[];
 
@@ -420,4 +471,4 @@ export function intelligenceEvidencePrompt(evidence:readonly IntelligenceEvidenc
   ].filter(Boolean).join('\n')).join('\n\n');
 }
 
-export const moduleManifest={name:'intelligence',layer:'controlled-runtime',milestone:'5B.1',status:'zero-cost-first-core-intelligence-fabric'} as const;
+export const moduleManifest={name:'intelligence',layer:'controlled-runtime',milestone:'5B.2.3',status:'router-ordered-intelligence-fallback-with-telegraph-evidence'} as const;

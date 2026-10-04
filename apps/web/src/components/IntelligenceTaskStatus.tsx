@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchLatestIntelligenceTask, type IntelligenceTask } from '../platform/intelligenceApi';
+import { AgentPlaceMark } from './AgentPlaceBrand';
 
 function failureExplanation(error: string | undefined): string {
   const message = (error ?? '').toLowerCase();
@@ -69,8 +70,8 @@ export function IntelligenceTaskStatus({ conversationId, latestAssistantAt, pend
   if (unavailable) {
     return (
       <div className="flex gap-3" role="status" aria-live="polite">
-        <div className="w-6 h-6 rounded bg-primary-dim flex items-center justify-center shrink-0 mt-0.5">
-          <span className="text-[9px] font-bold text-primary">AP</span>
+        <div className="w-6 h-6 rounded border border-border bg-panel-raised flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
+          <AgentPlaceMark className="w-5 h-5" alt="" />
         </div>
         <p className="text-xs text-amber-300 pt-1">
           AgentPlace cannot check this task right now. Your conversation remains saved.
@@ -82,8 +83,8 @@ export function IntelligenceTaskStatus({ conversationId, latestAssistantAt, pend
   if (pendingMessageId && task?.userMessageId !== pendingMessageId && !unavailable) {
     return (
       <div className="flex gap-3" role="status" aria-live="polite">
-        <div className="w-6 h-6 rounded bg-primary-dim flex items-center justify-center shrink-0 mt-0.5">
-          <span className="text-[9px] font-bold text-primary">AP</span>
+        <div className="w-6 h-6 rounded border border-border bg-panel-raised flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
+          <AgentPlaceMark className="w-5 h-5" alt="" />
         </div>
         <div className="flex items-center gap-2 text-sm text-text-sub pt-0.5">
           AgentPlace is preparing <ProcessingDots />
@@ -117,8 +118,8 @@ export function IntelligenceTaskStatus({ conversationId, latestAssistantAt, pend
 
   return (
     <div className="flex gap-3" role="status" aria-live="polite">
-      <div className="w-6 h-6 rounded bg-primary-dim flex items-center justify-center shrink-0 mt-0.5">
-        <span className="text-[9px] font-bold text-primary">AP</span>
+      <div className="w-6 h-6 rounded border border-border bg-panel-raised flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
+        <AgentPlaceMark className="w-5 h-5" alt="" />
       </div>
       <div className="flex-1 min-w-0 pt-0.5">
         <div className="flex items-center gap-2 text-sm text-text-sub">

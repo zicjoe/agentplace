@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/intelligence",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -17,6 +17,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@agent-place/db": "workspace:*"
+    "@agent-place/db": "workspace:*",
+    "@agent-place/telegraph": "workspace:*"
   }
 }

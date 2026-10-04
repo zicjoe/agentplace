@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/router",
-  "version": "0.7.1",
+  "version": "0.8.2",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -19,6 +19,7 @@
   "dependencies": {
     "@agent-place/capabilities": "workspace:*",
     "@agent-place/db": "workspace:*",
-    "@agent-place/workers": "workspace:*"
+    "@agent-place/workers": "workspace:*",
+    "@agent-place/telegraph": "workspace:*"
   }
 }

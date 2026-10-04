@@ -3,6 +3,26 @@
 - Harden M5B.1 network routing: Manager structured output now uses canonical network IDs, Router canonicalization accepts decorated mainnet labels such as `Arbitrum One (42161)`, explicit testnets stay distinct, and unavailable routes expose provider-specific eligibility reasons for diagnosis.
 # Changelog
 
+## Submission branding patch — 2026-10-04
+
+- Replaced temporary `AP` text marks with the approved AgentPlace logo across the desktop sidebar, mobile header, Manager conversation avatar, Job Workspace and intelligence task states.
+- Branded the sign-in checkpoint and Google OAuth transition window without changing authentication or authority semantics.
+- Added favicon, Apple touch icon, installable web-app icons/manifest and Open Graph/Twitter share artwork for `www.agentplace.tech`.
+- No Router, intelligence, Telegraph, auth, wallet, authority, migration or environment-variable behavior changed.
+
+## 0.8.2 — M5B.2.3 Telegraph Router Integration + Bounded x402 Fallback
+
+- Registered only live, mapping-safe Telegraph testnet implementations beneath AgentPlace Router v1; Telegraph does not replace AgentPlace planning, canonical capabilities or deterministic routing.
+- Added a narrow Router trust exception for `provider=telegraph` + `invocationKind=telegraph-direct-x402` while keeping trusted existing M5B.1 implementations ordered ahead of experimental Telegraph supply.
+- Added Router-ordered structured-intelligence fallback: unavailable/error evidence advances to the next eligible implementation while verified/partial evidence stops fallback.
+- Added direct Telegraph service invocation through `/engine/v1/ask/{subnet_id}` so AgentPlace selects the specific service instead of delegating top-level routing to Telegraph's auto-router.
+- Added a dedicated AgentPlace Base Sepolia x402 service-payment boundary using pinned test USDC and hard caps of $0.02/call, $0.10/job and 10 paid calls/job.
+- Added strict x402 resource/network/asset/scheme validation, redirect rejection, EIP-3009 authorization signing, no automatic paid retry after unknown outcome, and no automatic top-up.
+- Added owner/job/task-scoped `telegraph_service_payment` accounting with advisory-lock budget serialization and exact-request replay protection.
+- Kept the payment key Worker-only and separate from user wallets, Agent Accounts, LLM context, provider API keys and financial authority.
+- Added migration `0009_telegraph_service_payments.sql`, safe `pnpm telegraph:payment-status`, tests/verifier coverage, and deployment/security documentation.
+
+
 ## 0.8.1 — M5B.2.2 Telegraph Capability Mapping + Evidence Normalization
 
 - Added deterministic Telegraph-to-AgentPlace capability mapping using an explicit semantic allowlist over existing canonical capabilities only.

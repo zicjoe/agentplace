@@ -1,0 +1,23 @@
+{
+  "name": "AgentPlace",
+  "short_name": "AgentPlace",
+  "description": "A multichain operating system for autonomous crypto workers.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07070f",
+  "theme_color": "#07070f",
+  "icons": [
+    {
+      "src": "/brand/agentplace-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand/agentplace-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

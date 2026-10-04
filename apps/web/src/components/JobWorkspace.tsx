@@ -11,6 +11,7 @@ import { ResearchMarkdown } from './ResearchMarkdown';
 import { ResearchResultCard } from './ResearchResultCard';
 import { ResearchReport } from './ResearchReport';
 import { scrollConversationToEnd } from '../platform/scroll';
+import { AgentPlaceMark } from './AgentPlaceBrand';
 
 type JobWorkspaceTab = 'conversation' | 'team' | 'result' | 'activity';
 
@@ -215,8 +216,8 @@ function FinancialJobWorkspace() {
                 }
                 return (
                   <div key={msg.id} className="flex gap-3">
-                    <div className="w-6 h-6 rounded bg-primary-dim flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="text-[9px] font-bold text-primary">AP</span>
+                    <div className="w-6 h-6 rounded border border-border bg-panel-raised flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
+                      <AgentPlaceMark className="w-5 h-5" alt="" />
                     </div>
                     <div className="flex-1 min-w-0 text-text-sub">
                       <p className="text-sm leading-relaxed">{msg.content}</p>
@@ -698,8 +699,8 @@ export function JobWorkspace() {
                   }
                   return (
                     <div key={msg.id} className="flex gap-3">
-                      <div className="w-6 h-6 rounded bg-primary-dim flex items-center justify-center shrink-0 mt-0.5">
-                        <span className="text-[9px] font-bold text-primary">AP</span>
+                      <div className="w-6 h-6 rounded border border-border bg-panel-raised flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
+                        <AgentPlaceMark className="w-5 h-5" alt="" />
                       </div>
                       <div className="flex-1 min-w-0 text-text-sub">
                         {msg.isStreaming ? (

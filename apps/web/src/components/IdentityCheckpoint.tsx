@@ -7,6 +7,7 @@ import { rememberIdentityResume, clearIdentityResume } from '../platform/identit
 import { clearFixtureState } from '../platform/fixtureStore';
 import { fetchWorkState } from '../platform/workApi';
 import { useRuntime } from '../platform/RuntimeProvider';
+import { AgentPlaceMark } from './AgentPlaceBrand';
 
 function toUser(value: AuthenticatedUser): User {
   const name = value.name || value.email.split('@')[0] || 'AgentPlace user';
@@ -84,10 +85,8 @@ export function IdentityCheckpoint() {
       <div className="w-full max-w-md bg-panel border border-border rounded-xl shadow-2xl">
         <div className="px-6 pt-6 pb-5">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-9 h-9 bg-primary-dim rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
+            <div className="w-10 h-10 bg-panel-raised border border-border rounded-lg flex items-center justify-center overflow-hidden">
+              <AgentPlaceMark className="w-8 h-8" alt="" />
             </div>
             <div>
               <h2 className="text-base font-semibold text-text">Sign in to AgentPlace</h2>

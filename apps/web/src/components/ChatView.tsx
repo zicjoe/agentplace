@@ -23,6 +23,7 @@ import { JobReference } from './JobReference';
 import { ResearchResultCard } from './ResearchResultCard';
 import { scrollConversationToEnd } from '../platform/scroll';
 import { conversationHistoryTitle } from '../platform/conversationNavigation';
+import { AgentPlaceMark } from './AgentPlaceBrand';
 
 // Research content is always rendered as React nodes, never model-supplied HTML.
 function RenderContent({ text }: { text: string }) {
@@ -76,8 +77,8 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
   return (
     <div className="flex gap-3">
       <div className="shrink-0 mt-0.5">
-        <div className="w-6 h-6 rounded bg-primary-dim flex items-center justify-center">
-          <span className="text-[9px] font-bold text-primary">AP</span>
+        <div className="w-6 h-6 rounded border border-border bg-panel-raised flex items-center justify-center overflow-hidden">
+          <AgentPlaceMark className="w-5 h-5" alt="" />
         </div>
       </div>
       <div className="flex-1 min-w-0 text-text">

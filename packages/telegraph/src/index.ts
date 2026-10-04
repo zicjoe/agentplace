@@ -161,6 +161,20 @@ export interface TelegraphEvidenceSubject {
   address?: string;
 }
 
+export interface TelegraphServicePaymentEvidence {
+  status: 'reserved' | 'settled' | 'failed' | 'released' | 'unknown';
+  protocol: 'x402';
+  environment: 'testnet';
+  network: 'base-sepolia';
+  caip2Network: 'eip155:84532';
+  asset: string;
+  amountAtomic: string;
+  amountUsdc: string;
+  payTo: string;
+  payerAddress: string;
+  transactionHash?: string;
+}
+
 export interface TelegraphEvidenceNormalizationInput {
   jobId: string;
   taskId: string;
@@ -170,6 +184,7 @@ export interface TelegraphEvidenceNormalizationInput {
   response: TelegraphInferenceEnvelope | Record<string, unknown>;
   service?: TelegraphMinerDefinition;
   mapping?: TelegraphCapabilityMapping;
+  servicePayment?: TelegraphServicePaymentEvidence;
   fetchedAt?: string;
   config?: Partial<TelegraphAdapterConfig>;
 }
@@ -989,6 +1004,7 @@ export function normalizeTelegraphEvidence(input: TelegraphEvidenceNormalization
   if (!input.service?.signalMapping?.confidenceField) limitations.push('No Telegraph service confidence-field mapping was available; AgentPlace did not invent a confidence score.');
   if (responseError) limitations.push('Telegraph returned an error; AgentPlace preserved it rather than converting it into a factual result.');
   if (!resultPresent && !responseError) limitations.push('Telegraph returned no result payload; AgentPlace marks the evidence unavailable.');
+  if (input.servicePayment) limitations.push('The recorded x402 transfer is an AgentPlace external-service cost only; it is not user capital, wallet authority, or permission for Telegraph to execute financial actions.');
 
   const labelValue = fieldAtPath(response.result, input.service?.signalMapping?.labelField);
   const reasonValue = fieldAtPath(response.result, input.service?.signalMapping?.reasonField);
@@ -1034,6 +1050,7 @@ export function normalizeTelegraphEvidence(input: TelegraphEvidenceNormalization
         ...(labelValue === undefined ? {} : { providerLabel: boundedJson(labelValue) }),
         ...(reasonValue === undefined ? {} : { providerReason: boundedJson(reasonValue) }),
         ...(responseError ? { error: responseError } : {}),
+        ...(input.servicePayment ? { servicePayment: boundedJson(input.servicePayment) } : {}),
       },
       result: boundedJson(response.result),
     },
@@ -1049,7 +1066,7 @@ export function normalizeTelegraphEvidence(input: TelegraphEvidenceNormalization
 export const moduleManifest = {
   name: 'telegraph',
   layer: 'controlled-runtime',
-  milestone: '5B.2.2',
-  status: 'testnet-capability-mapping-and-evidence-normalization',
+  milestone: '5B.2.3',
+  status: 'router-integration-fallback-and-bounded-x402-service-payment',
   authority: 'none',
 } as const;

@@ -61,7 +61,7 @@ export async function signInWithGoogle(): Promise<AuthenticatedUser> {
   const popup = window.open('', 'agentplace-google-auth', 'width=520,height=720,menubar=no,toolbar=no,location=yes,resizable=yes,scrollbars=yes');
   if (!popup) throw new Error('Your browser blocked the Google sign-in window. Allow pop-ups for AgentPlace and try again.');
   popup.document.title = 'AgentPlace · Google sign-in';
-  popup.document.body.innerHTML = '<p style="font-family:system-ui;padding:24px;color:#555">Opening Google sign-in…</p>';
+  popup.document.body.innerHTML = '<div style="min-height:100vh;margin:0;background:#07070f;color:#e7eef5;font-family:system-ui;display:flex;align-items:center;justify-content:center"><div style="text-align:center;padding:32px"><img src="/brand/agentplace-icon-512.png" alt="AgentPlace" style="width:116px;height:auto;display:block;margin:0 auto 18px"><div style="font-size:18px;font-weight:600;margin-bottom:6px">AgentPlace</div><div style="font-size:14px;color:#94a3b8">Opening Google sign-in…</div></div></div>';
 
   try {
     const result = await authClient.signIn.social({

@@ -7,6 +7,11 @@ import {
   normalizeTelegraphEvidence,
   telegraphAdapterConfigFromEnv,
 } from '../packages/telegraph/dist/index.js';
+import {
+  bindTelegraphSubjectPayload,
+  selectTelegraphPaymentChallenge,
+  telegraphServicePaymentStatusFromEnv,
+} from '../packages/telegraph/dist/runtime.js';
 
 const config = {
   nodeUrl: 'https://telegraph.test',
@@ -278,9 +283,144 @@ test('M5B.2.2 keeps Telegraph evidence persistence on the existing owner-scoped 
   assert.match(source, /WHERE owner_user_id=\$1 AND job_id=\$2/);
 });
 
-test('M5B.2.2 contains no Telegraph signer or x402 payment implementation', () => {
-  const source = readFileSync('packages/telegraph/src/index.ts', 'utf8');
-  for (const forbidden of ['TELEGRAPH_EVM_PRIVATE_KEY', 'TELEGRAPH_SOLANA_PRIVATE_KEY', 'PAYMENT-SIGNATURE', '@x402/']) {
-    assert.equal(source.includes(forbidden), false, `unexpected payment/signing token ${forbidden}`);
+test('M5B.2.3 service-payment status requires explicit enablement and a dedicated valid EVM key', () => {
+  const disabled = telegraphServicePaymentStatusFromEnv({});
+  assert.equal(disabled.ready, false);
+  assert.equal(disabled.enabled, false);
+
+  const testOnlyKey = `0x${'11'.repeat(32)}`;
+  const enabled = telegraphServicePaymentStatusFromEnv({
+    TELEGRAPH_SERVICE_PAYMENT_ENABLED: 'true',
+    TELEGRAPH_EVM_PRIVATE_KEY: testOnlyKey,
+  });
+  assert.equal(enabled.ready, true);
+  assert.equal(enabled.network, 'base-sepolia');
+  assert.equal(enabled.caip2Network, 'eip155:84532');
+  assert.equal(enabled.asset.toLowerCase(), '0x036cbd53842c5426634e7929541ec2318f3dcf7e');
+  assert.equal(enabled.maxCallUsdc, '0.02');
+  assert.equal(enabled.maxJobUsdc, '0.1');
+  assert.equal(enabled.maxCallsPerJob, 10);
+  assert.ok(/^0x[0-9a-fA-F]{40}$/.test(enabled.payerAddress));
+  assert.equal(JSON.stringify(enabled).includes(testOnlyKey), false, 'status output must never reveal the private key');
+
+  const invalidLimit = telegraphServicePaymentStatusFromEnv({
+    TELEGRAPH_SERVICE_PAYMENT_ENABLED: 'true',
+    TELEGRAPH_EVM_PRIVATE_KEY: testOnlyKey,
+    TELEGRAPH_X402_MAX_CALL_USDC: 'not-a-number',
+  });
+  assert.equal(invalidLimit.ready, false, 'malformed explicit spend controls must fail closed');
+  assert.match(invalidLimit.reason, /invalid telegraph service-spend limit/i);
+});
+
+test('M5B.2.3 x402 policy accepts only exact Base Sepolia test-USDC payment within hard per-call bounds', () => {
+  const requestUrl = 'https://telegraph.test/engine/v1/ask/301';
+  const valid = {
+    x402Version: 2,
+    resource: { url: requestUrl, description: 'Telegraph direct miner inference', mimeType: 'application/json' },
+    accepts: [{
+      scheme: 'exact',
+      network: 'eip155:84532',
+      amount: '10000',
+      asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+      payTo: '0x1111111111111111111111111111111111111111',
+      maxTimeoutSeconds: 60,
+      extra: { name: 'USD Coin', version: '2', assetTransferMethod: 'eip3009' },
+    }],
+    extensions: {},
+  };
+  const accepted = selectTelegraphPaymentChallenge(valid, requestUrl, {});
+  assert.equal(accepted.requirement?.amount, '10000');
+
+  const wrongNetwork = structuredClone(valid);
+  wrongNetwork.accepts[0].network = 'eip155:8453';
+  assert.equal(selectTelegraphPaymentChallenge(wrongNetwork, requestUrl, {}).requirement, undefined);
+
+  const wrongAsset = structuredClone(valid);
+  wrongAsset.accepts[0].asset = '0x2222222222222222222222222222222222222222';
+  assert.equal(selectTelegraphPaymentChallenge(wrongAsset, requestUrl, {}).requirement, undefined);
+
+  const tooExpensive = structuredClone(valid);
+  tooExpensive.accepts[0].amount = '20001';
+  assert.equal(selectTelegraphPaymentChallenge(tooExpensive, requestUrl, {}).requirement, undefined);
+
+  const wrongResource = structuredClone(valid);
+  wrongResource.resource.url = 'https://attacker.invalid/pay';
+  assert.equal(selectTelegraphPaymentChallenge(wrongResource, requestUrl, {}).requirement, undefined);
+
+  const unsupportedExtension = structuredClone(valid);
+  unsupportedExtension.extensions = { arbitrary: { enabled: true } };
+  assert.equal(selectTelegraphPaymentChallenge(unsupportedExtension, requestUrl, {}).requirement, undefined);
+});
+
+test('M5B.2.3 binds only declared Telegraph input fields from the AgentPlace intelligence subject', () => {
+  const mapping = mapTelegraphCapabilities(snapshot([{
+    id: '401',
+    slug: 'holder-input-miner',
+    name: 'Holder Input Miner',
+    capabilities: ['TOKEN_HOLDERS'],
+    supportedIntents: ['TOKEN_HOLDERS'],
+    endpoints: [{
+      path: '/holders',
+      method: 'POST',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          address: { type: 'string' },
+          network: { type: 'string', enum: ['ethereum', 'base', 'arbitrum'] },
+        },
+        required: ['address', 'network'],
+      },
+    }],
+    discoverySources: ['dispatcher'],
+  }])).mappings[0];
+  const bound = bindTelegraphSubjectPayload(mapping, { kind: 'token', query: 'ARB', address: '0x1111111111111111111111111111111111111111', network: 'arbitrum' });
+  assert.deepEqual(bound, { ok: true, payload: { address: '0x1111111111111111111111111111111111111111', network: 'arbitrum' } });
+
+  const unknownRequired = structuredClone(mapping);
+  unknownRequired.endpoint.inputSchema.required.push('apiSecret');
+  unknownRequired.endpoint.inputSchema.properties.apiSecret = { type: 'string' };
+  const rejected = bindTelegraphSubjectPayload(unknownRequired, { kind: 'token', query: 'ARB', address: '0x1111111111111111111111111111111111111111', network: 'arbitrum' });
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.reason, /cannot be bound|cannot be derived/i);
+});
+
+test('M5B.2.3 Router registers Telegraph only as the narrow experimental direct-x402 implementation and orders trusted supply first', () => {
+  const source = readFileSync('packages/router/src/index.ts', 'utf8');
+  assert.match(source, /telegraphRouterImplementations/);
+  assert.match(source, /implementation\.provider === 'telegraph' && implementation\.invocationKind === 'telegraph-direct-x402'/);
+  assert.match(source, /implementationTrustRank/);
+  assert.match(source, /trust !== 0/);
+  assert.doesNotMatch(source, /trustStatus === 'experimental'\) return true/);
+});
+
+test('M5B.2.3 Worker executes Router-ordered structured-intelligence fallback instead of a Telegraph-only path', () => {
+  const intelligence = readFileSync('packages/intelligence/src/index.ts', 'utf8');
+  const worker = readFileSync('apps/worker/src/index.ts', 'utf8');
+  assert.match(intelligence, /collectRoutedIntelligenceWithFallback/);
+  assert.match(intelligence, /if\(evidence\.status==='verified'\|\|evidence\.status==='partial'\) break/);
+  assert.match(worker, /routedProvidersForCapability\(route, capability\.capabilityId\)/);
+  assert.match(worker, /collectRoutedIntelligenceWithFallback/);
+});
+
+test('M5B.2.3 keeps x402 payment authority isolated from user wallets and provider credentials', () => {
+  const runtime = readFileSync('packages/telegraph/src/runtime.ts', 'utf8');
+  assert.match(runtime, /PAYMENT-SIGNATURE/);
+  assert.match(runtime, /redirect: 'error'/);
+  assert.match(runtime, /\/v1\/ask\//);
+  assert.match(runtime, /pg_advisory_xact_lock/);
+  assert.match(runtime, /HARD_MAX_CALL_ATOMIC = 20_000n/);
+  assert.match(runtime, /HARD_MAX_JOB_ATOMIC = 100_000n/);
+  assert.match(runtime, /HARD_MAX_CALLS_PER_JOB = 10/);
+  for (const forbidden of ['NANSEN_API_KEY', 'GOPLUS_APP_SECRET', 'ALCHEMY_API_KEY', 'ETHERSCAN_API_KEY', 'privateKey: input.subject', 'miner.upstream']) {
+    assert.equal(runtime.includes(forbidden), false, `unexpected secret/authority coupling: ${forbidden}`);
   }
+});
+
+test('M5B.2.3 adds an owner/job-scoped replay-safe service-spend ledger without user-capital authority', () => {
+  const migration = readFileSync('packages/db/migrations/0009_telegraph_service_payments.sql', 'utf8');
+  assert.match(migration, /owner_user_id uuid NOT NULL REFERENCES app_user/);
+  assert.match(migration, /UNIQUE\(owner_user_id, job_id, request_fingerprint\)/);
+  assert.match(migration, /payment_network = 'eip155:84532'/);
+  assert.match(migration, /status IN \('reserved','settled','failed','released','unknown'\)/);
+  assert.doesNotMatch(migration, /authority_grant|wallet_connection|agent_account/i);
 });

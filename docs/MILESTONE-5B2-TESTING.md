@@ -1,51 +1,59 @@
 # Milestone 5B.2 Testing
 
-## M5B.2.2 automated acceptance
+## M5B.2.3 automated acceptance
 
-Run the repository contract:
+Run:
 
 ```bash
 pnpm check
 ```
 
-M5B.2.2 verifier/test coverage includes:
+The M5B.2 verifier/test suite covers the frozen M5B.2.1/M5B.2.2 contracts plus M5B.2.3:
 
-- M5B.2.1 free discovery remains intact;
-- exact Telegraph semantic mapping to existing AgentPlace canonical capabilities;
-- unrelated/unknown Telegraph services remain unmapped;
-- no new canonical capability is synthesized from Telegraph vocabulary;
-- deterministic endpoint selection;
-- ambiguous endpoint discovery fails closed;
-- Telegraph Base Sepolia protocol/payment network is not treated as the intelligence subject network;
-- subject-network hints are taken only from declared discovery metadata;
-- normalized Telegraph evidence preserves service/intent/testnet/trust/no-authority provenance;
-- signal hashes become Telegraph source references without altering factual status;
-- warnings become partial evidence;
-- errors remain errors;
-- absent results remain unavailable;
-- confidence is not fabricated or guessed;
-- owner-scoped `intelligence_evidence` persistence remains the single durable evidence path;
-- no Telegraph payment signer/private-key/x402 client is introduced.
+- dynamic Telegraph implementations are subordinate to AgentPlace Router v1;
+- only the narrow `telegraph` + `telegraph-direct-x402` path receives experimental trust eligibility;
+- existing trusted provider supply sorts ahead of experimental Telegraph supply;
+- the Worker passes Router-ordered candidate lists into structured intelligence;
+- unavailable/error provider evidence falls through to the next eligible implementation;
+- verified/partial evidence stops fallback;
+- direct Telegraph invocation targets `/engine/v1/ask/{subnet_id}` and never arbitrary discovered upstream URLs;
+- request payloads contain only declared fields deterministically bound from the AgentPlace subject;
+- x402 accepts only the exact Base Sepolia network, pinned test-USDC asset, supported exact/EIP-3009 scheme, matching Engine resource and bounded amount;
+- redirects and unsupported extensions fail closed;
+- hard limits remain $0.02/call, $0.10/job and 10 paid calls/job;
+- payment status is disabled by default and never exposes the private key;
+- paid-request unknown outcome is not automatically retried;
+- service-payment accounting is owner/job scoped and request-fingerprint unique;
+- the Telegraph payment ledger creates no wallet/Agent Account/Authority Grant linkage;
+- other provider credentials are not coupled into the Telegraph runtime;
+- normalized Telegraph results continue through owner-scoped `intelligence_evidence` persistence.
 
-## Optional live discovery smoke
-
-The existing free discovery smoke remains available:
+## Free discovery smoke
 
 ```bash
 pnpm telegraph:discover
 ```
 
-Expected behavior:
+This remains no-payment discovery and can be used whether the payment boundary is enabled or not.
 
-- exit 0 when at least one Telegraph service catalog is discoverable;
-- print only public discovery metadata and source statuses;
-- exit 1 when no Telegraph service catalog can be discovered;
-- never request a payment signature or private key.
+## Safe service-payment status
 
-A degraded result can be valid when a nonessential Telegraph testnet discovery surface is unavailable.
+With Worker variables available:
 
-## What this milestone does not live-test
+```bash
+pnpm telegraph:payment-status
+```
 
-M5B.2.2 does not invoke paid Telegraph inference. Therefore mocked/fixture normalization tests prove mapping and evidence contracts, not real paid-miner acceptance.
+Expected output contains only safe public configuration:
 
-Real Telegraph service invocation, Router fallback and external failure behavior belong to M5B.2.3/M5B.2.4. Do not describe M5B.2 as frozen until the live acceptance milestone passes.
+- enabled/ready;
+- Base Sepolia payment network;
+- pinned test-USDC address;
+- public payer address;
+- per-call/per-job/call-count caps.
+
+It must never print `TELEGRAPH_EVM_PRIVATE_KEY`.
+
+## M5B.2.4 live acceptance still required
+
+Automated tests do not prove a real Telegraph x402 settlement occurred. M5B.2.4 must perform a deliberately bounded live testnet invocation using the dedicated low-funded service wallet, confirm settlement/provenance, exercise fallback/degradation, then freeze M5B.2.

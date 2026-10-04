@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/telegraph",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -9,11 +9,19 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "import": "./dist/runtime.js"
     }
   },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agent-place/db": "workspace:*",
+    "viem": "2.56.8"
   }
 }

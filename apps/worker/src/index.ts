@@ -34,7 +34,7 @@ import {
 } from '@agent-place/router';
 import { defineService, parseEnvironmentContract } from '@agent-place/shared';
 import { listWorkerCatalog } from '@agent-place/workers';
-import { collectRoutedIntelligence, intelligenceEvidencePrompt, type IntelligenceSubject } from '@agent-place/intelligence';
+import { collectRoutedIntelligenceWithFallback, intelligenceEvidencePrompt, type IntelligenceSubject } from '@agent-place/intelligence';
 import {
   appendCoverageFallback,
   buildResearchRequirements,
@@ -46,7 +46,7 @@ import {
 export const service = defineService({
   name: 'agent-place-worker',
   runtimeClass: 'worker',
-  version: '0.7.0',
+  version: '0.8.2',
   milestone: 5,
 });
 
@@ -484,9 +484,19 @@ async function executeResearch(
     .filter((capability) => capability.required && capability.status !== 'routable')
     .map((capability) => capability.capabilityId);
   const coverageInstructions = researchCoverageInstructions(requirements, unavailableRequestedCapabilities);
-  const intelligenceInvocations = route.capabilityRoutes.filter((capability) => capability.status === 'routable' && capability.selectedImplementationId && capability.selectedProvider && !capability.capabilityId.startsWith('research.')).map((capability) => ({ capabilityId: capability.capabilityId, implementationId: capability.selectedImplementationId!, provider: capability.selectedProvider! }));
-  const structuredEvidence = decision.intelligenceSubjects.length && intelligenceInvocations.length
-    ? await collectRoutedIntelligence({ ownerUserId: task.ownerUserId, jobId, taskId: task.id, subjects: decision.intelligenceSubjects, invocations: intelligenceInvocations })
+  const intelligenceRoutes = route.capabilityRoutes
+    .filter((capability) => capability.status === 'routable' && !capability.capabilityId.startsWith('research.'))
+    .map((capability) => ({
+      capabilityId: capability.capabilityId,
+      candidates: routedProvidersForCapability(route, capability.capabilityId).map((candidate) => ({
+        capabilityId: capability.capabilityId,
+        implementationId: candidate.implementationId,
+        provider: candidate.provider,
+      })),
+    }))
+    .filter((item) => item.candidates.length > 0);
+  const structuredEvidence = decision.intelligenceSubjects.length && intelligenceRoutes.length
+    ? await collectRoutedIntelligenceWithFallback({ ownerUserId: task.ownerUserId, jobId, taskId: task.id, subjects: decision.intelligenceSubjects, routes: intelligenceRoutes })
     : [];
   const providerEvidencePrompt = intelligenceEvidencePrompt(structuredEvidence);
   if (structuredEvidence.length) {

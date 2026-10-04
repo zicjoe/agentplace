@@ -188,6 +188,9 @@ importers:
       '@agent-place/db':
         specifier: workspace:*
         version: link:../db
+      '@agent-place/telegraph':
+        specifier: workspace:*
+        version: link:../telegraph
 
   packages/marketplace: {}
 
@@ -211,13 +214,23 @@ importers:
       '@agent-place/db':
         specifier: workspace:*
         version: link:../db
+      '@agent-place/telegraph':
+        specifier: workspace:*
+        version: link:../telegraph
       '@agent-place/workers':
         specifier: workspace:*
         version: link:../workers
 
   packages/shared: {}
 
-  packages/telegraph: {}
+  packages/telegraph:
+    dependencies:
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
+      viem:
+        specifier: 2.56.8
+        version: 2.56.8(typescript@5.9.3)(zod@4.6.5)
 
   packages/verification: {}
 

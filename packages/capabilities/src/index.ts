@@ -89,7 +89,10 @@ export function configuredIntelligenceProviders(): string[] {
   if (process.env.ETHERSCAN_API_KEY?.trim()) providers.add('etherscan');
   if (process.env.ALCHEMY_API_KEY?.trim()) providers.add('alchemy');
   if (process.env.THEGRAPH_API_KEY?.trim() && process.env.THEGRAPH_UNISWAP_V3_ARBITRUM_SUBGRAPH_ID?.trim()) providers.add('thegraph');
+  const telegraphPaymentEnabled = ['1','true','yes','on'].includes(process.env.TELEGRAPH_SERVICE_PAYMENT_ENABLED?.trim().toLowerCase() ?? '');
+  const telegraphPaymentKey = process.env.TELEGRAPH_EVM_PRIVATE_KEY?.trim() ?? '';
+  if (telegraphPaymentEnabled && /^0x[0-9a-fA-F]{64}$/.test(telegraphPaymentKey)) providers.add('telegraph');
   return [...providers];
 }
 
-export const moduleManifest = { name:'capabilities', layer:'controlled-runtime', milestone:'5B.1', status:'zero-cost-first-crypto-intelligence-registry' } as const;
+export const moduleManifest = { name:'capabilities', layer:'controlled-runtime', milestone:'5B.2.3', status:'provider-neutral-intelligence-registry-with-experimental-telegraph-supply' } as const;

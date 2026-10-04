@@ -27,6 +27,7 @@ import { CapabilityStudio } from './CapabilityStudio';
 import { BillingUsageView } from './BillingUsageView';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { pathForState } from '../platform/routing';
+import { AgentPlaceBrand } from './AgentPlaceBrand';
 
 function PlaceholderView({ title, description }: { title: string; description: string }) {
   return (
@@ -165,7 +166,7 @@ export function Shell() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <span className="mx-auto text-sm font-semibold text-text">AgentPlace</span>
+          <AgentPlaceBrand className="mx-auto" markClassName="w-5 h-5" textClassName="text-sm font-semibold text-text tracking-tight" />
           <div className="flex items-center gap-2">
             {state.user && (
               <button

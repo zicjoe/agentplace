@@ -19,3 +19,10 @@ If private reporting is temporarily unavailable, contact the repository owner th
 - Mainnet execution/autonomy remain disabled unless an explicit production gate enables them.
 - Dependencies with unresolved High/Critical findings block production-readiness gates unless formally risk-accepted and documented.
 - Changes to authority, signing, billing, execution or verification require focused security review.
+
+## Telegraph service-payment boundary
+
+- `TELEGRAPH_EVM_PRIVATE_KEY` is a dedicated low-funded AgentPlace service-payment secret for Telegraph testnet calls only. It must exist only in the Railway Worker service and must never be exposed to Vercel/browser variables, model context, logs, database records, user wallets or Agent Accounts.
+- Telegraph x402 payments are hard-pinned to Base Sepolia test USDC and bounded by per-call, per-Job and call-count limits. Environment settings may tighten but cannot raise the code-level caps.
+- A Telegraph payment authorizes only the exact external intelligence request. It grants no capability, policy, wallet or financial execution authority.
+- Paid requests are not automatically replayed when settlement/outcome is unknown.

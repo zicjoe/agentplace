@@ -4,6 +4,7 @@ import type { Conversation } from '../state/types';
 import { fetchConversations } from '../platform/conversationApi';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { conversationHistoryTitle, isJobConversation, primaryConversationHistory } from '../platform/conversationNavigation';
+import { AgentPlaceBrand } from './AgentPlaceBrand';
 
 function timeAgo(date: Date): string {
   const diff = Date.now() - date.getTime();
@@ -244,12 +245,7 @@ export function Sidebar({ isMobileDrawer = false, onCloseMobile }: SidebarProps)
           className="flex items-center gap-2 group"
           title="AgentPlace"
         >
-          <div className="w-7 h-7 bg-primary rounded flex items-center justify-center shrink-0">
-            <span className="text-white text-xs font-bold tracking-tight">AP</span>
-          </div>
-          <span className="text-text font-semibold text-[15px] tracking-tight">
-            AgentPlace
-          </span>
+          <AgentPlaceBrand markClassName="w-7 h-7" />
         </button>
         <div className="ml-auto flex items-center gap-1">
           {isAuthenticated && (
