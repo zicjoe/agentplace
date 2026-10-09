@@ -21,7 +21,7 @@
     "@agent-place/db": "workspace:*",
     "better-auth": "1.7.5",
     "kysely": "0.28.17",
-    "pg": "8.23.0",
+    "pg": "8.23.1",
     "viem": "2.56.8"
   },
   "devDependencies": {
