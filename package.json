@@ -39,7 +39,7 @@
     "telegraph:payment-status": "pnpm --filter @agent-place/telegraph build && node scripts/telegraph-payment-status.mjs"
   },
   "devDependencies": {
-    "@types/node": "22.19.17",
-    "typescript": "5.9.3"
+    "@types/node": "26.6.4",
+    "typescript": "7.0.2"
   }
 }
