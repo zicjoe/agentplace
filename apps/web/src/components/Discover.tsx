@@ -216,7 +216,7 @@ export function Discover() {
   ];
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-y-auto">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-y-auto overscroll-contain">
       <div className="px-6 pt-8 pb-0 max-w-3xl">
         <h1 className="text-2xl font-semibold text-text tracking-tight mb-1">Discover</h1>
         <p className="text-sm text-text-sub">What is possible with AgentPlace?</p>

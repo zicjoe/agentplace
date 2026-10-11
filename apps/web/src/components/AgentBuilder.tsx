@@ -147,7 +147,7 @@ function LiveDraftPanel({ draft, step, testResults }: { draft: WorkerDraftData; 
   const allPassed = passCount === testResults.length && testResults.length > 0;
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full min-h-0 overflow-y-auto overscroll-contain">
       <div className="px-4 py-3 border-b border-border-dim">
         <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim mb-0.5">Live Worker Draft</p>
         <p className="text-sm font-semibold text-text">{draft.name || 'Untitled Worker'}</p>
@@ -767,7 +767,7 @@ export function AgentBuilder() {
   );
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       {/* Mobile tabs */}
       <div className="md:hidden flex border-b border-border shrink-0">
         {(['chat', 'draft'] as const).map((t) => (

@@ -153,8 +153,8 @@ function AddWalletModal({ onClose, initialStep }: { onClose: () => void; initial
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-sm px-4">
-      <div className="w-full max-w-md bg-panel border border-border rounded-xl shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-bg/80 backdrop-blur-sm px-4 py-4 sm:py-6">
+      <div className="w-full max-w-md my-auto max-h-[calc(100dvh-2rem)] bg-panel border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h2 className="text-sm font-semibold text-text">
             {step === 'choose' && 'How should AgentPlace work with this account?'}
@@ -171,7 +171,7 @@ function AddWalletModal({ onClose, initialStep }: { onClose: () => void; initial
           </button>
         </div>
 
-        <div className="px-5 py-5">
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-5">
           {step === 'choose' && (
             <div className="space-y-3">
               {[
@@ -387,7 +387,7 @@ function AgentAccountDetail({ wallet }: { wallet: WalletResource }) {
   const ownerWallet = account?.ownerWalletId ? (state.wallets ?? []).find((item) => item.id === account.ownerWalletId) : null;
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       <div className="px-5 py-4 border-b border-border shrink-0 flex items-center gap-3">
         <button onClick={() => dispatch({ type: 'SET_ACTIVE_WALLET', id: null })} className="text-text-muted hover:text-text p-1 -ml-1 rounded transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 12H5M12 5l-7 7 7 7" /></svg>
@@ -401,7 +401,7 @@ function AgentAccountDetail({ wallet }: { wallet: WalletResource }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-5">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-5">
         <div className="max-w-xl space-y-4">
           <div className="border border-primary/20 rounded-lg bg-primary-dim/10 px-4 py-3">
             <p className="text-sm font-medium text-text mb-1">Wallet foundation only</p>
@@ -484,7 +484,7 @@ function ConnectedWalletDetail({ wallet }: { wallet: WalletResource }) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       <div className="px-5 py-4 border-b border-border shrink-0 flex items-center gap-3">
         <button onClick={() => dispatch({ type: 'SET_ACTIVE_WALLET', id: null })} className="text-text-muted hover:text-text p-1 -ml-1 rounded transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 12H5M12 5l-7 7 7 7" /></svg>
@@ -498,7 +498,7 @@ function ConnectedWalletDetail({ wallet }: { wallet: WalletResource }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-5">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-5">
         <div className="max-w-xl space-y-4">
           <div className={`border rounded-lg px-4 py-3 ${isDisconnected ? 'border-danger/30 bg-danger/5' : 'border-primary/20 bg-primary-dim/10'}`}>
             <p className={`text-sm font-medium mb-1 ${isDisconnected ? 'text-danger' : 'text-text'}`}>{isDisconnected ? 'Wallet disconnected' : 'Connection grants no spending authority.'}</p>
@@ -597,7 +597,7 @@ function WatchOnlyDetail({ wallet }: { wallet: WalletResource }) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       <div className="px-5 py-4 border-b border-border shrink-0 flex items-center gap-3">
         <button
           onClick={() => dispatch({ type: 'SET_ACTIVE_WALLET', id: null })}
@@ -627,7 +627,7 @@ function WatchOnlyDetail({ wallet }: { wallet: WalletResource }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-5">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-5">
         <div className="max-w-xl space-y-4">
           <div className="border border-border-dim rounded-lg bg-panel-raised px-4 py-3">
             <p className="text-xs text-text-sub leading-relaxed">
@@ -853,7 +853,7 @@ export function WalletsView() {
 
   return (
     <>
-      <div className="h-full flex flex-col bg-bg overflow-hidden">
+      <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
         <div className="px-6 pt-8 pb-0 shrink-0">
           <div className="flex items-center justify-between mb-5">
             <div>
@@ -874,7 +874,7 @@ export function WalletsView() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-8">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-8">
           <div className="max-w-2xl">
             {wallets.length === 0 ? (
               <div className="py-12 text-center">

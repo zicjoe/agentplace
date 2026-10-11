@@ -677,7 +677,7 @@ export function ChatView() {
   const showBridgeCompletion = !!bridgeCompletionMsg && !isStreaming;
 
   return (
-    <div className="h-full flex flex-col bg-bg">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3 border-b border-border shrink-0">
         <button

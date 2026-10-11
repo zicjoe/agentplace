@@ -134,7 +134,7 @@ function FinancialJobWorkspace() {
   ];
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       <div className="px-5 py-4 border-b border-border shrink-0 max-h-[55dvh] overflow-y-auto">
         <div className="flex items-start gap-3">
           <button
@@ -200,7 +200,7 @@ function FinancialJobWorkspace() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-5">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-5">
         {activeTab === 'conversation' && (
           <div className="max-w-2xl mx-auto space-y-4">
             {originConv ? (
@@ -566,7 +566,7 @@ export function JobWorkspace() {
     : undefined;
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       {/* Bounded header stays readable without displacing the workspace at normal zoom. */}
       <div className="px-4 sm:px-6 py-4 border-b border-border shrink-0 max-h-[55dvh] overflow-y-auto">
         <div className="flex items-start gap-3">

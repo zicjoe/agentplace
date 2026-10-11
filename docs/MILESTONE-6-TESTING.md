@@ -19,3 +19,15 @@ Then test **Wallets & Accounts** while signed in.
 9. Sign out and sign back in. Confirm wallet/account resources rehydrate from the API.
 
 Do not test with a seed phrase or private key. AgentPlace never needs either for M6.
+
+## Viewport and zoom regression
+
+At 100% browser zoom, test Guest Home and the authenticated route surfaces at common laptop viewport heights (including approximately 768px and 900px):
+
+- Guest Home title, composer, starter cards and the bottom research/wallet note are reachable without zooming out.
+- When the whole Guest Home does not fit, only the route workspace scrolls; the document and desktop sidebar remain fixed.
+- Home, Discover, Workers, Wallets, Activity, Routines, Security/Billing, creator surfaces, conversations, Worker workspaces and Job workspaces retain reachable content with no header/footer trapped outside the viewport.
+- Wallet setup, Create, sign-in and other bounded dialogs scroll internally/on their overlay when the viewport is too short.
+- Mobile retains its top bar/bottom navigation while the active workspace owns scrolling.
+
+Regression coverage lives in `tests/viewport-layout.test.mjs`.

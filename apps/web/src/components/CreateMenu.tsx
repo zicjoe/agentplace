@@ -66,12 +66,12 @@ export function CreateMenu() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-sm px-4"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-bg/80 backdrop-blur-sm px-4 py-4 sm:py-6"
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
       }}
     >
-      <div className="w-full max-w-sm bg-panel border border-border rounded-xl shadow-2xl">
+      <div className="w-full max-w-sm my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto bg-panel border border-border rounded-xl shadow-2xl">
         <div className="px-5 pt-5 pb-4 border-b border-border-dim flex items-center justify-between">
           <h2 className="text-base font-semibold text-text">Create</h2>
           <button onClick={close} className="text-text-muted hover:text-text p-1 rounded transition-colors">

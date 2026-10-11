@@ -40,7 +40,7 @@ AgentPlace also has a supply-side model: experts can turn methods into Workers o
 
 | Build metadata | Value |
 |---|---|
-| Version | `v0.9.0` Milestone 6 Wallet Foundation candidate |
+| Version | `v0.9.1` Milestone 6 Wallet Foundation + viewport hardening candidate |
 | Production app | https://www.agentplace.tech |
 | Frontend | Vercel |
 | API + background Worker | Railway |
@@ -443,7 +443,7 @@ M4    Research / evidence foundation
 M5    Router v1
 M5B.1 Core crypto intelligence fabric
 M5B.2 Telegraph integration through M5B.2.3; M5B.2.4 paid live acceptance deliberately deferred
-M6    Wallet Foundation — v0.9.0 candidate
+M6    Wallet Foundation — v0.9.1 candidate (viewport/layout hardened)
 ```
 
 Next major platform layers include:

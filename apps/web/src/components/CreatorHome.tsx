@@ -274,7 +274,7 @@ export function CreatorHome() {
   ];
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       <div className="px-6 pt-6 pb-0 border-b border-border shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -305,7 +305,7 @@ export function CreatorHome() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 pt-5 pb-8 max-w-2xl">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pt-5 pb-8 max-w-2xl">
         {tab === 'my-creations' && (
           <div className="space-y-2">
             {assets.length === 0 && (

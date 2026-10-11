@@ -151,13 +151,13 @@ export function RoutinesView() {
   const inactive = routines.filter((r) => ['paused', 'stopped', 'expired', 'draft'].includes(r.status));
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       <div className="px-6 pt-8 pb-0 shrink-0">
         <h1 className="text-2xl font-semibold text-text tracking-tight mb-1">Routines</h1>
         <p className="text-sm text-text-sub mb-6">Persistent triggers owned by your Workers</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 pb-8">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-8">
         <div className="max-w-2xl space-y-6">
           {routines.length === 0 && (
             <div className="py-12 text-center">

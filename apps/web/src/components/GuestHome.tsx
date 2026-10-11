@@ -451,7 +451,7 @@ function PersistentHome() {
   const briefingText = buildReturningBriefing();
 
   return (
-    <div className="h-full overflow-y-auto bg-bg">
+    <div className="h-full min-h-0 overflow-y-auto overscroll-contain bg-bg">
       <div className="max-w-2xl mx-auto px-5 pt-8 pb-12">
         {/* Returning briefing */}
         {briefingText && (
@@ -634,26 +634,28 @@ function PersistentHome() {
 
 function GuestHomeContent() {
   return (
-    <div className="h-full flex flex-col items-center justify-center px-4 bg-bg">
-      <div className="w-full max-w-2xl">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-semibold text-text tracking-tight mb-3">
-            What do you want your crypto to do?
-          </h1>
-          <p className="text-text-sub text-sm leading-relaxed max-w-md mx-auto">
-            Tell AgentPlace what you want to accomplish. Your workers can research, monitor
-            and execute across crypto while staying within your rules.
-          </p>
-        </div>
-        <Composer />
-        <div className="mt-7 flex items-center justify-center gap-2">
-          <svg className="w-3.5 h-3.5 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
-          <p className="text-xs text-text-muted">
-            <strong className="text-text-sub font-medium">Start with research.</strong>{' '}
-            Connect a wallet only when your goal requires it.
-          </p>
+    <div data-page-scroll className="h-full min-h-0 overflow-y-auto overscroll-contain bg-bg">
+      <div className="min-h-full w-full flex px-4 py-6 sm:py-8 lg:py-10">
+        <div className="w-full max-w-2xl mx-auto my-auto">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-semibold text-text tracking-tight mb-3">
+              What do you want your crypto to do?
+            </h1>
+            <p className="text-text-sub text-sm leading-relaxed max-w-md mx-auto">
+              Tell AgentPlace what you want to accomplish. Your workers can research, monitor
+              and execute across crypto while staying within your rules.
+            </p>
+          </div>
+          <Composer />
+          <div className="mt-7 flex items-center justify-center gap-2">
+            <svg className="w-3.5 h-3.5 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+            <p className="text-xs text-text-muted">
+              <strong className="text-text-sub font-medium">Start with research.</strong>{' '}
+              Connect a wallet only when your goal requires it.
+            </p>
+          </div>
         </div>
       </div>
     </div>

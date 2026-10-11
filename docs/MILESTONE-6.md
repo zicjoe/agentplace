@@ -1,6 +1,6 @@
 # Milestone 6 — Wallet Foundation
 
-Status: v0.9.0 candidate. M6 replaces prototype-only wallet state with durable, owner-scoped Wallet and Agent Account foundations while preserving the hard separation between identity, connection, authority, transactions and autonomy.
+Status: v0.9.1 candidate. M6 replaces prototype-only wallet state with durable, owner-scoped Wallet and Agent Account foundations while preserving the hard separation between identity, connection, authority, transactions and autonomy.
 
 ## Product principle
 
@@ -90,3 +90,7 @@ M6 is ready to freeze after:
 - disconnect changes only AgentPlace durable state and grants/revokes no browser permission;
 - Agent Account setup requires an active connected EVM owner wallet, reaches `ready-for-deployment`, remains visibly `not-deployed`, has no fabricated address and has Worker authority `None`;
 - no wallet secret appears in browser state, API payloads, database rows or logs.
+
+## Viewport/layout hardening
+
+M6 also closes a long-standing shell-layout regression: route content must remain reachable at 100% browser zoom without requiring the user to zoom out. Guest Home owns vertical scrolling, uses overflow-safe auto-margin centering, and primary route/workspace shells use constrained flex children (`min-h-0`) with explicit scroll owners. Short-viewport dialogs are bounded and scroll rather than clipping above/below the viewport. This is UX hardening only; it does not expand Wallet or Agent Account authority.

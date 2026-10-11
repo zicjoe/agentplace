@@ -200,9 +200,9 @@ function RemoveConfirm({ routineId, onClose }: { routineId: string; onClose: () 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4">
       <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-panel border border-border rounded-xl shadow-2xl p-5">
+      <div className="relative w-full max-w-sm my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto bg-panel border border-border rounded-xl shadow-2xl p-5">
         <h2 className="text-sm font-semibold text-text mb-2">Stop this Routine?</h2>
         <p className="text-xs text-text-sub leading-relaxed mb-1">Future runs will stop.</p>
         <p className="text-xs text-text-sub leading-relaxed mb-1">Historical Jobs and outcomes remain available.</p>
@@ -277,7 +277,7 @@ export function RoutineWorkspace() {
 
   return (
     <>
-      <div className="h-full flex flex-col bg-bg overflow-hidden">
+      <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
         {/* Header */}
         <div className="px-6 pt-6 pb-4 border-b border-border-dim shrink-0">
           <div className="flex items-start gap-3">
@@ -315,7 +315,7 @@ export function RoutineWorkspace() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <div className="px-6 py-5 max-w-2xl space-y-6">
 
             {/* Limited warning */}

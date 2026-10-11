@@ -83,10 +83,10 @@ export function IdentityCheckpoint() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-sm px-4"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-bg/80 backdrop-blur-sm px-4 py-4 sm:py-6"
       onClick={(event) => { if (event.target === event.currentTarget && !loading) dismiss(); }}
     >
-      <div className="w-full max-w-md bg-panel border border-border rounded-xl shadow-2xl">
+      <div className="w-full max-w-md my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto bg-panel border border-border rounded-xl shadow-2xl">
         <div className="px-6 pt-6 pb-5">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-panel-raised border border-border rounded-lg flex items-center justify-center overflow-hidden">

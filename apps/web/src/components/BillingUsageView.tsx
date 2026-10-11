@@ -57,8 +57,8 @@ function TopUpModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-sm px-4">
-      <div className="w-full max-w-sm bg-panel border border-border rounded-xl p-5 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-bg/80 backdrop-blur-sm px-4 py-4 sm:py-6">
+      <div className="w-full max-w-sm my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto bg-panel border border-border rounded-xl p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-text">Top up service balance</h3>
           <button onClick={onClose} className="text-text-muted hover:text-text p-1 rounded transition-colors">
@@ -295,7 +295,7 @@ export function BillingUsageView() {
   const stableRoutine = routines.find((r) => r.id === 'rtn-stable-check');
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       <div className="px-6 pt-8 pb-0 shrink-0 border-b border-border">
         <div className="flex items-center justify-between mb-5">
           <div>
@@ -317,7 +317,7 @@ export function BillingUsageView() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-6">
         <div className="max-w-2xl space-y-6">
 
           {tab === 'overview' && (

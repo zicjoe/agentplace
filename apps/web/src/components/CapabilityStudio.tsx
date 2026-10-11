@@ -122,7 +122,7 @@ export function CapabilityStudio() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       <div className="px-6 py-4 border-b border-border shrink-0 flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold text-text">Capability Studio</p>
@@ -135,7 +135,7 @@ export function CapabilityStudio() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6 max-w-2xl">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-6 max-w-2xl">
         {step === 'choose' && (
           <div>
             <p className="text-sm font-medium text-text mb-1">What do you want to connect?</p>

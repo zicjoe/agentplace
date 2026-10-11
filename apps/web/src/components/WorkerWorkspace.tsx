@@ -224,7 +224,7 @@ function ContextualWorkerWorkspace({
   const primaryJob = jobs[0];
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       <div className="flex items-center gap-3 px-5 py-3 border-b border-border shrink-0">
         <button
           onClick={() => primaryJob ? dispatch({ type: 'SET_ACTIVE_JOB', id: primaryJob.id }) : dispatch({ type: 'SET_ACTIVE_WORKER', id: null })}
@@ -796,7 +796,7 @@ export function WorkerWorkspace() {
     : undefined;
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3 border-b border-border shrink-0">
         <button

@@ -81,6 +81,14 @@ body {
   overscroll-behavior: contain;
 }
 
+/* Route pages that own vertical scrolling must remain reachable at 100% zoom.
+   Never vertically center a potentially taller page directly inside the fixed shell. */
+[data-page-scroll] {
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
 .research-markdown table { table-layout: auto; }
 .research-markdown pre { white-space: pre; }
 .research-markdown :is(a, code) { overflow-wrap: anywhere; }

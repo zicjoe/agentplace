@@ -193,7 +193,7 @@ export function ActionReview() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-5 space-y-5">
           {/* Post-action states */}
           {approved && (
             <div className="border border-accent/30 rounded-lg bg-accent-dim/10 px-4 py-4 text-center">
@@ -596,8 +596,8 @@ export function ActionReview() {
       </div>
 
       {showWalletSign && !walletSigned && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-bg/90 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm bg-panel border border-border rounded-xl px-5 py-6">
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-bg/90 backdrop-blur-sm px-4 py-4 sm:py-6">
+          <div className="w-full max-w-sm my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto bg-panel border border-border rounded-xl px-5 py-6">
             <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim mb-3">Wallet · Sign transaction</p>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-primary-dim flex items-center justify-center shrink-0">
@@ -637,8 +637,8 @@ export function ActionReview() {
       )}
 
       {showWalletSign && walletSigned && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-bg/90 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm bg-panel border border-border rounded-xl px-5 py-6 text-center">
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-bg/90 backdrop-blur-sm px-4 py-4 sm:py-6">
+          <div className="w-full max-w-sm my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto bg-panel border border-border rounded-xl px-5 py-6 text-center">
             <svg className="w-6 h-6 text-accent mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
             </svg>

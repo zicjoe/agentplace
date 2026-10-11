@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.1 — M6 Viewport + Layout Hardening
+
+- Fixed Guest Home at normal browser zoom so content never gets pushed above or below the visible workspace by full-height vertical centering.
+- Made Guest Home own vertical scrolling while retaining centered composition on taller viewports through overflow-safe auto margins.
+- Hardened primary route/workspace flex shells with `min-h-0` and explicit owned scroll regions so page content remains reachable inside the fixed application shell.
+- Hardened Wallet, Create, Sign-in, Discover sandbox, Billing, Security and action-confirmation dialogs for short viewports with bounded height and vertical scrolling.
+- Restored viewport regression coverage against `GuestHome.tsx` and added cross-surface scroll-owner assertions so later milestones cannot silently reintroduce the zoom-out requirement.
+- No wallet domain, authority, execution, migration, Router, intelligence or payment behavior changed.
+
 ## 0.9.0 — Milestone 6 Wallet Foundation
 
 - Added durable owner-scoped `wallet_resource`, `wallet_network_state` and `agent_account` persistence.

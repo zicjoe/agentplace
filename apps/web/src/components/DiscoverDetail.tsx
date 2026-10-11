@@ -16,8 +16,8 @@ function SandboxTryPanel({ itemId, itemName, onClose }: { itemId: string; itemNa
     : `## ${itemName} · Sandbox result\n\n**Prototype data only**\n\nThis is an illustrative sandbox response. In production, ${itemName} would perform real research using connected data sources.\n\nNo installation occurred. No wallet authority was granted.`;
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-bg/80 backdrop-blur-sm px-4">
-      <div className="w-full max-w-lg bg-panel border border-border rounded-xl shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-60 flex items-start justify-center overflow-y-auto bg-bg/80 backdrop-blur-sm px-4 py-4 sm:py-6">
+      <div className="w-full max-w-lg my-auto max-h-[calc(100dvh-2rem)] bg-panel border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden">
         <div className="px-5 py-4 border-b border-border-dim flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-text">Try · {itemName}</p>
@@ -29,7 +29,7 @@ function SandboxTryPanel({ itemId, itemName, onClose }: { itemId: string; itemNa
             </svg>
           </button>
         </div>
-        <div className="px-5 py-4">
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-4">
           {step === 'prompt' && (
             <div>
               <p className="text-sm text-text-sub mb-4">Example prompt to try:</p>
@@ -173,7 +173,7 @@ export function DiscoverDetail() {
   ].filter(Boolean) as Array<{ label: string; value: string }>;
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       {showTry && (
         <SandboxTryPanel itemId={item.id} itemName={item.name} onClose={() => setShowTry(false)} />
       )}
@@ -221,7 +221,7 @@ export function DiscoverDetail() {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="px-6 py-5 max-w-2xl space-y-6">
           {/* Sponsored disclosure */}
           {item.sponsored && (

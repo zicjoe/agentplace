@@ -28,8 +28,8 @@ function RevokeConfirmModal({ grant, onClose }: { grant: AuthorityGrant; onClose
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-sm px-4">
-      <div className="w-full max-w-sm bg-panel border border-border rounded-xl p-5 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-bg/80 backdrop-blur-sm px-4 py-4 sm:py-6">
+      <div className="w-full max-w-sm my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto bg-panel border border-border rounded-xl p-5 shadow-2xl">
         <h3 className="text-sm font-semibold text-text mb-3">Revoke {grant.workerName} authority?</h3>
         <div className="space-y-2 mb-4">
           <div>
@@ -149,8 +149,8 @@ function StopExecutionModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-sm px-4">
-      <div className="w-full max-w-sm bg-panel border border-border rounded-xl p-5 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-bg/80 backdrop-blur-sm px-4 py-4 sm:py-6">
+      <div className="w-full max-w-sm my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto bg-panel border border-border rounded-xl p-5 shadow-2xl">
         <h3 className="text-sm font-semibold text-text mb-3">Stop safely cancellable future execution steps?</h3>
         <div className="space-y-2 mb-4 text-xs text-text-sub leading-relaxed">
           <p>AgentPlace will stop unsubmitted or cancellable future steps in in-progress Jobs where possible.</p>
@@ -325,7 +325,7 @@ export function SecurityAuthorityView() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       <div className="px-6 pt-8 pb-0 shrink-0">
         <div className="flex items-start justify-between mb-4">
           <div>
@@ -374,8 +374,8 @@ export function SecurityAuthorityView() {
 
       {/* Pause confirm modal */}
       {showPauseConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm bg-panel border border-border rounded-xl p-5">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-bg/80 backdrop-blur-sm px-4 py-4 sm:py-6">
+          <div className="w-full max-w-sm my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto bg-panel border border-border rounded-xl p-5">
             <h3 className="text-sm font-semibold text-text mb-3">Pause autonomous execution?</h3>
             <div className="space-y-2 mb-4">
               <div>
@@ -414,7 +414,7 @@ export function SecurityAuthorityView() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-6 pb-8">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-8">
         <div className="max-w-2xl space-y-6">
           {/* Status summary */}
           <div className="grid grid-cols-3 gap-3">

@@ -80,7 +80,7 @@ export function WorkersView() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-bg overflow-y-auto">
+    <div className="h-full min-h-0 flex flex-col bg-bg overflow-y-auto overscroll-contain">
       <div className="px-6 pt-8 pb-6 max-w-3xl">
         <div className="flex items-center justify-between mb-6">
           <div>
