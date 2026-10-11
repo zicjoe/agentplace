@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.9.0 — Milestone 6 Wallet Foundation
+
+- Added durable owner-scoped `wallet_resource`, `wallet_network_state` and `agent_account` persistence.
+- Replaced prototype connected-wallet fixtures with real EIP-1193 browser account, chain and native-balance observations.
+- Added durable EVM and Solana watch-only public-address resources.
+- Added Agent Account setup records that recheck the selected browser EVM owner account, accept user-selected preferred EVM networks, enter a truthful `ready-for-deployment` lifecycle state and remain explicitly `not-deployed`; no fake account address or balance is generated.
+- Added explicit watch-only network context plus durable rename/remove controls; AgentPlace never guesses an EVM chain from an address.
+- Added authenticated Wallet APIs and account rehydration after sign-in/reload.
+- Kept wallet connection separate from cryptographic ownership proof, Mandates, Authority Grants, signing and execution. Production/API mode cannot turn M6 wallet state into fixture financial actions. No raw private keys or seed phrases are accepted or stored.
+- Telegraph M5B.2.4 paid live acceptance remains deferred and is not represented as fully live-accepted.
+
+## 0.8.5 — M5B.2.4 Telegraph Live-Catalog Merge Compatibility
+
+- Fixed a live-discovery merge bug where a repeated endpoint from a later Telegraph catalogue surface could overwrite the richer `input_schema`/`output_schema` already discovered for the same Miner endpoint.
+- Reconciles duplicate endpoints conservatively: exact method/path matches merge metadata; method-less duplicates merge only when the path has one unambiguous counterpart; explicitly different HTTP methods remain distinct.
+- Preserves the preferred live catalogue schema while filling missing endpoint metadata from complementary dispatcher/Engine discovery surfaces.
+- Added no-payment semantic-mapping diagnostics to the acceptance plan so rejected mappings expose schema/network/binding readiness without sending a payment authorization.
+- Added a regression test reproducing the richer-API-schema + thinner-dispatcher-duplicate condition.
+- M5B.2 remains unfrozen. A real paid testnet settlement is still forbidden until the no-payment plan returns an exact router-ready candidate.
+
+## 0.8.4 — M5B.2.4 Telegraph Live-Catalog Compatibility
+
+- Preserved the fail-closed acceptance boundary after live discovery found zero router-ready mappings and correctly refused all paid calls.
+- Added exact aliases for current Telegraph Web3 Intents that fit existing AgentPlace canonical capabilities: `CRYPTO_PRICE`, `LIQUIDITY_DEPTH_VERIFY`, `SMART_CONTRACT_AUDIT`, `TVL_LOOKUP`, and `CRYPTO_YIELD_RATE`.
+- Extended live miner normalization to read `semantics.supported_intents`, nested signal mappings, on-chain minimum pricing, and top-level input/output schemas used by current catalogue representations.
+- Added no-payment acceptance diagnostics for relevant live Intent availability and declared relevant miner supply.
+- Did not map narrower or broader current Telegraph Intents such as `TOKEN_HOLDER_COUNT`, `ONCHAIN_METRIC_VERIFY`, transfer verification, cross-chain verification, reserve attestations, or wash-trading detection where AgentPlace does not yet have an exact canonical capability boundary.
+- No user-wallet authority, unrestricted provider secrets, or automatic paid acceptance was introduced.
+
+## 0.8.3 — M5B.2.4 Telegraph Live Acceptance Candidate
+
+- Added a no-payment `telegraph:acceptance:plan` command that refreshes current Telegraph discovery/mapping and lists only router-ready mappings that can deterministically bind the chosen public acceptance subject.
+- Updated Telegraph discovery compatibility to read the current documented `/api/miners` live catalog while retaining legacy Engine/dispatcher surfaces only as additive fallback.
+- Hardened x402 resource validation for Telegraph's documented Engine-internal resource URL shape (`/v1/ask/{minerId}` without `/engine`, including the documented http/https presentation difference) while still requiring the same host and exact internal request path.
+- Added an explicitly armed `telegraph:acceptance:run` command requiring two independent live-test gates, an exact planned implementation ID, the dedicated Worker-only service-payment key and a migrated database.
+- The live runner permits one successful bounded testnet x402 purchase, requires a confirmed settlement transaction and normalized Telegraph evidence provenance, then verifies exact-request replay rejection and same-Job budget rejection without allowing a second settled payment.
+- Added safe acceptance reporting that omits private keys, EIP-3009 signatures/nonces, raw queries and raw provider results while preserving public settlement/evidence metadata needed for review.
+- Added the M5B.2.4 acceptance runbook and kept the milestone explicitly unfrozen until a real live pass is reviewed.
+- No user-wallet authority, Agent Account authority, mainnet payment path, automatic top-up, provider-secret forwarding or product/UI behavior was added.
+
 ## Submission documentation + deployment record — 2026-10-04
 
 - Reworked the root README into a judge/developer-facing product overview covering AgentPlace's Worker/Job/Router model, current provider-backed intelligence, trust boundaries, repository architecture, production deployment and honest current-vs-roadmap status.

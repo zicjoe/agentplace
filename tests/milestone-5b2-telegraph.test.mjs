@@ -58,6 +58,7 @@ test('M5B.2.1 discovers Telegraph miners without invoking or paying them', async
     calls.push(url);
     if (url.endsWith('/status')) return jsonResponse({ publicKey: '0xnode' });
     if (url.endsWith('/healthz')) return jsonResponse({ status: 'ok' });
+    if (url.endsWith('/api/miners')) return jsonResponse([{ id: '18', slug: 'bittensor-sn18-zeus', name: 'Zeus Weather', endpoints: [{ path: '/predict', method: 'GET', input_schema: { type: 'object' } }], supported_intents: ['WEATHER_FORECAST'], capabilities: ['weather'], min_price_usdc: 10000, activation_status: 'active' }]);
     if (url.endsWith('/integrations')) return jsonResponse([
       {
         id: '18',
@@ -96,7 +97,7 @@ test('M5B.2.1 discovers Telegraph miners without invoking or paying them', async
   assert.equal(result.intents[0].name, 'WEATHER_FORECAST');
   assert.equal(result.dynamicOpenApiPathCount, 1);
   assert.equal(calls.some((url) => url.includes('miner.invalid')), false, 'discovered upstream URLs must never be invoked');
-  assert.equal(calls.length, 6);
+  assert.equal(calls.length, 7);
 });
 
 test('M5B.2.1 preserves partial discovery when the known testnet intent registry is unavailable', async () => {
@@ -104,6 +105,7 @@ test('M5B.2.1 preserves partial discovery when the known testnet intent registry
     const url = String(input);
     if (url.endsWith('/status')) return jsonResponse({ publicKey: '0xnode' });
     if (url.endsWith('/healthz')) return jsonResponse({ status: 'ok' });
+    if (url.endsWith('/api/miners')) return jsonResponse([{ id: '102', slug: 'openai', name: 'OpenAI', endpoints: [], capabilities: ['language'], activation_status: 'active' }]);
     if (url.endsWith('/integrations')) return jsonResponse([{ id: '102', slug: 'openai', name: 'OpenAI', endpoints: [], capabilities: ['language'] }]);
     if (url.endsWith('/engine/v1/miners')) return jsonResponse({ miners: [{ id: '102', slug: 'openai', name: 'OpenAI', capabilities: ['language'] }], count: 1 });
     if (url.endsWith('/engine/v1/intents')) return jsonResponse({ error: 'intent_registry missing' }, 500);
@@ -124,6 +126,144 @@ test('M5B.2.1 fails closed when Telegraph discovery is unavailable', async () =>
   assert.equal(result.status, 'unavailable');
   assert.equal(result.miners.length, 0);
   assert.ok(result.limitations.some((item) => item.includes('No Telegraph miners/services were discoverable')));
+});
+
+
+
+test('M5B.2.4 current live catalogue semantics and top-level schemas remain discoverable without payment', async () => {
+  const fakeFetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith('/status')) return jsonResponse({ publicKey: '0xnode' });
+    if (url.endsWith('/healthz')) return jsonResponse({ status: 'ok' });
+    if (url.endsWith('/api/miners')) return jsonResponse([
+      {
+        id: 501,
+        slug: 'crypto-price-current',
+        name: 'Crypto Price Current',
+        activation_status: 'active',
+        semantics: { supported_intents: ['CRYPTO_PRICE'] },
+        endpoints: [{ path: '/price', method: 'POST', description: 'Crypto price lookup' }],
+        input_schema: {
+          type: 'object',
+          required: ['symbol', 'network'],
+          properties: {
+            symbol: { type: 'string' },
+            network: { type: 'string', enum: ['ethereum', 'base', 'arbitrum'] },
+          },
+        },
+        output_schema: { type: 'object', properties: { price: { type: 'number' } } },
+        min_price_usdc: 0.01,
+      },
+    ]);
+    if (url.endsWith('/integrations')) return jsonResponse([]);
+    if (url.endsWith('/engine/v1/miners')) return jsonResponse({ miners: [], count: 0 });
+    if (url.endsWith('/engine/v1/intents')) return jsonResponse({
+      count: 1,
+      intents: [{ intent_id: '0xprice', intent_name: 'CRYPTO_PRICE', miner_count: 1 }],
+    });
+    if (url.endsWith('/openapi.json')) return jsonResponse({ openapi: '3.0.0', paths: {} });
+    throw new Error(`unexpected URL ${url}`);
+  };
+
+  const result = await discoverTelegraph({ config, fetchImpl: fakeFetch });
+  assert.equal(result.miners.length, 1);
+  assert.deepEqual(result.miners[0].supportedIntents, ['CRYPTO_PRICE']);
+  assert.deepEqual(result.miners[0].endpoints[0].inputSchema.required, ['symbol', 'network']);
+  const report = mapTelegraphCapabilities(result);
+  assert.equal(report.mappings.length, 1);
+  assert.equal(report.mappings[0].canonicalCapabilityId, 'token.market.read');
+  assert.equal(report.mappings[0].routerReady, true);
+});
+
+test('M5B.2.4 preserves richer live API endpoint schemas when dispatcher discovery repeats the same endpoint', async () => {
+  const fakeFetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith('/status')) return jsonResponse({ publicKey: '0xnode' });
+    if (url.endsWith('/healthz')) return jsonResponse({ status: 'ok' });
+    if (url.endsWith('/api/miners')) return jsonResponse([
+      {
+        id: 777,
+        slug: 'crypto-price-merge-regression',
+        name: 'Crypto Price Merge Regression',
+        activation_status: 'active',
+        supported_intents: ['CRYPTO_PRICE'],
+        endpoints: [{ path: '/price', method: 'POST', description: 'Crypto price lookup' }],
+        input_schema: {
+          type: 'object',
+          required: ['symbol', 'network'],
+          properties: {
+            symbol: { type: 'string' },
+            network: { type: 'string', enum: ['ethereum', 'base', 'arbitrum'] },
+          },
+        },
+      },
+    ]);
+    if (url.endsWith('/integrations')) return jsonResponse([
+      {
+        id: '777',
+        slug: 'crypto-price-merge-regression',
+        name: 'Crypto Price Merge Regression',
+        semantics: { supported_intents: ['CRYPTO_PRICE'] },
+        endpoints: [{ path: '/price', method: 'POST', description: 'Crypto price lookup' }],
+      },
+    ]);
+    if (url.endsWith('/engine/v1/miners')) return jsonResponse({ miners: [], count: 0 });
+    if (url.endsWith('/engine/v1/intents')) return jsonResponse({
+      count: 1,
+      intents: [{ intent_id: '0xprice', intent_name: 'CRYPTO_PRICE', miner_count: 1 }],
+    });
+    if (url.endsWith('/openapi.json')) return jsonResponse({ openapi: '3.0.0', paths: {} });
+    throw new Error(`unexpected URL ${url}`);
+  };
+
+  const result = await discoverTelegraph({ config, fetchImpl: fakeFetch });
+  assert.equal(result.miners.length, 1);
+  assert.deepEqual(result.miners[0].endpoints[0].inputSchema.required, ['symbol', 'network']);
+  const report = mapTelegraphCapabilities(result);
+  assert.equal(report.mappings.length, 1);
+  assert.equal(report.mappings[0].routerReady, true);
+  assert.equal(report.mappings[0].networkSupportSource, 'declared-schema');
+});
+
+test('M5B.2.4 recognizes only current Telegraph Web3 intents with exact existing AgentPlace boundaries', () => {
+  const makeMiner = (id, intent, path, keyword) => ({
+    id,
+    slug: `miner-${id}`,
+    name: `Miner ${id}`,
+    capabilities: [],
+    supportedIntents: [intent],
+    endpoints: [{
+      path,
+      method: 'POST',
+      summary: keyword,
+      inputSchema: { type: 'object', properties: { network: { enum: ['ethereum', 'base'] } } },
+    }],
+    activationStatus: 'active',
+    discoverySources: ['engine'],
+  });
+
+  const report = mapTelegraphCapabilities(snapshot([
+    makeMiner('601', 'LIQUIDITY_DEPTH_VERIFY', '/liquidity', 'liquidity depth'),
+    makeMiner('603', 'SMART_CONTRACT_AUDIT', '/audit', 'contract security audit'),
+    makeMiner('604', 'TVL_LOOKUP', '/tvl', 'protocol tvl'),
+    makeMiner('605', 'CRYPTO_YIELD_RATE', '/yield', 'yield apy'),
+    makeMiner('607', 'WASH_TRADING_DETECTION', '/wash', 'wash trading'),
+  ]));
+
+  const mapped = new Map(report.mappings.map((item) => [item.matchedIntents[0], item.canonicalCapabilityId]));
+  assert.equal(mapped.get('LIQUIDITY_DEPTH_VERIFY'), 'token.liquidity.analyze');
+  assert.equal(mapped.get('SMART_CONTRACT_AUDIT'), 'token.security.assess');
+  assert.equal(mapped.get('TVL_LOOKUP'), 'protocol.tvl.read');
+  assert.equal(mapped.get('CRYPTO_YIELD_RATE'), 'protocol.yield.read');
+  assert.equal(mapped.has('WASH_TRADING_DETECTION'), false);
+  assert.ok(report.unmapped.some((item) => item.supportedIntents.includes('WASH_TRADING_DETECTION')));
+
+  const deliberatelyUnmapped = mapTelegraphCapabilities(snapshot([
+    makeMiner('608', 'TOKEN_HOLDER_COUNT', '/holders', 'holder count'),
+    makeMiner('609', 'ONCHAIN_METRIC_VERIFY', '/metrics', 'onchain metric verify'),
+  ]));
+  assert.equal(deliberatelyUnmapped.mappings.length, 0);
+  assert.equal(deliberatelyUnmapped.unmapped.length, 2);
 });
 
 test('M5B.2.2 maps only exact compatible Telegraph semantics into existing AgentPlace capabilities', () => {
@@ -331,6 +471,11 @@ test('M5B.2.3 x402 policy accepts only exact Base Sepolia test-USDC payment with
   const accepted = selectTelegraphPaymentChallenge(valid, requestUrl, {});
   assert.equal(accepted.requirement?.amount, '10000');
 
+  const documentedResourceShape = structuredClone(valid);
+  documentedResourceShape.resource.url = 'http://telegraph.test/v1/ask/301';
+  const documentedAccepted = selectTelegraphPaymentChallenge(documentedResourceShape, requestUrl, {});
+  assert.equal(documentedAccepted.requirement?.amount, '10000', 'current Telegraph x402 resource.url may omit /engine and report http for the same node/path');
+
   const wrongNetwork = structuredClone(valid);
   wrongNetwork.accepts[0].network = 'eip155:8453';
   assert.equal(selectTelegraphPaymentChallenge(wrongNetwork, requestUrl, {}).requirement, undefined);
@@ -423,4 +568,38 @@ test('M5B.2.3 adds an owner/job-scoped replay-safe service-spend ledger without 
   assert.match(migration, /payment_network = 'eip155:84532'/);
   assert.match(migration, /status IN \('reserved','settled','failed','released','unknown'\)/);
   assert.doesNotMatch(migration, /authority_grant|wallet_connection|agent_account/i);
+});
+
+test('M5B.2.4 acceptance planning is discovery-only and cannot send a payment authorization', () => {
+  const source = readFileSync('scripts/telegraph-live-acceptance-plan.mjs', 'utf8');
+  assert.match(source, /loadTelegraphRuntimeCatalog/);
+  assert.match(source, /bindTelegraphSubjectPayload/);
+  assert.match(source, /Choose exactly one implementationId/);
+  assert.doesNotMatch(source, /normalizeTelegraphMappedInvocation|invokeTelegraphMappedService|PAYMENT-SIGNATURE|TELEGRAPH_EVM_PRIVATE_KEY/);
+});
+
+test('M5B.2.4 live acceptance requires explicit arming and one exact planned implementation', () => {
+  const source = readFileSync('scripts/telegraph-live-acceptance-run.mjs', 'utf8');
+  assert.match(source, /TELEGRAPH_LIVE_ACCEPTANCE_ENABLED/);
+  assert.match(source, /ONE_BOUNDED_TESTNET_X402_CALL/);
+  assert.match(source, /TELEGRAPH_ACCEPTANCE_IMPLEMENTATION_ID/);
+  assert.match(source, /The chosen Telegraph implementation is not currently present as a router-ready live mapping/);
+  assert.match(source, /Expected exactly one settled service-payment row/);
+  assert.match(source, /Duplicate-payment protection failed/);
+  assert.match(source, /Job-budget rejection failed/);
+  assert.match(source, /executionAuthority: 'none'/);
+  assert.match(source, /userWalletAuthorityGranted: false/);
+  assert.match(source, /agentAccountAuthorityGranted: false/);
+  assert.doesNotMatch(source, /console\.log\(process\.env|console\.error\(process\.env|privateKey:/);
+});
+
+test('M5B.2.4 stays unfrozen until a real live settlement report passes review', () => {
+  const milestone = readFileSync('docs/MILESTONE-5B2.md', 'utf8');
+  const acceptance = readFileSync('docs/MILESTONE-5B2-ACCEPTANCE.md', 'utf8');
+  const root = JSON.parse(readFileSync('package.json', 'utf8'));
+  assert.match(milestone, /one controlled live testnet pass \+ review is still required before freeze/i);
+  assert.match(acceptance, /M5B\.2 remains unfrozen until one deliberate live run passes/i);
+  assert.match(acceptance, /do not automatically retry it/i);
+  assert.ok(root.scripts['telegraph:acceptance:plan']);
+  assert.ok(root.scripts['telegraph:acceptance:run']);
 });

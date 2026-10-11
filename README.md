@@ -32,15 +32,15 @@ AgentPlace turns that goal into durable work owned by specialist **Workers**, ma
 
 A crypto Worker is a persistent AI specialist designed to own a specific crypto job. A Worker has a defined responsibility, operating context, capabilities and boundaries. Workers can research and coordinate work today; future execution capabilities remain subject to explicit deterministic authority and safety controls.
 
-AgentPlace also has a supply-side model: experts can turn methods into Workers or Workflows, while developers and protocols can expose software as reusable Capabilities. The production creator/publishing system is still on the roadmap; the current submission focuses on the orchestration, Router and intelligence foundation.
+AgentPlace also has a supply-side model: experts can turn methods into Workers or Workflows, while developers and protocols can expose software as reusable Capabilities. The production creator/publishing system is still on the roadmap; the current build extends the orchestration, Router and intelligence foundation with durable wallet/account state while keeping financial authority and execution out of scope.
 
 ---
 
-## Submission status
+## Current build status
 
-| Submission metadata | Value |
+| Build metadata | Value |
 |---|---|
-| Version | `v0.8.2` submission build |
+| Version | `v0.9.0` Milestone 6 Wallet Foundation candidate |
 | Production app | https://www.agentplace.tech |
 | Frontend | Vercel |
 | API + background Worker | Railway |
@@ -59,13 +59,13 @@ AgentPlace also has a supply-side model: experts can turn methods into Workers o
 | Durable `IntelligenceEvidence` provenance | Implemented |
 | Provider fallback / rerouting | Implemented |
 | Telegraph discovery, mapping and Router integration | Implemented — experimental/testnet |
-| Telegraph live paid testnet acceptance | Pending M5B.2.4 |
+| Telegraph live paid testnet acceptance | Acceptance tooling ready; controlled paid pass deliberately deferred |
 | Robinhood Chain receipt registry | Deployed on testnet |
-| Connected-wallet financial execution | Not enabled in this submission |
-| Agent Account financial authority | Not enabled in this submission |
-| Autonomous capital movement | Not enabled in this submission |
+| Connected-wallet financial execution | Not enabled in the current build |
+| Agent Account financial authority | Not enabled in the current build |
+| Autonomous capital movement | Not enabled in the current build |
 
-The current submission intentionally stops at the read-only intelligence and orchestration boundary rather than presenting unfinished financial execution as complete.
+The current build adds durable Wallet Foundation state while intentionally stopping before Mandates, financial action preparation, signing and execution rather than presenting unfinished authority as complete.
 
 ---
 
@@ -151,7 +151,7 @@ The repository defines first-party Worker roles including:
 - **Execution Operator** — future controlled onchain execution responsibility.
 - **Agent Builder** — turns described jobs or expertise into Worker definitions.
 
-Not every role has financial execution enabled in the current submission. M5B is deliberately read-only.
+Not every role has financial execution enabled in the current build. M5B remains deliberately read-only, and M6 wallet state does not create authority.
 
 ---
 
@@ -204,7 +204,7 @@ Additional protocol, DeFi and stablecoin intelligence capabilities are defined i
 
 Telegraph is integrated as **experimental testnet capability supply beneath AgentPlace Router v1**. It does not replace the AgentPlace Manager, canonical capability vocabulary, Router, Job state or evidence model.
 
-Implemented through M5B.2.3:
+Implemented through M5B.2.3, with M5B.2.4 live-acceptance tooling now included:
 
 - free Telegraph discovery;
 - explicit Telegraph-to-AgentPlace capability mapping;
@@ -214,9 +214,9 @@ Implemented through M5B.2.3:
 - direct service inference after AgentPlace selects the implementation;
 - isolated Base Sepolia x402 service-payment accounting with hard spend caps.
 
-Telegraph receives no user-wallet authority and no unrestricted provider secrets. Live paid testnet acceptance remains pending M5B.2.4.
+Telegraph receives no user-wallet authority and no unrestricted provider secrets. M5B.2.4 includes a fail-closed live acceptance planner/runner. v0.8.5 also preserves richer endpoint schemas when Telegraph repeats the same live Miner across catalogue surfaces, and the no-payment plan now reports semantic-mapping diagnostics before any paid call is allowed. The paid M5B.2.4 live settlement remains deliberately deferred; Telegraph stays experimental/testnet/no-authority and is not represented as fully live-accepted.
 
-See [`docs/MILESTONE-5B2.md`](docs/MILESTONE-5B2.md).
+See [`docs/MILESTONE-5B2.md`](docs/MILESTONE-5B2.md) and the guarded [`M5B.2.4 acceptance runbook`](docs/MILESTONE-5B2-ACCEPTANCE.md).
 
 ---
 
@@ -260,12 +260,18 @@ Security properties:
 - two-step ownership transfer;
 - no proxy, `delegatecall`, `selfdestruct` or arbitrary external-call surface.
 
-The current Blockscout source-verification status is **verified (partial match)**. The source is publicly inspectable on the explorer. Automated production receipt anchoring is not on the user-facing Job critical path in this submission.
+The current Blockscout source-verification status is **verified (partial match)**. The source is publicly inspectable on the explorer. Automated production receipt anchoring is not on the user-facing Job critical path in the current build.
 
 Contract source and tests: [`contracts/agentplace-receipt-registry/`](contracts/agentplace-receipt-registry/)
 Deployment notes: [`docs/ROBINHOOD-CHAIN-RECEIPT-REGISTRY.md`](docs/ROBINHOOD-CHAIN-RECEIPT-REGISTRY.md)
 
 ---
+
+## Wallet Foundation (M6)
+
+AgentPlace now persists real owner-scoped wallet resources instead of relying on wallet fixtures. M6 supports durable EVM/Solana watch-only addresses with explicit network context and rename/remove lifecycle, EIP-1193 browser-connected EVM accounts with observed chain/native balance state, and an Agent Account **setup** record tied to an owner wallet. Agent Account setup becomes `ready-for-deployment` metadata only and is explicitly undeployed until a later execution milestone creates a real smart account.
+
+Wallet connection is not financial authority. AgentPlace stores no raw private key or seed phrase, and M6 does not grant Workers autonomous signing rights. See [`docs/MILESTONE-6.md`](docs/MILESTONE-6.md).
 
 ## Authentication and authority boundaries
 
@@ -399,6 +405,7 @@ For environment-specific setup, see:
 - [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md)
 - [`docs/MILESTONE-5B1-DEPLOYMENT.md`](docs/MILESTONE-5B1-DEPLOYMENT.md)
 - [`docs/MILESTONE-5B2-DEPLOYMENT.md`](docs/MILESTONE-5B2-DEPLOYMENT.md)
+- [`docs/MILESTONE-6-DEPLOYMENT.md`](docs/MILESTONE-6-DEPLOYMENT.md)
 
 ---
 
@@ -419,13 +426,13 @@ During the buildathon, AgentPlace progressed from the repository foundation to a
 - Telegraph experimental testnet capability-network integration;
 - a deployed Robinhood Chain Testnet receipt-registry contract.
 
-The submission does **not** claim unfinished wallet execution, Agent Account authority or autonomous financial execution as complete.
+That submission did **not** claim unfinished wallet execution, Agent Account authority or autonomous financial execution as complete.
 
 ---
 
 ## Roadmap
 
-Completed/frozen or implemented submission milestones:
+Completed/frozen or currently implemented milestones:
 
 ```text
 M0    Repository & engineering foundation
@@ -435,13 +442,13 @@ M3    Workers + Jobs
 M4    Research / evidence foundation
 M5    Router v1
 M5B.1 Core crypto intelligence fabric
-M5B.2 Telegraph integration through M5B.2.3
+M5B.2 Telegraph integration through M5B.2.3; M5B.2.4 paid live acceptance deliberately deferred
+M6    Wallet Foundation — v0.9.0 candidate
 ```
 
 Next major platform layers include:
 
 ```text
-M6    Wallet Foundation
 M7    Mandates + Authority Engine
 M8    Action Preparation + Action Review
 M9    Testnet Execution + Observation

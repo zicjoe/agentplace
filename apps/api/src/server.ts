@@ -26,6 +26,7 @@ import { getRouteDecisionForJob } from '@agent-place/router';
 import { listJobIntelligenceEvidence } from '@agent-place/intelligence';
 import { createJob, enqueueIntelligenceTask, getIntelligenceTask, getLatestIntelligenceTask, getJob, getJobEvidence, jobStatuses, listActivity, listJobs, setJobConversation, type JobDraft } from '@agent-place/jobs';
 import { getUserWorker, installWorker, listUserWorkers, listWorkerCatalog, updateUserWorker, type UserWorkerStatus } from '@agent-place/workers';
+import { createAgentAccount, createWatchWallet, connectWallet, getWallet, listAgentAccounts, listWallets, observeWalletNetwork, updateWallet, type WalletNamespace } from '@agent-place/wallets';
 import {
   createRequestId,
   parseEnvironmentContract,
@@ -217,6 +218,106 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
   }
 
 
+
+  if (url.pathname === '/api/v1/wallets' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const [wallets, agentAccounts] = await Promise.all([listWallets(identity.appUserId), listAgentAccounts(identity.appUserId)]);
+    writeJson(res, 200, { wallets, agentAccounts });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/wallets/watch' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    if (typeof body.name !== 'string' || typeof body.address !== 'string') throw new Error('INVALID_WALLET_INPUT');
+    if (body.namespace !== 'eip155' && body.namespace !== 'solana') throw new Error('INVALID_WALLET_NAMESPACE');
+    const networks = Array.isArray(body.networks) ? body.networks.map((value) => {
+      const row = asRecord(value);
+      if (typeof row.networkId !== 'string' || typeof row.chainReference !== 'string') throw new Error('INVALID_WALLET_NETWORK');
+      return { networkId: row.networkId, chainReference: row.chainReference };
+    }) : [];
+    const wallet = await createWatchWallet(identity.appUserId, { name: body.name, address: body.address, namespace: body.namespace as WalletNamespace, networks });
+    writeJson(res, 201, { wallet });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/wallets/connect' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const network = asRecord(body.network);
+    if (typeof body.name !== 'string' || typeof body.address !== 'string') throw new Error('INVALID_WALLET_INPUT');
+    if (body.namespace !== 'eip155') throw new Error('UNSUPPORTED_CONNECTED_WALLET_NAMESPACE');
+    if (typeof network.networkId !== 'string' || typeof network.chainReference !== 'string') throw new Error('INVALID_WALLET_NETWORK');
+    const nativeBalanceAtomic = network.nativeBalanceAtomic === undefined ? undefined : asOptionalString(network.nativeBalanceAtomic, 100);
+    const wallet = await connectWallet(identity.appUserId, {
+      name: body.name,
+      address: body.address,
+      namespace: body.namespace as WalletNamespace,
+      network: { networkId: network.networkId, chainReference: network.chainReference, ...(nativeBalanceAtomic ? { nativeBalanceAtomic } : {}) },
+    });
+    writeJson(res, 201, { wallet });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/agent-accounts' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    if (typeof body.name !== 'string' || typeof body.ownerWalletId !== 'string' || !Array.isArray(body.preferredNetworkIds) || !body.preferredNetworkIds.every((value) => typeof value === 'string')) throw new Error('INVALID_AGENT_ACCOUNT_INPUT');
+    const created = await createAgentAccount(identity.appUserId, {
+      name: body.name,
+      ownerWalletId: body.ownerWalletId,
+      preferredNetworkIds: body.preferredNetworkIds as string[],
+    });
+    writeJson(res, 201, created);
+    return;
+  }
+
+  const walletNetworkMatch = url.pathname.match(/^\/api\/v1\/wallets\/([^/]+)\/network-state$/);
+  if (walletNetworkMatch && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const walletId = decodeURIComponent(walletNetworkMatch[1] ?? '');
+    const body = asRecord(await readJson(req));
+    if (typeof body.networkId !== 'string' || typeof body.chainReference !== 'string' || typeof body.address !== 'string' || typeof body.connected !== 'boolean') throw new Error('INVALID_WALLET_NETWORK');
+    const nativeBalanceAtomic = body.nativeBalanceAtomic === undefined ? undefined : asOptionalString(body.nativeBalanceAtomic, 100);
+    const wallet = await observeWalletNetwork(identity.appUserId, walletId, {
+      networkId: body.networkId,
+      chainReference: body.chainReference,
+      address: body.address,
+      connected: body.connected,
+      ...(nativeBalanceAtomic ? { nativeBalanceAtomic } : {}),
+    });
+    if (!wallet) return writeJson(res, 404, { error: 'not_found', message: 'Wallet not found.', requestId });
+    writeJson(res, 200, { wallet });
+    return;
+  }
+
+  const walletMatch = url.pathname.match(/^\/api\/v1\/wallets\/([^/]+)$/);
+  if (walletMatch) {
+    const identity = await requireIdentity(req);
+    const walletId = decodeURIComponent(walletMatch[1] ?? '');
+    if (req.method === 'GET') {
+      const wallet = await getWallet(identity.appUserId, walletId);
+      if (!wallet) return writeJson(res, 404, { error: 'not_found', message: 'Wallet not found.', requestId });
+      writeJson(res, 200, { wallet });
+      return;
+    }
+    if (req.method === 'PATCH') {
+      const body = asRecord(await readJson(req));
+      const patch: { name?: string; status?: 'active' | 'disconnected' | 'removed' } = {};
+      if (body.name !== undefined) {
+        if (typeof body.name !== 'string') throw new Error('INVALID_WALLET_INPUT');
+        patch.name = body.name;
+      }
+      if (body.status !== undefined) {
+        if (body.status !== 'active' && body.status !== 'disconnected' && body.status !== 'removed') throw new Error('INVALID_WALLET_STATUS');
+        patch.status = body.status;
+      }
+      const wallet = await updateWallet(identity.appUserId, walletId, patch);
+      if (!wallet && patch.status !== 'removed') return writeJson(res, 404, { error: 'not_found', message: 'Wallet not found.', requestId });
+      writeJson(res, 200, { wallet });
+      return;
+    }
+  }
 
   if (url.pathname === '/api/v1/capabilities' && req.method === 'GET') {
     await requireIdentity(req);
@@ -548,7 +649,7 @@ const server = createServer((req, res) => {
       writeJson(res, 401, { error: 'unauthenticated', message: 'Sign in to continue.', requestId });
       return;
     }
-    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE','INVALID_WORKER_DEFINITION','INVALID_WORKER_STATUS','INVALID_JOB','INVALID_STRING','INVALID_MODEL_SELECTION','MODEL_PROVIDER_NOT_CONFIGURED','JOB_LEAD_REQUIRED','JOB_WORKER_NOT_AVAILABLE','WORKER_DEFINITION_NOT_FOUND'].includes(code)) {
+    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE','INVALID_WORKER_DEFINITION','INVALID_WORKER_STATUS','INVALID_JOB','INVALID_STRING','INVALID_MODEL_SELECTION','MODEL_PROVIDER_NOT_CONFIGURED','JOB_LEAD_REQUIRED','JOB_WORKER_NOT_AVAILABLE','WORKER_DEFINITION_NOT_FOUND','INVALID_WALLET_INPUT','INVALID_WALLET_NAMESPACE','INVALID_WALLET_NETWORK','INVALID_WALLET_NAME','INVALID_EVM_ADDRESS','INVALID_SOLANA_ADDRESS','INVALID_NATIVE_BALANCE','WALLET_ADDRESS_MISMATCH','INVALID_WALLET_STATUS','INVALID_AGENT_ACCOUNT_INPUT','CONNECTED_OWNER_WALLET_REQUIRED','AGENT_ACCOUNT_EVM_OWNER_REQUIRED','AGENT_ACCOUNT_NETWORK_REQUIRED','UNSUPPORTED_CONNECTED_WALLET_NAMESPACE'].includes(code)) {
       writeJson(res, 400, { error: 'invalid_request', message: code, requestId });
       return;
     }

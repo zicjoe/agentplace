@@ -501,7 +501,21 @@ function requestResourceMatches(resourceUrl: string, requestUrl: string): boolea
   try {
     const resource = new URL(resourceUrl);
     const request = new URL(requestUrl);
-    return resource.protocol === request.protocol && resource.host === request.host && resource.pathname.replace(/\/$/, '') === request.pathname.replace(/\/$/, '');
+    if (!['http:', 'https:'].includes(resource.protocol) || request.protocol !== 'https:') return false;
+    if (resource.username || resource.password || request.username || request.password) return false;
+    if (resource.hostname.toLowerCase() !== request.hostname.toLowerCase()) return false;
+    if (resource.port !== request.port) return false;
+    if (resource.search || resource.hash || request.search || request.hash) return false;
+    const normalizePath = (value: string): string => value.replace(/\/$/, '') || '/';
+    const requestedPath = normalizePath(request.pathname);
+    const documentedInternalPath = requestedPath.startsWith('/engine/')
+      ? normalizePath(requestedPath.slice('/engine'.length))
+      : requestedPath;
+    const resourcePath = normalizePath(resource.pathname);
+    // Telegraph's current x402 docs explicitly state that resource.url may
+    // identify the Engine-internal /v1/ask/{minerId} path (and may show http)
+    // even when the client requested HTTPS /engine/v1/ask/{minerId}.
+    return resourcePath === requestedPath || resourcePath === documentedInternalPath;
   } catch {
     return false;
   }

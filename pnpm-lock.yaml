@@ -47,6 +47,9 @@ importers:
       '@agent-place/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@agent-place/wallets':
+        specifier: workspace:*
+        version: link:../../packages/wallets
 
   apps/scheduler:
     dependencies:
@@ -234,7 +237,11 @@ importers:
 
   packages/verification: {}
 
-  packages/wallets: {}
+  packages/wallets:
+    dependencies:
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
 
   packages/workers:
     dependencies:

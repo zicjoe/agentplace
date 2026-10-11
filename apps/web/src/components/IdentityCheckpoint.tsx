@@ -6,6 +6,7 @@ import { fetchConversations, importGuestConversations } from '../platform/conver
 import { rememberIdentityResume, clearIdentityResume } from '../platform/identityResume';
 import { clearFixtureState } from '../platform/fixtureStore';
 import { fetchWorkState } from '../platform/workApi';
+import { fetchWalletState } from '../platform/walletApi';
 import { useRuntime } from '../platform/RuntimeProvider';
 import { AgentPlaceMark } from './AgentPlaceBrand';
 
@@ -45,10 +46,11 @@ export function IdentityCheckpoint() {
       ? state.conversations.find((conversation) => conversation.id === state.activeConversationId)
       : undefined;
     if (guestConversation) await importGuestConversations([guestConversation]);
-    const [conversations, identity, work] = await Promise.all([
+    const [conversations, identity, work, walletState] = await Promise.all([
       fetchConversations(),
       getAgentPlaceIdentity(),
       fetchWorkState(),
+      fetchWalletState(),
     ]);
     const user = toUser(identity);
     dispatch({ type: 'SET_USER', user });
@@ -56,6 +58,8 @@ export function IdentityCheckpoint() {
     dispatch({ type: 'SET_WORKERS', workers: work.workers });
     dispatch({ type: 'SET_JOBS', jobs: work.jobs });
     dispatch({ type: 'SET_ACTIVITY_EVENTS', events: work.activity });
+    dispatch({ type: 'SET_WALLETS', wallets: walletState.wallets });
+    dispatch({ type: 'SET_AGENT_ACCOUNTS', agentAccounts: walletState.agentAccounts });
     clearFixtureState();
     clearIdentityResume();
     checkpoint!.onComplete(user);

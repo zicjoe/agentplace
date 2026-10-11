@@ -54,6 +54,15 @@ Expected output contains only safe public configuration:
 
 It must never print `TELEGRAPH_EVM_PRIVATE_KEY`.
 
-## M5B.2.4 live acceptance still required
+## M5B.2.4 live acceptance harness
 
-Automated tests do not prove a real Telegraph x402 settlement occurred. M5B.2.4 must perform a deliberately bounded live testnet invocation using the dedicated low-funded service wallet, confirm settlement/provenance, exercise fallback/degradation, then freeze M5B.2.
+Automated tests do not prove a real Telegraph x402 settlement occurred. v0.8.5 adds a no-payment planning command and an explicitly armed live runner:
+
+```bash
+pnpm telegraph:acceptance:plan
+pnpm telegraph:acceptance:run
+```
+
+The live runner revalidates current discovery/mapping, performs one bounded paid invocation, requires a confirmed x402 settlement transaction, validates normalized evidence provenance, then exercises replay and same-Job budget rejection without allowing a second settled payment. M5B.2 remains unfrozen until that live report passes and is reviewed.
+
+See `docs/MILESTONE-5B2-ACCEPTANCE.md` for the exact safety gates and runbook.

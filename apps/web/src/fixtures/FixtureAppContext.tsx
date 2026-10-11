@@ -49,6 +49,7 @@ import { getAgentPlaceIdentity, getAuthenticatedUser, signOut as signOutAuth } f
 import { addDurableMessage, createDurableConversation, fetchConversations, importGuestConversations, patchDurableConversation, updateDurableMessage } from '../platform/conversationApi';
 import { clearIdentityResume, readIdentityResume } from '../platform/identityResume';
 import { createDurableJob, fetchWorkState, installDurableWorker } from '../platform/workApi';
+import { fetchWalletState } from '../platform/walletApi';
 import { isJobConversation } from '../platform/conversationNavigation';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -923,6 +924,8 @@ export type Action =
   | { type: 'SET_WORKERS'; workers: Worker[] }
   | { type: 'SET_JOBS'; jobs: Job[] }
   | { type: 'SET_ACTIVITY_EVENTS'; events: ActivityEvent[] }
+  | { type: 'SET_WALLETS'; wallets: WalletResource[] }
+  | { type: 'SET_AGENT_ACCOUNTS'; agentAccounts: AgentAccount[] }
   | { type: 'SET_VIEW'; view: NavView }
   | { type: 'SET_ENV'; env: Environment }
   | { type: 'SET_ACTIVE_CONV'; id: string | null }
@@ -1018,6 +1021,12 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'SET_ACTIVITY_EVENTS':
       return { ...state, activityEvents: action.events };
+
+    case 'SET_WALLETS':
+      return { ...state, wallets: action.wallets };
+
+    case 'SET_AGENT_ACCOUNTS':
+      return { ...state, agentAccounts: action.agentAccounts };
 
     case 'SET_VIEW':
       return {
@@ -1728,19 +1737,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? stateRef.current.conversations.find((c) => c.id === marker.conversationId)
           : undefined;
         if (guestConversation) await importGuestConversations([guestConversation]);
-        const [conversations, identity, work] = await Promise.all([fetchConversations(), getAgentPlaceIdentity(), fetchWorkState()]);
+        const [conversations, identity, work, walletState] = await Promise.all([fetchConversations(), getAgentPlaceIdentity(), fetchWorkState(), fetchWalletState()]);
         const user = userFromAuth(identity);
         let next = reducer(stateRef.current, { type: 'SET_USER', user });
         next = reducer(next, { type: 'SET_CONVERSATIONS', conversations });
         next = reducer(next, { type: 'SET_WORKERS', workers: work.workers });
         next = reducer(next, { type: 'SET_JOBS', jobs: work.jobs });
         next = reducer(next, { type: 'SET_ACTIVITY_EVENTS', events: work.activity });
+        next = reducer(next, { type: 'SET_WALLETS', wallets: walletState.wallets });
+        next = reducer(next, { type: 'SET_AGENT_ACCOUNTS', agentAccounts: walletState.agentAccounts });
         stateRef.current = next;
         rawDispatch({ type: 'SET_USER', user });
         rawDispatch({ type: 'SET_CONVERSATIONS', conversations });
         rawDispatch({ type: 'SET_WORKERS', workers: work.workers });
         rawDispatch({ type: 'SET_JOBS', jobs: work.jobs });
         rawDispatch({ type: 'SET_ACTIVITY_EVENTS', events: work.activity });
+        rawDispatch({ type: 'SET_WALLETS', wallets: walletState.wallets });
+        rawDispatch({ type: 'SET_AGENT_ACCOUNTS', agentAccounts: walletState.agentAccounts });
         clearFixtureState();
         clearIdentityResume();
       } catch (error) {
@@ -2632,7 +2645,22 @@ export function runStablecoinApproveEachMove(
     return;
   }
 
-  // Has connected wallet — prepare an action
+  if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+    setTimeout(() => {
+      dispatch({
+        type: 'UPDATE_MSG',
+        convId,
+        msgId,
+        updates: {
+          content: "Your Connected Wallet is available to AgentPlace for public account and network state. Financial action preparation and signature handoff are not enabled in this build yet. No transaction was created or submitted.",
+          isStreaming: false,
+        },
+      });
+    }, 900);
+    return;
+  }
+
+  // Fixture/demo mode only: prepare a non-submittable preview action.
   const actionId = uid();
   const action: FinancialAction = {
     id: actionId,
@@ -2707,9 +2735,24 @@ export function runStablecoinManageWithRules(
         convId,
         msgId,
         updates: {
-          content: "To manage funds within your rules, Stablecoin Manager needs an Agent Account — a smart account you own where Workers can act only within rules you explicitly approve.\n\nYou remain the ultimate owner. Worker authority starts with none.",
+          content: "To prepare for managed-capital workflows, create an Agent Account setup tied to your Connected Wallet. This milestone saves the setup only; it does not deploy a smart account or grant Worker authority.",
           isStreaming: false,
           uiCard: 'create-agent-account-cta',
+        },
+      });
+    }, 900);
+    return;
+  }
+
+  if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+    setTimeout(() => {
+      dispatch({
+        type: 'UPDATE_MSG',
+        convId,
+        msgId,
+        updates: {
+          content: "Your Agent Account setup is saved. It is not deployed onchain and has no Worker authority in this build. Funding, Mandates and deterministic Authority Grants are separate later milestones, so no financial action was created or submitted.",
+          isStreaming: false,
         },
       });
     }, 900);

@@ -280,6 +280,9 @@ export interface WalletResource {
   connectedWorkerIds: string[];
   agentAccountId?: string;
   disconnected?: boolean;
+  namespace?: 'eip155' | 'solana';
+  walletStatus?: 'active' | 'disconnected' | 'setup' | 'removed';
+  networkStates?: Array<{ networkId: string; chainReference: string; connectionState: 'observed' | 'connected' | 'disconnected'; nativeBalanceAtomic?: string; observedAt: Date }>;
   createdAt: Date;
 }
 
@@ -291,6 +294,11 @@ export interface AgentAccount {
   availableBalance: string;
   deployedBalance: string;
   networks: string[];
+  ownerWalletId?: string;
+  lifecycleStatus?: 'setup' | 'ready-for-deployment' | 'deployed' | 'limited' | 'paused' | 'failed';
+  deploymentStatus?: 'not-deployed' | 'deploying' | 'deployed' | 'failed';
+  accountStandard?: 'unassigned' | 'erc-4337' | 'solana-program-account';
+  accountAddress?: string;
   createdAt: Date;
 }
 

@@ -1,6 +1,6 @@
 # Milestone 5B.2 — Telegraph Protocol Integration
 
-Status: M5B.2.1, M5B.2.2 and M5B.2.3 implemented. M5B.2.4 live testnet acceptance + freeze pending.
+Status: M5B.2.1, M5B.2.2 and M5B.2.3 implemented. M5B.2.4 acceptance tooling implemented in v0.8.5; one controlled live testnet pass + review is still required before freeze.
 
 ## Locked boundary
 
@@ -20,7 +20,7 @@ The Telegraph payment network is infrastructure for an AgentPlace external-servi
 
 ## M5B.2.1 — Adapter + Discovery
 
-`@agent-place/telegraph` discovers free public Telegraph metadata from the documented testnet Node, Engine and miner-dispatcher surfaces. Discovery is bounded, fail-closed and never invokes arbitrary discovered miner URLs.
+`@agent-place/telegraph` discovers free public Telegraph metadata from the documented testnet Node, including the current `/api/miners` live catalog, Engine intent surface and miner-dispatcher/OpenAPI metadata. The legacy Engine miner catalog remains additive fallback only. Discovery is bounded, fail-closed and never invokes arbitrary discovered miner URLs.
 
 ## M5B.2.2 — Capability Mapping + Evidence Normalization
 
@@ -105,4 +105,6 @@ M5B.2.4 must validate the real Telegraph testnet end to end after the dedicated 
 - owner/job spend isolation and duplicate-payment protection;
 - no user-wallet or Agent Account authority expansion.
 
-M5B.2 is frozen only after that live acceptance passes.
+v0.8.5 adds `pnpm telegraph:acceptance:plan` and the explicitly armed `pnpm telegraph:acceptance:run` so the live checks can be performed without weakening the M5B.2.3 payment/authority boundary. See `docs/MILESTONE-5B2-ACCEPTANCE.md`.
+
+M5B.2 is frozen only after that live acceptance passes and its safe public report is reviewed.

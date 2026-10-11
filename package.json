@@ -1,6 +1,6 @@
 {
   "name": "agent-place",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "private": true,
   "description": "AgentPlace \u2014 multichain operating system and economic coordination layer for autonomous crypto Workers.",
   "type": "module",
@@ -17,13 +17,13 @@
     "lint": "node scripts/lint.mjs",
     "typecheck": "node scripts/typecheck.mjs",
     "build": "node scripts/build.mjs",
-    "build:api": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db build && pnpm --filter @agent-place/auth build && pnpm --filter @agent-place/context build && pnpm --filter @agent-place/workers build && pnpm --filter @agent-place/jobs build && pnpm --filter @agent-place/capabilities build && pnpm --filter @agent-place/models build && pnpm --filter @agent-place/telegraph build && pnpm --filter @agent-place/router build && pnpm --filter @agent-place/intelligence build && pnpm --filter @agent-place/api build",
+    "build:api": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db build && pnpm --filter @agent-place/auth build && pnpm --filter @agent-place/context build && pnpm --filter @agent-place/workers build && pnpm --filter @agent-place/jobs build && pnpm --filter @agent-place/wallets build && pnpm --filter @agent-place/capabilities build && pnpm --filter @agent-place/models build && pnpm --filter @agent-place/telegraph build && pnpm --filter @agent-place/router build && pnpm --filter @agent-place/intelligence build && pnpm --filter @agent-place/api build",
     "build:web": "pnpm --filter @agent-place/web build",
     "start:api": "pnpm --filter @agent-place/api start",
     "test": "node --test tests/*.test.mjs",
     "verify:repo": "node scripts/verify-repository-foundation.mjs",
     "verify:milestone-1": "node scripts/verify-milestone-1.mjs",
-    "check": "pnpm clean && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm verify:repo && pnpm verify:milestone-1 && pnpm verify:milestone-2 && pnpm verify:milestone-3 && pnpm verify:milestone-4 && pnpm verify:milestone-5 && pnpm verify:milestone-5b1 && pnpm verify:milestone-5b2",
+    "check": "pnpm clean && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm verify:repo && pnpm verify:milestone-1 && pnpm verify:milestone-2 && pnpm verify:milestone-3 && pnpm verify:milestone-4 && pnpm verify:milestone-5 && pnpm verify:milestone-5b1 && pnpm verify:milestone-5b2 && pnpm verify:milestone-6",
     "db:migrate": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db migrate",
     "auth:migrate": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db build && pnpm --filter @agent-place/auth migrate",
     "migrate": "pnpm db:migrate && pnpm auth:migrate",
@@ -36,7 +36,10 @@
     "verify:milestone-5b1": "node scripts/verify-milestone-5b1.mjs",
     "telegraph:discover": "pnpm --filter @agent-place/telegraph build && node scripts/telegraph-discovery-smoke.mjs",
     "verify:milestone-5b2": "node scripts/verify-milestone-5b2.mjs",
-    "telegraph:payment-status": "pnpm --filter @agent-place/telegraph build && node scripts/telegraph-payment-status.mjs"
+    "telegraph:payment-status": "pnpm --filter @agent-place/telegraph build && node scripts/telegraph-payment-status.mjs",
+    "telegraph:acceptance:plan": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db build && pnpm --filter @agent-place/telegraph build && node scripts/telegraph-live-acceptance-plan.mjs",
+    "telegraph:acceptance:run": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db build && pnpm --filter @agent-place/telegraph build && node scripts/telegraph-live-acceptance-run.mjs",
+    "verify:milestone-6": "node scripts/verify-milestone-6.mjs"
   },
   "devDependencies": {
     "@types/node": "22.19.17",

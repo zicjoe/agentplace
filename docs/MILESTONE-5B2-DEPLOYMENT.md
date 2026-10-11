@@ -54,7 +54,7 @@ After the Worker variable is configured, run the safe status command in an envir
 pnpm telegraph:payment-status
 ```
 
-It prints the public payer address and limits, never the private key. Fund only that public address. Live paid acceptance belongs to M5B.2.4.
+It prints the public payer address and limits, never the private key. Fund only that public address. Live paid acceptance belongs to M5B.2.4. v0.8.5 provides the guarded acceptance commands; do not run the paid command until the no-payment plan has produced a safe exact implementation candidate.
 
 ## Normal deployment flow
 
@@ -62,7 +62,7 @@ It prints the public payer address and limits, never the private key. Fund only 
 pnpm install --frozen-lockfile
 pnpm check
 git add .
-git commit -m "feat: add M5B2.3 Telegraph routing and bounded x402 fallback"
+git commit -m "test: add M5B2.4 guarded Telegraph live acceptance"
 git push origin main
 ```
 
@@ -77,3 +77,19 @@ Railway applies migration `0009` through the existing Pre-Deploy migration flow.
 - Telegraph failures produce evidence/error state and permit fallback; they do not disable unrelated providers.
 - Telegraph remains read-only intelligence with `executionAuthority = none`.
 - No product/UI redesign is introduced.
+
+
+## M5B.2.4 guarded live acceptance
+
+The post-submission v0.8.5 candidate adds two operational commands:
+
+```bash
+pnpm telegraph:acceptance:plan
+pnpm telegraph:acceptance:run
+```
+
+`telegraph:acceptance:plan` performs current discovery/mapping only and never sends a payment authorization. `telegraph:acceptance:run` is disabled unless both `TELEGRAPH_LIVE_ACCEPTANCE_ENABLED=true` and `TELEGRAPH_LIVE_ACCEPTANCE_CONFIRM=ONE_BOUNDED_TESTNET_X402_CALL` are present, and it requires an exact implementation ID chosen from the plan.
+
+Run the paid acceptance only in a trusted Railway Worker environment containing `DATABASE_URL` and the dedicated Worker-only service-payment key. The command creates an internal testnet-only fixture Job, requires exactly one settled x402 ledger row, and verifies replay/budget rejection without granting user-wallet or Agent Account authority.
+
+See `docs/MILESTONE-5B2-ACCEPTANCE.md`.

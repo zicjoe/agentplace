@@ -18,7 +18,7 @@ export interface TelegraphAdapterConfig {
 }
 
 export interface TelegraphDiscoverySource {
-  kind: 'node-status' | 'dispatcher-health' | 'integrations' | 'engine-miners' | 'engine-intents' | 'dynamic-openapi';
+  kind: 'node-status' | 'dispatcher-health' | 'integrations' | 'api-miners' | 'engine-miners' | 'engine-intents' | 'dynamic-openapi';
   url: string;
   ok: boolean;
   fetchedAt: string;
@@ -244,7 +244,7 @@ const MAPPING_RULES: readonly MappingRule[] = [
   {
     id: 'telegraph-token-liquidity-v1',
     canonicalCapabilityId: 'token.liquidity.analyze',
-    intents: ['TOKEN_LIQUIDITY', 'DEX_LIQUIDITY', 'LIQUIDITY_ANALYSIS', 'TOKEN_LIQUIDITY_ANALYSIS'],
+    intents: ['TOKEN_LIQUIDITY', 'DEX_LIQUIDITY', 'LIQUIDITY_ANALYSIS', 'TOKEN_LIQUIDITY_ANALYSIS', 'LIQUIDITY_DEPTH_VERIFY'],
     capabilities: ['TOKEN_LIQUIDITY', 'DEX_LIQUIDITY', 'LIQUIDITY_ANALYSIS'],
     endpointKeywords: ['liquidity', 'pool', 'dex'],
   },
@@ -265,7 +265,7 @@ const MAPPING_RULES: readonly MappingRule[] = [
   {
     id: 'telegraph-token-security-v1',
     canonicalCapabilityId: 'token.security.assess',
-    intents: ['TOKEN_SECURITY', 'TOKEN_RISK_ASSESSMENT', 'SMART_CONTRACT_SECURITY', 'CONTRACT_SECURITY'],
+    intents: ['TOKEN_SECURITY', 'TOKEN_RISK_ASSESSMENT', 'SMART_CONTRACT_SECURITY', 'CONTRACT_SECURITY', 'SMART_CONTRACT_AUDIT'],
     capabilities: ['TOKEN_SECURITY', 'TOKEN_RISK', 'SMART_CONTRACT_SECURITY', 'CONTRACT_SECURITY'],
     endpointKeywords: ['security', 'risk', 'contract'],
   },
@@ -314,14 +314,14 @@ const MAPPING_RULES: readonly MappingRule[] = [
   {
     id: 'telegraph-protocol-tvl-v1',
     canonicalCapabilityId: 'protocol.tvl.read',
-    intents: ['PROTOCOL_TVL', 'DEFI_TVL', 'TVL_READ'],
+    intents: ['PROTOCOL_TVL', 'DEFI_TVL', 'TVL_READ', 'TVL_LOOKUP'],
     capabilities: ['PROTOCOL_TVL', 'DEFI_TVL'],
     endpointKeywords: ['tvl', 'protocol'],
   },
   {
     id: 'telegraph-protocol-yield-v1',
     canonicalCapabilityId: 'protocol.yield.read',
-    intents: ['PROTOCOL_YIELD', 'DEFI_YIELD', 'YIELD_DATA', 'YIELD_ANALYSIS'],
+    intents: ['PROTOCOL_YIELD', 'DEFI_YIELD', 'YIELD_DATA', 'YIELD_ANALYSIS', 'CRYPTO_YIELD_RATE'],
     capabilities: ['PROTOCOL_YIELD', 'DEFI_YIELD', 'YIELD_DATA'],
     endpointKeywords: ['yield', 'apy', 'apr'],
   },
@@ -569,7 +569,7 @@ function normalizeDispatcherMiner(value: Record<string, unknown>): TelegraphMine
     ...(protocol ? { protocol } : {}),
     ...(upstreamBaseUrl ? { upstreamBaseUrl } : {}),
     capabilities: texts(value.capabilities),
-    supportedIntents: texts(value.supported_intents ?? value.supportedIntents ?? record(value.semantics)?.supported_intents),
+    supportedIntents: texts(value.supported_intents ?? value.supportedIntents ?? record(value.semantics)?.supported_intents ?? record(value.semantics)?.supportedIntents),
     endpoints,
     ...(costPerCall ? { costPerCall } : {}),
     ...(minPriceUsdc === undefined ? {} : { minPriceUsdc }),
@@ -591,9 +591,22 @@ function normalizeEngineMiner(value: Record<string, unknown>): TelegraphMinerDef
   const protocol = text(value.protocol);
   const upstreamBaseUrl = text(value.base_url) ?? text(value.baseUrl);
   const costPerCall = text(value.cost_per_call) ?? text(value.costPerCall);
-  const minPriceUsdc = numberValue(value.min_price_usdc ?? value.minPriceUsdc);
+  const onChainMetadata = record(value.on_chain) ?? record(value.onChain);
+  const minPriceUsdc = numberValue(value.min_price_usdc ?? value.minPriceUsdc ?? onChainMetadata?.min_price_usdc ?? onChainMetadata?.minPriceUsdc);
   const activationStatus = text(value.activation_status ?? value.activationStatus ?? value.status);
-  const signalMapping = normalizeSignalMapping(value.signal_mapping ?? value.signalMapping);
+  const semantics = record(value.semantics);
+  const signalMapping = normalizeSignalMapping(value.signal_mapping ?? value.signalMapping ?? semantics?.signal_mapping ?? semantics?.signalMapping);
+  const topLevelInputSchema = record(value.input_schema) ?? record(value.inputSchema) ?? record(value.request_schema) ?? record(value.requestSchema);
+  const topLevelOutputSchema = record(value.output_schema) ?? record(value.outputSchema) ?? record(value.response_schema) ?? record(value.responseSchema);
+  const endpoints = records(value.endpoints)
+    .map(endpointDefinition)
+    .filter((item): item is TelegraphEndpointDefinition => !!item)
+    .map((endpoint) => ({
+      ...endpoint,
+      ...(endpoint.inputSchema || !topLevelInputSchema ? {} : { inputSchema: topLevelInputSchema }),
+      ...(endpoint.outputSchema || !topLevelOutputSchema ? {} : { outputSchema: topLevelOutputSchema }),
+    }))
+    .slice(0, 128);
   return {
     id,
     slug,
@@ -602,20 +615,69 @@ function normalizeEngineMiner(value: Record<string, unknown>): TelegraphMinerDef
     ...(protocol ? { protocol } : {}),
     ...(upstreamBaseUrl ? { upstreamBaseUrl } : {}),
     capabilities: texts(value.capabilities),
-    supportedIntents: texts(value.supported_intents ?? value.supportedIntents),
-    endpoints: records(value.endpoints).map(endpointDefinition).filter((item): item is TelegraphEndpointDefinition => !!item).slice(0, 128),
+    supportedIntents: texts(value.supported_intents ?? value.supportedIntents ?? semantics?.supported_intents ?? semantics?.supportedIntents),
+    endpoints,
     ...(costPerCall ? { costPerCall } : {}),
     ...(minPriceUsdc === undefined ? {} : { minPriceUsdc }),
     ...(activationStatus ? { activationStatus } : {}),
     ...(signalMapping ? { signalMapping } : {}),
+    ...(onChainMetadata ? { onChainMetadata } : {}),
     discoverySources: ['engine'],
   };
 }
 
+function mergeEndpointDefinition(preferred: TelegraphEndpointDefinition, fallback: TelegraphEndpointDefinition): TelegraphEndpointDefinition {
+  return {
+    path: preferred.path || fallback.path,
+    ...(preferred.method ?? fallback.method ? { method: preferred.method ?? fallback.method } : {}),
+    ...(preferred.summary ?? fallback.summary ? { summary: preferred.summary ?? fallback.summary } : {}),
+    ...(preferred.inputSchema ?? fallback.inputSchema ? { inputSchema: preferred.inputSchema ?? fallback.inputSchema } : {}),
+    ...(preferred.outputSchema ?? fallback.outputSchema ? { outputSchema: preferred.outputSchema ?? fallback.outputSchema } : {}),
+  };
+}
+
+function mergeEndpointLists(preferred: readonly TelegraphEndpointDefinition[], fallback: readonly TelegraphEndpointDefinition[]): TelegraphEndpointDefinition[] {
+  const result = preferred.map((endpoint) => ({ ...endpoint }));
+
+  for (const incoming of fallback) {
+    const incomingMethod = incoming.method?.toUpperCase();
+    const exactIndex = result.findIndex((existing) =>
+      existing.path === incoming.path
+      && (existing.method?.toUpperCase() ?? '') === (incomingMethod ?? ''),
+    );
+    if (exactIndex >= 0) {
+      result[exactIndex] = mergeEndpointDefinition(result[exactIndex]!, incoming);
+      continue;
+    }
+
+    // Telegraph discovery surfaces sometimes omit the method on one copy of an
+    // otherwise identical endpoint. Merge only when the path identifies one
+    // unambiguous counterpart; never collapse two explicit different methods.
+    const samePath = result
+      .map((endpoint, index) => ({ endpoint, index }))
+      .filter(({ endpoint }) => endpoint.path === incoming.path);
+    if (samePath.length === 1) {
+      const current = samePath[0]!;
+      const currentMethod = current.endpoint.method?.toUpperCase();
+      if (!currentMethod || !incomingMethod || currentMethod === incomingMethod) {
+        const preferredEndpoint = currentMethod ? current.endpoint : incoming;
+        const fallbackEndpoint = currentMethod ? incoming : current.endpoint;
+        result[current.index] = mergeEndpointDefinition(preferredEndpoint, fallbackEndpoint);
+        continue;
+      }
+    }
+
+    result.push({ ...incoming });
+  }
+
+  return result.slice(0, 128);
+}
+
 function mergeMiner(left: TelegraphMinerDefinition, right: TelegraphMinerDefinition): TelegraphMinerDefinition {
-  const endpointKey = (endpoint: TelegraphEndpointDefinition) => `${endpoint.method ?? ''}:${endpoint.path}`;
-  const endpoints = new Map<string, TelegraphEndpointDefinition>();
-  for (const endpoint of [...left.endpoints, ...right.endpoints]) endpoints.set(endpointKey(endpoint), endpoint);
+  // `left` is the preferred record because discovery is ordered from the richest
+  // current catalogue toward complementary legacy/dispatcher surfaces. Preserve
+  // its schemas when another surface repeats the same endpoint with less metadata.
+  const endpoints = mergeEndpointLists(left.endpoints, right.endpoints);
   const discoverySources = [...new Set([...left.discoverySources, ...right.discoverySources])] as Array<'dispatcher' | 'engine'>;
   return {
     id: left.id || right.id,
@@ -627,7 +689,7 @@ function mergeMiner(left: TelegraphMinerDefinition, right: TelegraphMinerDefinit
     ...(left.upstreamBaseUrl ?? right.upstreamBaseUrl ? { upstreamBaseUrl: left.upstreamBaseUrl ?? right.upstreamBaseUrl } : {}),
     capabilities: [...new Set([...left.capabilities, ...right.capabilities])].slice(0, 128),
     supportedIntents: [...new Set([...left.supportedIntents, ...right.supportedIntents])].slice(0, 128),
-    endpoints: [...endpoints.values()].slice(0, 128),
+    endpoints,
     ...(left.costPerCall ?? right.costPerCall ? { costPerCall: left.costPerCall ?? right.costPerCall } : {}),
     ...((left.minPriceUsdc ?? right.minPriceUsdc) === undefined ? {} : { minPriceUsdc: left.minPriceUsdc ?? right.minPriceUsdc! }),
     ...(left.activationStatus ?? right.activationStatus ? { activationStatus: left.activationStatus ?? right.activationStatus } : {}),
@@ -672,7 +734,8 @@ function sourceLimitation(source: TelegraphDiscoverySource): string | undefined 
     'node-status': 'Telegraph node status',
     'dispatcher-health': 'Telegraph dispatcher health',
     integrations: 'Telegraph integration registry',
-    'engine-miners': 'Telegraph Engine miner catalog',
+    'api-miners': 'Telegraph live miner catalog',
+    'engine-miners': 'Telegraph legacy Engine miner catalog',
     'engine-intents': 'Telegraph Engine intent registry',
     'dynamic-openapi': 'Telegraph dynamic OpenAPI catalog',
   };
@@ -686,6 +749,11 @@ export async function discoverTelegraph(options: TelegraphDiscoveryOptions = {})
     getJson<unknown>({ kind: 'node-status', url: urlFor(config.nodeUrl, '/status'), timeoutMs: config.timeoutMs, maxResponseBytes: config.maxResponseBytes, fetchImpl }),
     getJson<unknown>({ kind: 'dispatcher-health', url: urlFor(config.dispatcherUrl, '/healthz'), timeoutMs: config.timeoutMs, maxResponseBytes: config.maxResponseBytes, fetchImpl }),
     getJson<unknown>({ kind: 'integrations', url: urlFor(config.dispatcherUrl, '/integrations'), timeoutMs: config.timeoutMs, maxResponseBytes: config.maxResponseBytes, fetchImpl }),
+    // Telegraph exposes complementary live catalogues. /miner-dispatcher/integrations
+    // is the authoritative hot-loaded integration list, while /api/miners can carry
+    // richer intent/activation/schema metadata on the public testnet. Merge them
+    // conservatively and keep the Engine catalogue as additive fallback.
+    getJson<unknown>({ kind: 'api-miners', url: urlFor(config.nodeUrl, '/api/miners'), timeoutMs: config.timeoutMs, maxResponseBytes: config.maxResponseBytes, fetchImpl }),
     getJson<unknown>({ kind: 'engine-miners', url: urlFor(config.engineUrl, '/v1/miners'), timeoutMs: config.timeoutMs, maxResponseBytes: config.maxResponseBytes, fetchImpl }),
     getJson<unknown>({ kind: 'engine-intents', url: urlFor(config.engineUrl, '/v1/intents'), timeoutMs: config.timeoutMs, maxResponseBytes: config.maxResponseBytes, fetchImpl }),
     getJson<unknown>({ kind: 'dynamic-openapi', url: urlFor(config.dispatcherUrl, '/openapi.json'), timeoutMs: config.timeoutMs, maxResponseBytes: config.maxResponseBytes, fetchImpl }),
@@ -699,10 +767,13 @@ export async function discoverTelegraph(options: TelegraphDiscoveryOptions = {})
     dispatcherHealth.source.ok = false;
     dispatcherHealth.source.error = `Dispatcher reported status ${dispatcherHealthStatus.slice(0, 64)}.`;
   }
+  const apiMiners = normalizeEngineMiners(byKind.get('api-miners')?.value);
   const dispatcherMiners = normalizeIntegrations(byKind.get('integrations')?.value);
   const engineMiners = normalizeEngineMiners(byKind.get('engine-miners')?.value);
   const merged = new Map<string, TelegraphMinerDefinition>();
-  for (const miner of [...dispatcherMiners, ...engineMiners]) {
+  // Prefer the current /api/miners record when the same live service is also
+  // present in legacy/dispatcher surfaces; merge only complementary metadata.
+  for (const miner of [...apiMiners, ...dispatcherMiners, ...engineMiners]) {
     const key = miner.slug.toLowerCase();
     const prior = merged.get(key);
     merged.set(key, prior ? mergeMiner(prior, miner) : miner);

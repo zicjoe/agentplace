@@ -10,7 +10,11 @@ const required = [
   'packages/db/migrations/0009_telegraph_service_payments.sql',
   'scripts/telegraph-discovery-smoke.mjs',
   'scripts/telegraph-payment-status.mjs',
+  'scripts/telegraph-live-acceptance-plan.mjs',
+  'scripts/telegraph-live-acceptance-run.mjs',
   'docs/MILESTONE-5B2.md',
+  'docs/MILESTONE-5B2-ACCEPTANCE.md',
+  'docs/MILESTONE-5B2-ACCEPTANCE-RECORD.md',
   'docs/MILESTONE-5B2-TESTING.md',
   'docs/MILESTONE-5B2-DEPLOYMENT.md',
   'tests/milestone-5b2-telegraph.test.mjs',
@@ -23,6 +27,7 @@ for (const token of [
   'mapTelegraphCapabilities',
   'normalizeTelegraphEvidence',
   '/integrations',
+  '/api/miners',
   '/v1/miners',
   '/v1/intents',
   '/openapi.json',
@@ -36,6 +41,8 @@ for (const token of [
   'No exact mapping exists to the current AgentPlace canonical capability vocabulary',
   'Telegraph protocol settlement runs on Base Sepolia, but that payment/protocol network is not treated as the intelligence subject network',
   'telegraph-testnet-evidence-v1',
+  'mergeEndpointDefinition',
+  'mergeEndpointLists',
 ]) if (!adapter.includes(token)) throw new Error(`M5B.2 Telegraph adapter missing ${token}`);
 
 // Discovery/evidence normalization remains secret-free. The one dedicated x402 key is isolated in runtime.ts only.
@@ -60,6 +67,7 @@ for (const token of [
   'pg_advisory_xact_lock',
   'PAID_REQUEST_OUTCOME_UNKNOWN',
   'AgentPlace will not retry or issue another payment for the same request',
+  "documentedInternalPath",
   'service-payment-only',
 ]) if (!runtime.includes(token)) throw new Error(`M5B.2.3 Telegraph runtime missing ${token}`);
 for (const forbidden of ['NANSEN_API_KEY', 'GOPLUS_APP_SECRET', 'ALCHEMY_API_KEY', 'ETHERSCAN_API_KEY', 'VITE_TELEGRAPH_EVM_PRIVATE_KEY']) {
@@ -112,9 +120,45 @@ for (const token of [
 if (envExample.includes('VITE_TELEGRAPH_EVM_PRIVATE_KEY')) throw new Error('Telegraph service-payment key must never be browser-visible.');
 
 const root = JSON.parse(readFileSync('package.json', 'utf8'));
-if (root.version !== '0.8.2') throw new Error('M5B.2.3 root version must be 0.8.2.');
+if (!/^0\.(?:8\.[5-9]|9\.\d+)$/.test(root.version)) throw new Error('Repository version must preserve the M5B.2.4 implementation baseline (0.8.5 or later).');
 if (!String(root.scripts?.check ?? '').includes('verify:milestone-5b2')) throw new Error('pnpm check must include M5B.2 verification.');
 if (!root.scripts?.['telegraph:discover']) throw new Error('Telegraph discovery smoke command is missing.');
 if (!root.scripts?.['telegraph:payment-status']) throw new Error('Safe Telegraph payment-status command is missing.');
+if (!root.scripts?.['telegraph:acceptance:plan']) throw new Error('M5B.2.4 no-payment acceptance planning command is missing.');
+if (!root.scripts?.['telegraph:acceptance:run']) throw new Error('M5B.2.4 guarded live acceptance command is missing.');
 
-console.log('PASS: AgentPlace M5B.2.3 keeps AgentPlace Router authoritative, adds bounded Base-Sepolia x402 service payment, owner/job spend accounting, direct Telegraph invocation, and Router-ordered fallback without user-wallet authority.');
+const acceptancePlan = readFileSync('scripts/telegraph-live-acceptance-plan.mjs', 'utf8');
+for (const forbidden of ['normalizeTelegraphMappedInvocation','invokeTelegraphMappedService','PAYMENT-SIGNATURE','TELEGRAPH_EVM_PRIVATE_KEY']) {
+  if (acceptancePlan.includes(forbidden)) throw new Error(`M5B.2.4 planning command must remain no-payment/secret-free: ${forbidden}`);
+}
+for (const token of ['semanticMappings', 'semanticRouterReadyMappings', 'mappingDiagnostics', 'hasInputSchema', 'bindingReason']) {
+  if (!acceptancePlan.includes(token)) throw new Error(`M5B.2.4 no-payment diagnostics missing ${token}`);
+}
+
+const acceptanceRun = readFileSync('scripts/telegraph-live-acceptance-run.mjs', 'utf8');
+for (const token of [
+  'TELEGRAPH_LIVE_ACCEPTANCE_ENABLED',
+  'ONE_BOUNDED_TESTNET_X402_CALL',
+  'TELEGRAPH_ACCEPTANCE_IMPLEMENTATION_ID',
+  'normalizeTelegraphMappedInvocation',
+  'Expected exactly one settled service-payment row',
+  'Duplicate-payment protection failed',
+  'Job-budget rejection failed',
+  "executionAuthority: 'none'",
+  'userWalletAuthorityGranted: false',
+  'agentAccountAuthorityGranted: false',
+]) if (!acceptanceRun.includes(token)) throw new Error(`M5B.2.4 live acceptance guard missing ${token}`);
+if (/console\.(?:log|error)\(process\.env/.test(acceptanceRun)) throw new Error('M5B.2.4 acceptance must never dump environment variables.');
+
+const acceptanceDoc = readFileSync('docs/MILESTONE-5B2-ACCEPTANCE.md', 'utf8');
+for (const token of ['M5B.2 remains unfrozen', 'Do not paste a private key', 'do not automatically retry it', 'TELEGRAPH_LIVE_ACCEPTANCE_CONFIRM=ONE_BOUNDED_TESTNET_X402_CALL']) {
+  if (!acceptanceDoc.includes(token)) throw new Error(`M5B.2.4 acceptance runbook missing ${token}`);
+}
+
+for (const token of [
+  'TELEGRAPH_LIVE_ACCEPTANCE_ENABLED=false',
+  'TELEGRAPH_LIVE_ACCEPTANCE_CONFIRM=',
+  'TELEGRAPH_ACCEPTANCE_IMPLEMENTATION_ID=',
+]) if (!envExample.includes(token)) throw new Error(`M5B.2.4 environment guard missing ${token}`);
+
+console.log('PASS: AgentPlace M5B.2.4 acceptance candidate preserves M5B.2.3 authority/payment controls, retains richer live Telegraph schemas across merged discovery surfaces, and keeps no-payment planning plus an explicitly armed one-settlement live testnet acceptance path without user-wallet authority.');
