@@ -13,9 +13,9 @@ const packageNames = (await readdir("packages", { withFileTypes: true }))
   .sort();
 
 // Typecheck dependency roots by building declarations before checking their consumers.
-for (const name of ["shared", "db", "auth", "context", "workers", "jobs", "capabilities", "models", "telegraph", "intelligence", "router", "wallets"]) run("tsc", ["-p", join("packages", name, "tsconfig.json")]);
+for (const name of ["shared", "db", "auth", "context", "workers", "jobs", "capabilities", "models", "telegraph", "intelligence", "router", "wallets", "authority"]) run("tsc", ["-p", join("packages", name, "tsconfig.json")]);
 for (const name of packageNames) {
-  if (["shared", "db", "auth", "context", "workers", "jobs", "capabilities", "models", "telegraph", "intelligence", "router", "wallets"].includes(name)) continue;
+  if (["shared", "db", "auth", "context", "workers", "jobs", "capabilities", "models", "telegraph", "intelligence", "router", "wallets", "authority"].includes(name)) continue;
   run("tsc", ["-p", join("packages", name, "tsconfig.json"), "--noEmit"]);
 }
 for (const name of ["api", "scheduler", "worker", "web"]) run("tsc", ["-p", join("apps", name, "tsconfig.json"), "--noEmit"]);

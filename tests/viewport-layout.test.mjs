@@ -51,7 +51,7 @@ test('fixed application shell keeps scrolling inside the active route', async ()
 });
 
 test('high-use dialogs remain reachable on short viewports', async () => {
-  const [wallets, create, identity, discover, billing, security, actionReview] = await Promise.all([
+  const [wallets, create, identity, discover, billing, security, actionReview, mandateEditor] = await Promise.all([
     read('apps/web/src/components/WalletsView.tsx'),
     read('apps/web/src/components/CreateMenu.tsx'),
     read('apps/web/src/components/IdentityCheckpoint.tsx'),
@@ -59,9 +59,10 @@ test('high-use dialogs remain reachable on short viewports', async () => {
     read('apps/web/src/components/BillingUsageView.tsx'),
     read('apps/web/src/components/SecurityAuthorityView.tsx'),
     read('apps/web/src/components/ActionReview.tsx'),
+    read('apps/web/src/components/MandateEditor.tsx'),
   ]);
 
-  for (const [name, source] of Object.entries({ wallets, create, identity, discover, billing, security, actionReview })) {
+  for (const [name, source] of Object.entries({ wallets, create, identity, discover, billing, security, actionReview, mandateEditor })) {
     assert.match(source, /max-h-\[calc\(100dvh-2rem\)\]/, `${name} must bound at least one viewport-sensitive dialog`);
     assert.match(source, /overflow-y-auto/, `${name} must let oversized dialog content scroll`);
   }

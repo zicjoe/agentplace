@@ -8,6 +8,8 @@ import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
 import { fetchWorkState, fetchWorkerCatalog, updateDurableWorkerStatus, type WorkerCatalogItem } from '../platform/workApi';
 import { ResearchMarkdown } from './ResearchMarkdown';
 import { scrollConversationToEnd } from '../platform/scroll';
+import { applyAuthorityState, fetchAuthorityState, setDurableMandateStatus } from '../platform/authorityApi';
+import { MandateEditor } from './MandateEditor';
 
 interface LocalMessage {
   id: string;
@@ -341,6 +343,9 @@ function WorkerSideRail({ workerId }: { workerId: string }) {
   const dispatch = useDispatch();
   const [workerControlBusy, setWorkerControlBusy] = useState<'pause' | 'resume' | 'remove' | null>(null);
   const [workerControlError, setWorkerControlError] = useState<string | null>(null);
+  const [showAuthorityEditor, setShowAuthorityEditor] = useState(false);
+  const [authorityBusy, setAuthorityBusy] = useState(false);
+  const [authorityError, setAuthorityError] = useState<string | null>(null);
   const worker = state.workers.find((w) => w.id === workerId);
   if (!worker) return null;
   const currentWorker = worker;
@@ -438,44 +443,44 @@ function WorkerSideRail({ workerId }: { workerId: string }) {
 
         {/* Authority */}
         <div>
-          <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim mb-2">
-            Authority
-          </p>
+          <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim mb-2">Authority</p>
           {(() => {
-            const grant = (state.authorityGrants ?? []).find(
-              (g) => g.workerId === worker.id && g.status === 'active'
-            );
-            const isPaused = state.autonomousExecutionPaused;
-            if (grant) {
-              return (
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? 'bg-warn' : 'bg-accent'}`} />
-                    <span className={`text-xs font-medium ${isPaused ? 'text-warn' : 'text-accent'}`}>
-                      {isPaused ? 'Paused' : 'Autonomous within mandate'}
-                    </span>
-                  </div>
-                  <div className="space-y-0.5 text-xs text-text-muted mt-1">
-                    <p>{(state.agentAccounts ?? []).find((a) => a.id === grant.agentAccountId)?.name ?? 'Agent Account'}</p>
-                    <p>Up to {grant.totalManagedCapital} managed</p>
-                    <p>Max {grant.singleActionLimit}/action</p>
-                    <p>{grant.networks.join(' · ')}</p>
-                    <p>{grant.allowedProtocols.join(' · ')}</p>
-                    <p>No borrowing · No leverage</p>
-                  </div>
-                  <button
-                    onClick={() => dispatch({ type: 'SET_VIEW', view: 'security' })}
-                    className="text-xs text-primary hover:underline mt-1 block"
-                  >
-                    Review authority →
-                  </button>
-                </div>
-              );
-            }
+            const mandate = (state.mandates ?? []).find((item) => item.workerId === worker.id && item.environment === state.environment && item.status !== 'revoked');
+            const grant = (state.authorityGrants ?? []).find((g) => g.workerId === worker.id && g.environment === state.environment && g.status === 'active');
+            const isPaused = state.environment === 'mainnet' ? state.authorityControlStates.mainnetPaused : state.authorityControlStates.testnetPaused;
+            const level = mandate?.authorityLevel ?? (grant ? 'ACT_WITHIN_MANDATE' : undefined);
+            const levelLabel = level === 'ACT_WITHIN_MANDATE' ? 'Act within mandate' : level === 'PREPARE' ? 'Prepare · approval required' : level === 'OBSERVE' ? 'Observe only' : 'None';
+            const autonomyPaused = isPaused && level === 'ACT_WITHIN_MANDATE';
             return (
-              <p className="text-xs text-text-sub">
-                {worker.authoritySummary ?? 'Research & recommend only · No wallet authority'}
-              </p>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${mandate?.status === 'paused' || autonomyPaused ? 'bg-warn' : level ? 'bg-accent' : 'bg-text-dim'}`} />
+                  <span className={`text-xs font-medium ${mandate?.status === 'paused' || autonomyPaused ? 'text-warn' : level ? 'text-accent' : 'text-text-sub'}`}>
+                    {mandate?.status === 'paused' ? 'Paused' : autonomyPaused ? 'Autonomy paused globally' : levelLabel}
+                  </span>
+                </div>
+                {mandate ? (
+                  <div className="space-y-0.5 text-xs text-text-muted">
+                    <p>{mandate.accountName ?? 'Account'} · {mandate.environment === 'mainnet' ? 'Mainnet' : 'Testnet'}</p>
+                    <p>{(mandate.allowedNetworks ?? []).map((network) => network.networkId).join(' · ') || 'No networks'}</p>
+                    <p>{level === 'ACT_WITHIN_MANDATE' ? `Max $${mandate.perActionLimitUsd ?? '—'}/action` : level === 'PREPARE' ? 'May prepare proposed actions' : 'No financial action authority'}</p>
+                    <p>{mandate.status === 'active' ? 'Active' : mandate.status}</p>
+                  </div>
+                ) : <p className="text-xs text-text-sub">No mandate · no Worker financial authority.</p>}
+                {WEB_RUNTIME_SETTINGS.dataMode === 'api' && state.user ? (
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    <button onClick={() => setShowAuthorityEditor(true)} className="text-xs text-primary hover:underline">{mandate ? 'Edit authority' : 'Set authority'}</button>
+                    {mandate?.status === 'draft' && <button disabled={authorityBusy} onClick={() => void (async()=>{setAuthorityBusy(true);setAuthorityError(null);try{await setDurableMandateStatus(mandate.id,'ACTIVE');applyAuthorityState(dispatch,await fetchAuthorityState());}catch(error){setAuthorityError(error instanceof Error?error.message:'Authority update failed.');}finally{setAuthorityBusy(false);}})()} className="text-xs text-primary hover:underline">Activate</button>}
+                    {mandate?.status === 'active' && <button disabled={authorityBusy} onClick={() => void (async()=>{setAuthorityBusy(true);setAuthorityError(null);try{await setDurableMandateStatus(mandate.id,'PAUSED');applyAuthorityState(dispatch,await fetchAuthorityState());}catch(error){setAuthorityError(error instanceof Error?error.message:'Authority update failed.');}finally{setAuthorityBusy(false);}})()} className="text-xs text-text-muted hover:text-warn">Pause</button>}
+                    {mandate?.status === 'paused' && <button disabled={authorityBusy} onClick={() => void (async()=>{setAuthorityBusy(true);setAuthorityError(null);try{await setDurableMandateStatus(mandate.id,'ACTIVE');applyAuthorityState(dispatch,await fetchAuthorityState());}catch(error){setAuthorityError(error instanceof Error?error.message:'Authority update failed.');}finally{setAuthorityBusy(false);}})()} className="text-xs text-primary hover:underline">Resume</button>}
+                    {mandate && mandate.status !== 'revoked' && <button disabled={authorityBusy} onClick={() => void (async()=>{if(!window.confirm('Revoke this Worker authority? Revocation is permanent; a new mandate would be required later.'))return;setAuthorityBusy(true);setAuthorityError(null);try{await setDurableMandateStatus(mandate.id,'REVOKED');applyAuthorityState(dispatch,await fetchAuthorityState());}catch(error){setAuthorityError(error instanceof Error?error.message:'Authority update failed.');}finally{setAuthorityBusy(false);}})()} className="text-xs text-danger hover:underline">Revoke</button>}
+                  </div>
+                ) : (
+                  <button onClick={() => dispatch({ type: 'SET_VIEW', view: 'security' })} className="text-xs text-primary hover:underline">Review authority →</button>
+                )}
+                {authorityError && <p className="text-xs text-danger">{authorityError}</p>}
+                {showAuthorityEditor && <MandateEditor workerId={worker.id} workerName={worker.name} existing={mandate} onClose={() => setShowAuthorityEditor(false)} />}
+              </div>
             );
           })()}
         </div>

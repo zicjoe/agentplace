@@ -1,13 +1,24 @@
 import { useState } from 'react';
 import { useAppState, useDispatch, uid } from '../state/AppContext';
 import type { AuthorityGrant } from '../state/types';
+import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { applyAuthorityState, fetchAuthorityState, revokeAllDurableAuthority, setAuthorityControl, setDurableMandateStatus } from '../platform/authorityApi';
 
 type EnvFilter = 'all' | 'mainnet' | 'testnet';
 
 function RevokeConfirmModal({ grant, onClose }: { grant: AuthorityGrant; onClose: () => void }) {
   const dispatch = useDispatch();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function confirm() {
+  async function confirm() {
+    if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+      setBusy(true); setError(null);
+      try { await setDurableMandateStatus(grant.mandateId, 'REVOKED'); applyAuthorityState(dispatch, await fetchAuthorityState()); onClose(); }
+      catch (caught) { setError(caught instanceof Error ? caught.message : 'Authority could not be revoked.'); }
+      finally { setBusy(false); }
+      return;
+    }
     dispatch({ type: 'REVOKE_AUTHORITY_GRANT', grantId: grant.id });
     dispatch({
       type: 'ADD_ACTIVITY_EVENT',
@@ -54,19 +65,29 @@ function RevokeConfirmModal({ grant, onClose }: { grant: AuthorityGrant; onClose
           </div>
           <p className="text-xs text-text-muted">This does not remove {grant.workerName}, delete Routines, or reverse submitted transactions.</p>
         </div>
+        {error && <p className="text-xs text-danger mb-3">{error}</p>}
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-2 text-sm text-text-muted border border-border rounded hover:bg-panel transition-colors">Cancel</button>
-          <button onClick={confirm} className="flex-1 py-2 text-sm font-medium bg-danger text-white rounded hover:opacity-90 transition-opacity">Revoke authority</button>
+          <button disabled={busy} onClick={() => void confirm()} className="flex-1 py-2 text-sm font-medium bg-danger disabled:opacity-40 text-white rounded hover:opacity-90 transition-opacity">Revoke authority</button>
         </div>
       </div>
     </div>
   );
 }
 
-function RevokeAllModal({ onClose }: { onClose: () => void }) {
+function RevokeAllModal({ onClose, environment }: { onClose: () => void; environment?: 'mainnet' | 'testnet' }) {
   const dispatch = useDispatch();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function confirm() {
+  async function confirm() {
+    if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+      setBusy(true); setError(null);
+      try { await revokeAllDurableAuthority(environment); applyAuthorityState(dispatch, await fetchAuthorityState()); onClose(); }
+      catch (caught) { setError(caught instanceof Error ? caught.message : 'Authority could not be revoked.'); }
+      finally { setBusy(false); }
+      return;
+    }
     dispatch({ type: 'REVOKE_ALL_AUTHORITY' });
     onClose();
   }
@@ -120,9 +141,10 @@ function RevokeAllModal({ onClose }: { onClose: () => void }) {
             </ul>
           </div>
         </div>
+        {error && <p className="text-xs text-danger mb-3">{error}</p>}
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-2 text-sm text-text-muted border border-border rounded hover:bg-panel transition-colors">Cancel</button>
-          <button onClick={confirm} className="flex-1 py-2 text-sm font-semibold bg-danger text-white rounded hover:opacity-90 transition-opacity">Revoke all authority</button>
+          <button disabled={busy} onClick={() => void confirm()} className="flex-1 py-2 text-sm font-semibold bg-danger disabled:opacity-40 text-white rounded hover:opacity-90 transition-opacity">Revoke all authority</button>
         </div>
       </div>
     </div>
@@ -271,6 +293,8 @@ export function SecurityAuthorityView() {
   const [showRevokeAll, setShowRevokeAll] = useState(false);
   const [showStopExecution, setShowStopExecution] = useState(false);
   const [envFilter, setEnvFilter] = useState<EnvFilter>('all');
+  const [controlBusy, setControlBusy] = useState(false);
+  const [controlError, setControlError] = useState<string | null>(null);
 
   if (!state.user) {
     return (
@@ -297,7 +321,7 @@ export function SecurityAuthorityView() {
   const activeGrants = filteredGrants.filter((g) => g.status === 'active');
   const revokedOrExpiredGrants = filteredGrants.filter((g) => g.status === 'revoked' || g.status === 'expired');
   const wallets = state.wallets ?? [];
-  const isPaused = state.autonomousExecutionPaused;
+  const isPaused = envFilter === 'mainnet' ? state.authorityControlStates.mainnetPaused : envFilter === 'testnet' ? state.authorityControlStates.testnetPaused : state.authorityControlStates.mainnetPaused || state.authorityControlStates.testnetPaused;
 
   const totalManagedCapital = activeGrants.length > 0
     ? activeGrants.map((g) => g.totalManagedCapital).join(' + ')
@@ -336,11 +360,22 @@ export function SecurityAuthorityView() {
           {/* Global pause / resume */}
           {isPaused ? (
             <button
-              onClick={() => {
-                dispatch({ type: 'SET_AUTONOMOUS_EXECUTION_PAUSED', paused: false });
-                dispatch({ type: 'ADD_ACTIVITY_EVENT', event: { id: uid(), eventType: 'security', title: 'Autonomous execution resumed', summary: 'Standing authority active again', effect: 'Still-valid grants are usable. No new grants created.', timestamp: new Date(), status: 'complete' } });
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-warn/40 bg-warn/10 text-warn rounded hover:bg-warn/20 transition-colors"
+              disabled={controlBusy}
+              onClick={() => void (async () => {
+                setControlBusy(true); setControlError(null);
+                try {
+                  if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+                    const targets: Array<'mainnet'|'testnet'> = envFilter === 'all' ? ['mainnet','testnet'] : [envFilter];
+                    for (const target of targets) await setAuthorityControl(target, false);
+                    applyAuthorityState(dispatch, await fetchAuthorityState());
+                  } else {
+                    dispatch({ type: 'SET_AUTONOMOUS_EXECUTION_PAUSED', paused: false });
+                    dispatch({ type: 'ADD_ACTIVITY_EVENT', event: { id: uid(), eventType: 'security', title: 'Autonomous execution resumed', summary: 'Standing authority active again', effect: 'Still-valid grants are usable. No new grants created.', timestamp: new Date(), status: 'complete' } });
+                  }
+                } catch (caught) { setControlError(caught instanceof Error ? caught.message : 'Authority control could not be updated.'); }
+                finally { setControlBusy(false); }
+              })}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-warn/40 bg-warn/10 text-warn rounded hover:bg-warn/20 transition-colors disabled:opacity-40"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-warn" />
               Execution paused — Resume
@@ -357,6 +392,7 @@ export function SecurityAuthorityView() {
             </button>
           )}
         </div>
+        {controlError && <div className="mb-3 rounded border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">{controlError}</div>}
 
         {/* Env filter */}
         <div className="flex gap-1 mb-4">
@@ -397,17 +433,29 @@ export function SecurityAuthorityView() {
             </div>
             <p className="text-xs text-text-muted mb-1">Authority Grants remain — they are not revoked. Pause ≠ Revoke.</p>
             <p className="text-xs text-text-muted mb-4">Transactions already submitted cannot be reversed.</p>
+            {controlError && <div className="mb-3 rounded border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">{controlError}</div>}
             <div className="flex gap-2">
               <button onClick={() => setShowPauseConfirm(false)} className="flex-1 py-2 text-sm text-text-muted border border-border rounded hover:bg-panel transition-colors">Cancel</button>
               <button
-                onClick={() => {
-                  dispatch({ type: 'SET_AUTONOMOUS_EXECUTION_PAUSED', paused: true });
-                  dispatch({ type: 'ADD_ACTIVITY_EVENT', event: { id: uid(), eventType: 'security', title: 'Autonomous execution paused', summary: 'Global pause · Standing authority preserved', effect: 'Research and monitoring continue.', timestamp: new Date(), status: 'complete' } });
-                  setShowPauseConfirm(false);
-                }}
-                className="flex-1 py-2 text-sm font-medium bg-warn text-white rounded hover:bg-warn/90 transition-colors"
+                disabled={controlBusy}
+                onClick={() => void (async () => {
+                  setControlBusy(true); setControlError(null);
+                  try {
+                    if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+                      const targets: Array<'mainnet'|'testnet'> = envFilter === 'all' ? ['mainnet','testnet'] : [envFilter];
+                      for (const target of targets) await setAuthorityControl(target, true);
+                      applyAuthorityState(dispatch, await fetchAuthorityState());
+                    } else {
+                      dispatch({ type: 'SET_AUTONOMOUS_EXECUTION_PAUSED', paused: true });
+                      dispatch({ type: 'ADD_ACTIVITY_EVENT', event: { id: uid(), eventType: 'security', title: 'Autonomous execution paused', summary: 'Global pause · Standing authority preserved', effect: 'Research and monitoring continue.', timestamp: new Date(), status: 'complete' } });
+                    }
+                    setShowPauseConfirm(false);
+                  } catch (caught) { setControlError(caught instanceof Error ? caught.message : 'Authority control could not be updated.'); }
+                  finally { setControlBusy(false); }
+                })}
+                className="flex-1 py-2 text-sm font-medium bg-warn text-white rounded hover:bg-warn/90 transition-colors disabled:opacity-40"
               >
-                Pause
+                {controlBusy ? 'Pausing…' : 'Pause'}
               </button>
             </div>
           </div>
@@ -462,6 +510,24 @@ export function SecurityAuthorityView() {
               </div>
             </div>
           )}
+
+          {/* Mandates */}
+          <div>
+            <h2 className="text-xs font-mono uppercase tracking-wider text-text-dim mb-3">Mandates & authority</h2>
+            <div className="space-y-2">
+              {(state.mandates ?? []).filter((m) => envFilter === 'all' || m.environment === envFilter).map((mandate) => (
+                <div key={mandate.id} className="border border-border rounded-lg bg-panel px-4 py-3 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-text">{mandate.workerName}</p>
+                    <p className="text-xs text-text-muted mt-0.5">{mandate.authorityLevel === 'ACT_WITHIN_MANDATE' ? 'Act within mandate' : mandate.authorityLevel === 'PREPARE' ? 'Prepare · approval required' : 'Observe only'} · {mandate.accountName ?? 'Account'} · {mandate.environment === 'mainnet' ? 'Mainnet' : 'Testnet'}</p>
+                    <p className="text-[10px] text-text-dim mt-1">{mandate.status} · revision {mandate.revision ?? 1}{mandate.perActionLimitUsd ? ` · max $${mandate.perActionLimitUsd}/action` : ''}</p>
+                  </div>
+                  <button onClick={() => dispatch({type:'SET_ACTIVE_WORKER',id:mandate.workerId})} className="text-xs text-primary hover:underline shrink-0">Review →</button>
+                </div>
+              ))}
+              {(state.mandates ?? []).filter((m) => envFilter === 'all' || m.environment === envFilter).length === 0 && <p className="text-sm text-text-muted">No mandates configured.</p>}
+            </div>
+          </div>
 
           {/* Who can act */}
           <div>
@@ -529,6 +595,19 @@ export function SecurityAuthorityView() {
                       </div>
                       <button onClick={() => dispatch({ type: 'SET_ACTIVE_ACTION', id: action.id })} className="text-xs text-text-muted hover:text-text shrink-0">Review →</button>
                     </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(state.authorityDecisions ?? []).filter((decision) => envFilter === 'all' || decision.environment === envFilter).length > 0 && (
+            <div>
+              <h2 className="text-xs font-mono uppercase tracking-wider text-text-dim mb-3">Recent authority decisions</h2>
+              <div className="space-y-2">
+                {(state.authorityDecisions ?? []).filter((decision) => envFilter === 'all' || decision.environment === envFilter).slice(0, 6).map((decision) => (
+                  <div key={decision.id} className="border border-border rounded-lg bg-panel px-4 py-3">
+                    <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-medium text-text">{decision.capabilityId}</p><p className="text-xs text-text-muted mt-0.5">{decision.reasons[0]?.message ?? 'Authority decision recorded.'}</p><p className="text-[10px] text-text-dim mt-1">{decision.operation} · {decision.environment}</p></div><span className={`text-[10px] font-mono border rounded px-1.5 py-0.5 ${decision.decision === 'DENIED' ? 'text-danger border-danger/30' : decision.decision === 'APPROVAL_REQUIRED' ? 'text-warn border-warn/30' : 'text-accent border-accent/30'}`}>{decision.decision.replaceAll('_',' ')}</span></div>
                   </div>
                 ))}
               </div>
@@ -639,7 +718,7 @@ export function SecurityAuthorityView() {
         </div>
       </div>
 
-      {showRevokeAll && <RevokeAllModal onClose={() => setShowRevokeAll(false)} />}
+      {showRevokeAll && <RevokeAllModal environment={envFilter === 'all' ? undefined : envFilter} onClose={() => setShowRevokeAll(false)} />}
       {showStopExecution && <StopExecutionModal onClose={() => setShowStopExecution(false)} />}
     </div>
   );

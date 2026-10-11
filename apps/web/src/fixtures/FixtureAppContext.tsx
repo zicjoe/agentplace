@@ -17,6 +17,8 @@ import type {
   AgentAccount,
   Mandate,
   AuthorityGrant,
+  AuthorityDecisionRecord,
+  AuthorityControlStates,
   FinancialAction,
   AttentionItem,
   FinancialSetupReturn,
@@ -50,6 +52,7 @@ import { addDurableMessage, createDurableConversation, fetchConversations, impor
 import { clearIdentityResume, readIdentityResume } from '../platform/identityResume';
 import { createDurableJob, fetchWorkState, installDurableWorker } from '../platform/workApi';
 import { fetchWalletState } from '../platform/walletApi';
+import { fetchAuthorityState } from '../platform/authorityApi';
 import { isJobConversation } from '../platform/conversationNavigation';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -884,6 +887,8 @@ const INITIAL_STATE: AppState = {
   agentAccounts: [],
   mandates: [],
   authorityGrants: [],
+  authorityDecisions: [],
+  authorityControlStates: { mainnetPaused: false, testnetPaused: false },
   financialActions: [],
   attentionItems: [],
   routines: [],
@@ -926,6 +931,10 @@ export type Action =
   | { type: 'SET_ACTIVITY_EVENTS'; events: ActivityEvent[] }
   | { type: 'SET_WALLETS'; wallets: WalletResource[] }
   | { type: 'SET_AGENT_ACCOUNTS'; agentAccounts: AgentAccount[] }
+  | { type: 'SET_MANDATES'; mandates: Mandate[] }
+  | { type: 'SET_AUTHORITY_GRANTS'; grants: AuthorityGrant[] }
+  | { type: 'SET_AUTHORITY_DECISIONS'; decisions: AuthorityDecisionRecord[] }
+  | { type: 'SET_AUTHORITY_CONTROLS'; controls: AuthorityControlStates }
   | { type: 'SET_VIEW'; view: NavView }
   | { type: 'SET_ENV'; env: Environment }
   | { type: 'SET_ACTIVE_CONV'; id: string | null }
@@ -1044,7 +1053,7 @@ function reducer(state: AppState, action: Action): AppState {
       };
 
     case 'SET_ENV':
-      return { ...state, environment: action.env };
+      return { ...state, environment: action.env, autonomousExecutionPaused: action.env === 'mainnet' ? state.authorityControlStates.mainnetPaused : state.authorityControlStates.testnetPaused };
 
     case 'SET_ACTIVE_CONV':
       return {
@@ -1227,6 +1236,22 @@ function reducer(state: AppState, action: Action): AppState {
         agentAccounts: (state.agentAccounts ?? []).map((a) =>
           a.id === action.accountId ? { ...a, ...action.updates } : a
         ),
+      };
+
+    case 'SET_MANDATES':
+      return { ...state, mandates: action.mandates };
+
+    case 'SET_AUTHORITY_GRANTS':
+      return { ...state, authorityGrants: action.grants };
+
+    case 'SET_AUTHORITY_DECISIONS':
+      return { ...state, authorityDecisions: action.decisions };
+
+    case 'SET_AUTHORITY_CONTROLS':
+      return {
+        ...state,
+        authorityControlStates: action.controls,
+        autonomousExecutionPaused: state.environment === 'mainnet' ? action.controls.mainnetPaused : action.controls.testnetPaused,
       };
 
     case 'ADD_MANDATE':
@@ -1535,6 +1560,8 @@ function reducer(state: AppState, action: Action): AppState {
         agentAccounts: MOCK_AGENT_ACCOUNTS,
         mandates: MOCK_MANDATES,
         authorityGrants: MOCK_AUTHORITY_GRANTS,
+        authorityDecisions: [],
+        authorityControlStates: { mainnetPaused: false, testnetPaused: false },
         routineRuns: MOCK_ROUTINE_RUNS,
         notifications: MOCK_NOTIFICATIONS,
         notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
@@ -1616,6 +1643,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rawDispatch({ type: 'SET_WORKERS', workers: work.workers });
     rawDispatch({ type: 'SET_JOBS', jobs: work.jobs });
     rawDispatch({ type: 'SET_ACTIVITY_EVENTS', events: work.activity });
+  }, []);
+
+  const refreshDurableAuthority = useCallback(async () => {
+    if (WEB_RUNTIME_SETTINGS.dataMode !== 'api') return;
+    const ownerUserId = stateRef.current.user?.id;
+    if (!ownerUserId) return;
+    const authority = await fetchAuthorityState();
+    if (stateRef.current.user?.id !== ownerUserId) return;
+    rawDispatch({ type: 'SET_MANDATES', mandates: authority.mandates });
+    rawDispatch({ type: 'SET_AUTHORITY_GRANTS', grants: authority.authorityGrants });
+    rawDispatch({ type: 'SET_AUTHORITY_DECISIONS', decisions: authority.authorityDecisions });
+    rawDispatch({ type: 'SET_AUTHORITY_CONTROLS', controls: authority.controls });
   }, []);
 
   const syncWorkAction = useCallback((action: Action, before: AppState) => {
@@ -1737,7 +1776,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? stateRef.current.conversations.find((c) => c.id === marker.conversationId)
           : undefined;
         if (guestConversation) await importGuestConversations([guestConversation]);
-        const [conversations, identity, work, walletState] = await Promise.all([fetchConversations(), getAgentPlaceIdentity(), fetchWorkState(), fetchWalletState()]);
+        const [conversations, identity, work, walletState, authorityState] = await Promise.all([fetchConversations(), getAgentPlaceIdentity(), fetchWorkState(), fetchWalletState(), fetchAuthorityState()]);
         const user = userFromAuth(identity);
         let next = reducer(stateRef.current, { type: 'SET_USER', user });
         next = reducer(next, { type: 'SET_CONVERSATIONS', conversations });
@@ -1746,6 +1785,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         next = reducer(next, { type: 'SET_ACTIVITY_EVENTS', events: work.activity });
         next = reducer(next, { type: 'SET_WALLETS', wallets: walletState.wallets });
         next = reducer(next, { type: 'SET_AGENT_ACCOUNTS', agentAccounts: walletState.agentAccounts });
+        next = reducer(next, { type: 'SET_MANDATES', mandates: authorityState.mandates });
+        next = reducer(next, { type: 'SET_AUTHORITY_GRANTS', grants: authorityState.authorityGrants });
+        next = reducer(next, { type: 'SET_AUTHORITY_DECISIONS', decisions: authorityState.authorityDecisions });
+        next = reducer(next, { type: 'SET_AUTHORITY_CONTROLS', controls: authorityState.controls });
         stateRef.current = next;
         rawDispatch({ type: 'SET_USER', user });
         rawDispatch({ type: 'SET_CONVERSATIONS', conversations });
@@ -1754,6 +1797,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         rawDispatch({ type: 'SET_ACTIVITY_EVENTS', events: work.activity });
         rawDispatch({ type: 'SET_WALLETS', wallets: walletState.wallets });
         rawDispatch({ type: 'SET_AGENT_ACCOUNTS', agentAccounts: walletState.agentAccounts });
+        rawDispatch({ type: 'SET_MANDATES', mandates: authorityState.mandates });
+        rawDispatch({ type: 'SET_AUTHORITY_GRANTS', grants: authorityState.authorityGrants });
+        rawDispatch({ type: 'SET_AUTHORITY_DECISIONS', decisions: authorityState.authorityDecisions });
+        rawDispatch({ type: 'SET_AUTHORITY_CONTROLS', controls: authorityState.controls });
         clearFixtureState();
         clearIdentityResume();
       } catch (error) {
@@ -1769,14 +1816,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (running || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return;
       running = true;
       try {
-        await Promise.all([refreshDurableConversations(), refreshDurableWork()]);
+        await Promise.all([refreshDurableConversations(), refreshDurableWork(), refreshDurableAuthority()]);
       } finally {
         running = false;
       }
     };
     const timer = window.setInterval(() => { void refresh(); }, 4000);
     return () => window.clearInterval(timer);
-  }, [state.user?.id, refreshDurableConversations, refreshDurableWork]);
+  }, [state.user?.id, refreshDurableConversations, refreshDurableWork, refreshDurableAuthority]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;

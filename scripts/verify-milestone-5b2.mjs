@@ -120,7 +120,7 @@ for (const token of [
 if (envExample.includes('VITE_TELEGRAPH_EVM_PRIVATE_KEY')) throw new Error('Telegraph service-payment key must never be browser-visible.');
 
 const root = JSON.parse(readFileSync('package.json', 'utf8'));
-if (!/^0\.(?:8\.[5-9]|9\.\d+)$/.test(root.version)) throw new Error('Repository version must preserve the M5B.2.4 implementation baseline (0.8.5 or later).');
+if (!/^0\.(?:8\.[5-9]|9\.\d+|[1-9]\d+\.\d+)$/.test(root.version)) throw new Error('Repository version must preserve the M5B.2.4 implementation baseline (0.8.5 or later).');
 if (!String(root.scripts?.check ?? '').includes('verify:milestone-5b2')) throw new Error('pnpm check must include M5B.2 verification.');
 if (!root.scripts?.['telegraph:discover']) throw new Error('Telegraph discovery smoke command is missing.');
 if (!root.scripts?.['telegraph:payment-status']) throw new Error('Safe Telegraph payment-status command is missing.');

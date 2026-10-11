@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.0 — Milestone 7 Mandates + Authority Engine
+
+- Added durable owner-scoped Mandates with immutable revisions and Draft/Active/Paused/Expired/Revoked lifecycle.
+- Added deterministic Authority Engine decisions (`ALLOWED`, `APPROVAL_REQUIRED`, `DENIED`) over structured action envelopes with fail-closed network, capability, asset, protocol/destination, limits, validity and account-mode checks.
+- Added separate capital authority, per-action limits, cumulative period budgets and service budgets plus explicit approval policies.
+- Added permanent revocation guards, per-environment global autonomy pause, durable authority decisions/reasons and period-usage accounting.
+- Added review-first natural-language mandate drafting; model assistance cannot activate authority or self-grant borrowing/leverage.
+- Added production authority UX to Worker Workspace, Wallet/Agent Account details and Security & Authority, with authority events flowing into Activity.
+- Added migration `0011_mandates_authority.sql`, M7 automated acceptance coverage and mandate-dialog viewport regression coverage.
+- M7 does not add smart-account deployment, signing, session keys, arbitrary contract calls or unrestricted autonomous mainnet execution.
+
 ## 0.9.1 — M6 Viewport + Layout Hardening
 
 - Fixed Guest Home at normal browser zoom so content never gets pushed above or below the visible workspace by full-height vertical centering.

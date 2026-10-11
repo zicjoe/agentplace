@@ -18,7 +18,7 @@ const [rootRaw, migration, wallets, api, walletApi, walletUi, fixtureContext, st
   read('apps/web/src/index.css'),
 ]);
 const root = JSON.parse(rootRaw);
-if (root.version !== '0.9.1') throw new Error('Milestone 6 hardening candidate must be version 0.9.1.');
+if (!/^0\.(?:9\.[1-9]\d*|[1-9]\d+\.\d+)$/.test(root.version)) throw new Error('Repository version must preserve the M6 v0.9.1 baseline or a later 0.x production milestone.');
 if (!root.scripts?.['verify:milestone-6'] || !root.scripts?.check?.includes('verify:milestone-6')) throw new Error('Milestone 6 verifier must be part of pnpm check.');
 for (const table of ['wallet_resource','wallet_network_state','agent_account']) if (!migration.includes(`CREATE TABLE IF NOT EXISTS ${table}`)) throw new Error(`Missing durable ${table} table.`);
 for (const boundary of ["mode IN ('watch-only','connected','agent-account')", "namespace IN ('eip155','solana')", "lifecycle_status text NOT NULL DEFAULT 'setup'", "deployment_status text NOT NULL DEFAULT 'not-deployed'"]) if (!migration.includes(boundary)) throw new Error(`Missing wallet schema boundary: ${boundary}`);

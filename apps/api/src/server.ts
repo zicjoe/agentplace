@@ -22,6 +22,24 @@ import {
 import { checkDatabase } from '@agent-place/db';
 import { listCanonicalCapabilities, listCapabilityImplementations } from '@agent-place/capabilities';
 import { getModelCatalog } from '@agent-place/models';
+import {
+  createMandate,
+  evaluateAuthority,
+  getAuthorityControlState,
+  getMandate,
+  listAuthorityDecisions,
+  listMandateRevisions,
+  listMandates,
+  reviseMandate,
+  revokeAllMandates,
+  setAutonomousExecutionPaused,
+  setMandateStatus,
+  translateMandateIntent,
+  type ActionEnvelope,
+  type AuthorityEnvironment,
+  type MandatePolicyInput,
+  type NetworkPolicyRef,
+} from '@agent-place/authority';
 import { getRouteDecisionForJob } from '@agent-place/router';
 import { listJobIntelligenceEvidence } from '@agent-place/intelligence';
 import { createJob, enqueueIntelligenceTask, getIntelligenceTask, getLatestIntelligenceTask, getJob, getJobEvidence, jobStatuses, listActivity, listJobs, setJobConversation, type JobDraft } from '@agent-place/jobs';
@@ -129,6 +147,119 @@ function asOptionalString(value: unknown, max = 500): string | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== 'string' || value.length > max) throw new Error('INVALID_STRING');
   return value;
+}
+
+function requiredString(value: unknown, code: string, max = 4000): string {
+  if (typeof value !== 'string' || !value.trim() || value.length > max) throw new Error(code);
+  return value;
+}
+
+function stringArray(value: unknown, code: string): string[] {
+  if (!Array.isArray(value) || value.length > 128 || !value.every((item) => typeof item === 'string')) throw new Error(code);
+  return value as string[];
+}
+
+function parseNetworks(value: unknown): NetworkPolicyRef[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 32) throw new Error('INVALID_MANDATE_NETWORKS');
+  return value.map((item) => {
+    const row = asRecord(item);
+    return { family: requiredString(row.family, 'INVALID_MANDATE_NETWORKS', 128), networkId: requiredString(row.networkId, 'INVALID_MANDATE_NETWORKS', 128) };
+  });
+}
+
+function parseMandatePolicy(value: unknown): MandatePolicyInput {
+  const row = asRecord(value);
+  const approval = asRecord(row.approvalPolicy);
+  if (row.authorityLevel !== 'OBSERVE' && row.authorityLevel !== 'PREPARE' && row.authorityLevel !== 'ACT_WITHIN_MANDATE') throw new Error('INVALID_AUTHORITY_LEVEL');
+  if (row.assetScope !== 'ANY' && row.assetScope !== 'ALLOW_LIST') throw new Error('INVALID_MANDATE_SCOPE');
+  if (row.protocolScope !== 'ANY' && row.protocolScope !== 'ALLOW_LIST') throw new Error('INVALID_MANDATE_SCOPE');
+  if (row.destinationScope !== 'ANY' && row.destinationScope !== 'ALLOW_LIST') throw new Error('INVALID_MANDATE_SCOPE');
+  if (approval.mode !== 'ALWAYS' && approval.mode !== 'THRESHOLD' && approval.mode !== 'WITHIN_LIMITS') throw new Error('INVALID_APPROVAL_POLICY');
+  if (typeof approval.askForNewProtocols !== 'boolean' || typeof approval.askForNewDestinations !== 'boolean') throw new Error('INVALID_APPROVAL_POLICY');
+  if (typeof row.borrowingAllowed !== 'boolean' || typeof row.leverageAllowed !== 'boolean') throw new Error('INVALID_MANDATE_POLICY');
+  const policy: MandatePolicyInput = {
+    title: requiredString(row.title, 'INVALID_MANDATE_TITLE', 160),
+    purpose: requiredString(row.purpose, 'INVALID_MANDATE_PURPOSE', 2000),
+    authorityLevel: row.authorityLevel,
+    allowedCapabilities: stringArray(row.allowedCapabilities, 'INVALID_MANDATE_CAPABILITIES'),
+    allowedNetworks: parseNetworks(row.allowedNetworks),
+    assetScope: row.assetScope,
+    allowedAssets: stringArray(row.allowedAssets, 'INVALID_MANDATE_ASSETS'),
+    protocolScope: row.protocolScope,
+    allowedProtocols: stringArray(row.allowedProtocols, 'INVALID_MANDATE_PROTOCOLS'),
+    destinationScope: row.destinationScope,
+    allowedDestinations: stringArray(row.allowedDestinations, 'INVALID_MANDATE_DESTINATIONS'),
+    approvalPolicy: {
+      mode: approval.mode,
+      askForNewProtocols: approval.askForNewProtocols,
+      askForNewDestinations: approval.askForNewDestinations,
+    },
+    borrowingAllowed: row.borrowingAllowed,
+    leverageAllowed: row.leverageAllowed,
+    changeSummary: requiredString(row.changeSummary, 'INVALID_MANDATE_CHANGE_SUMMARY', 500),
+  };
+  const optionalPolicyString = (key: 'capitalLimitUsd' | 'perActionLimitUsd' | 'validFrom' | 'validUntil'): string | undefined => {
+    const raw = row[key];
+    if (raw === undefined || raw === null) return undefined;
+    if (typeof raw !== 'string') throw new Error('INVALID_MANDATE_POLICY');
+    return raw;
+  };
+  const capitalLimitUsd = optionalPolicyString('capitalLimitUsd'); if (capitalLimitUsd !== undefined) policy.capitalLimitUsd = capitalLimitUsd;
+  const perActionLimitUsd = optionalPolicyString('perActionLimitUsd'); if (perActionLimitUsd !== undefined) policy.perActionLimitUsd = perActionLimitUsd;
+  const validFrom = optionalPolicyString('validFrom'); if (validFrom !== undefined) policy.validFrom = validFrom;
+  const validUntil = optionalPolicyString('validUntil'); if (validUntil !== undefined) policy.validUntil = validUntil;
+  if (approval.thresholdUsd !== undefined && approval.thresholdUsd !== null) {
+    if (typeof approval.thresholdUsd !== 'string') throw new Error('INVALID_APPROVAL_POLICY');
+    policy.approvalPolicy.thresholdUsd = approval.thresholdUsd;
+  }
+  if (row.periodBudget !== undefined && row.periodBudget !== null) {
+    const budget = asRecord(row.periodBudget);
+    if (typeof budget.limitUsd !== 'string' || (budget.period !== 'day' && budget.period !== 'week' && budget.period !== 'month')) throw new Error('INVALID_PERIOD_BUDGET');
+    policy.periodBudget = { limitUsd: budget.limitUsd, period: budget.period };
+  }
+  if (row.serviceBudget !== undefined && row.serviceBudget !== null) {
+    const budget = asRecord(row.serviceBudget);
+    if (typeof budget.limitUsd !== 'string' || (budget.period !== 'day' && budget.period !== 'week' && budget.period !== 'month')) throw new Error('INVALID_SERVICE_BUDGET');
+    policy.serviceBudget = { limitUsd: budget.limitUsd, period: budget.period };
+  }
+  return policy;
+}
+
+function parseEnvironment(value: unknown): AuthorityEnvironment {
+  if (value !== 'mainnet' && value !== 'testnet') throw new Error('INVALID_MANDATE_ENVIRONMENT');
+  return value;
+}
+
+function parseActionEnvelope(value: unknown): ActionEnvelope {
+  const row = asRecord(value);
+  const network = asRecord(row.network);
+  if (row.operation !== 'OBSERVE' && row.operation !== 'PREPARE' && row.operation !== 'EXECUTE') throw new Error('INVALID_AUTHORITY_ENVELOPE');
+  const envelope: ActionEnvelope = {
+    workerId: requiredString(row.workerId, 'INVALID_AUTHORITY_ENVELOPE', 128),
+    accountId: requiredString(row.accountId, 'INVALID_AUTHORITY_ENVELOPE', 160),
+    capabilityId: requiredString(row.capabilityId, 'INVALID_AUTHORITY_ENVELOPE', 128),
+    operation: row.operation,
+    environment: parseEnvironment(row.environment),
+    network: { family: requiredString(network.family, 'INVALID_AUTHORITY_ENVELOPE', 128), networkId: requiredString(network.networkId, 'INVALID_AUTHORITY_ENVELOPE', 128) },
+  };
+  const optionalEnvelopeString = (key: 'asset' | 'protocol' | 'destination' | 'valueUsd' | 'leverageMultiplier' | 'reason' | 'jobId'): string | undefined => {
+    const raw = row[key];
+    if (raw === undefined || raw === null) return undefined;
+    if (typeof raw !== 'string') throw new Error('INVALID_AUTHORITY_ENVELOPE');
+    return raw;
+  };
+  const asset = optionalEnvelopeString('asset'); if (asset !== undefined) envelope.asset = asset;
+  const protocol = optionalEnvelopeString('protocol'); if (protocol !== undefined) envelope.protocol = protocol;
+  const destination = optionalEnvelopeString('destination'); if (destination !== undefined) envelope.destination = destination;
+  const valueUsd = optionalEnvelopeString('valueUsd'); if (valueUsd !== undefined) envelope.valueUsd = valueUsd;
+  const leverageMultiplier = optionalEnvelopeString('leverageMultiplier'); if (leverageMultiplier !== undefined) envelope.leverageMultiplier = leverageMultiplier;
+  const reason = optionalEnvelopeString('reason'); if (reason !== undefined) envelope.reason = reason;
+  const jobId = optionalEnvelopeString('jobId'); if (jobId !== undefined) envelope.jobId = jobId;
+  if (row.borrowing !== undefined) {
+    if (typeof row.borrowing !== 'boolean') throw new Error('INVALID_AUTHORITY_ENVELOPE');
+    envelope.borrowing = row.borrowing;
+  }
+  return envelope;
 }
 
 function isJobDraft(value: unknown): value is JobDraft {
@@ -486,6 +617,108 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     }
   }
 
+
+  if (url.pathname === '/api/v1/authority' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const [mandates, decisions, controls] = await Promise.all([
+      listMandates(identity.appUserId),
+      listAuthorityDecisions(identity.appUserId, 100),
+      getAuthorityControlState(identity.appUserId),
+    ]);
+    writeJson(res, 200, { mandates, decisions, controls });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/mandates' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const workerId = requiredString(body.workerId, 'INVALID_MANDATE_WORKER', 128);
+    const accountId = requiredString(body.accountId, 'INVALID_MANDATE_ACCOUNT', 160);
+    const environmentValue = parseEnvironment(body.environment);
+    const status = body.status === undefined ? 'DRAFT' : body.status;
+    if (status !== 'DRAFT' && status !== 'ACTIVE') throw new Error('INVALID_MANDATE_STATUS');
+    const mandate = await createMandate(identity.appUserId, { workerId, accountId, environment: environmentValue, status, policy: parseMandatePolicy(body.policy) });
+    writeJson(res, 201, { mandate });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/mandates/translate' && req.method === 'POST') {
+    await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const draft = translateMandateIntent(requiredString(body.intent, 'INVALID_MANDATE_INTENT', 4000));
+    writeJson(res, 200, { draft });
+    return;
+  }
+
+  const mandateRevisionsMatch = url.pathname.match(/^\/api\/v1\/mandates\/([^/]+)\/revisions$/);
+  if (mandateRevisionsMatch && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const mandateId = decodeURIComponent(mandateRevisionsMatch[1] ?? '');
+    const mandate = await getMandate(identity.appUserId, mandateId);
+    if (!mandate) return writeJson(res, 404, { error: 'not_found', message: 'Mandate not found.', requestId });
+    writeJson(res, 200, { revisions: await listMandateRevisions(identity.appUserId, mandateId) });
+    return;
+  }
+
+  const mandateStatusMatch = url.pathname.match(/^\/api\/v1\/mandates\/([^/]+)\/status$/);
+  if (mandateStatusMatch && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    if (body.status !== 'ACTIVE' && body.status !== 'PAUSED' && body.status !== 'REVOKED') throw new Error('INVALID_MANDATE_STATUS');
+    const mandate = await setMandateStatus(identity.appUserId, decodeURIComponent(mandateStatusMatch[1] ?? ''), body.status);
+    if (!mandate) return writeJson(res, 404, { error: 'not_found', message: 'Mandate not found.', requestId });
+    writeJson(res, 200, { mandate });
+    return;
+  }
+
+  const mandateMatch = url.pathname.match(/^\/api\/v1\/mandates\/([^/]+)$/);
+  if (mandateMatch) {
+    const identity = await requireIdentity(req);
+    const mandateId = decodeURIComponent(mandateMatch[1] ?? '');
+    if (req.method === 'GET') {
+      const mandate = await getMandate(identity.appUserId, mandateId);
+      if (!mandate) return writeJson(res, 404, { error: 'not_found', message: 'Mandate not found.', requestId });
+      writeJson(res, 200, { mandate });
+      return;
+    }
+    if (req.method === 'PATCH') {
+      const body = asRecord(await readJson(req));
+      if (typeof body.expectedRevision !== 'number' || !Number.isInteger(body.expectedRevision) || body.expectedRevision < 1) throw new Error('INVALID_MANDATE_REVISION');
+      const mandate = await reviseMandate(identity.appUserId, mandateId, body.expectedRevision, parseMandatePolicy(body.policy));
+      if (!mandate) return writeJson(res, 404, { error: 'not_found', message: 'Mandate not found.', requestId });
+      writeJson(res, 200, { mandate });
+      return;
+    }
+  }
+
+  if (url.pathname === '/api/v1/authority/evaluate' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const decision = await evaluateAuthority(identity.appUserId, parseActionEnvelope(body.action), { mainnetAutonomyEnabled: environment.mainnetAutonomyEnabled });
+    writeJson(res, 200, { decision });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/authority/control' && req.method === 'PATCH') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const targetEnvironment = parseEnvironment(body.environment);
+    if (typeof body.paused !== 'boolean') throw new Error('INVALID_AUTHORITY_CONTROL');
+    const controls = await setAutonomousExecutionPaused(identity.appUserId, targetEnvironment, body.paused);
+    writeJson(res, 200, { controls });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/authority/revoke-all' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const targetEnvironment = body.environment === undefined || body.environment === null ? undefined : parseEnvironment(body.environment);
+    const revokedCount = await revokeAllMandates(identity.appUserId, targetEnvironment);
+    const [mandates, controls] = await Promise.all([listMandates(identity.appUserId), getAuthorityControlState(identity.appUserId)]);
+    writeJson(res, 200, { revokedCount, mandates, controls });
+    return;
+  }
+
   if (url.pathname === '/api/v1/jobs' && req.method === 'GET') {
     const identity = await requireIdentity(req);
     const jobs = await listJobs(identity.appUserId);
@@ -649,7 +882,15 @@ const server = createServer((req, res) => {
       writeJson(res, 401, { error: 'unauthenticated', message: 'Sign in to continue.', requestId });
       return;
     }
-    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE','INVALID_WORKER_DEFINITION','INVALID_WORKER_STATUS','INVALID_JOB','INVALID_STRING','INVALID_MODEL_SELECTION','MODEL_PROVIDER_NOT_CONFIGURED','JOB_LEAD_REQUIRED','JOB_WORKER_NOT_AVAILABLE','WORKER_DEFINITION_NOT_FOUND','INVALID_WALLET_INPUT','INVALID_WALLET_NAMESPACE','INVALID_WALLET_NETWORK','INVALID_WALLET_NAME','INVALID_EVM_ADDRESS','INVALID_SOLANA_ADDRESS','INVALID_NATIVE_BALANCE','WALLET_ADDRESS_MISMATCH','INVALID_WALLET_STATUS','INVALID_AGENT_ACCOUNT_INPUT','CONNECTED_OWNER_WALLET_REQUIRED','AGENT_ACCOUNT_EVM_OWNER_REQUIRED','AGENT_ACCOUNT_NETWORK_REQUIRED','UNSUPPORTED_CONNECTED_WALLET_NAMESPACE'].includes(code)) {
+    if (code === 'MANDATE_REVISION_CONFLICT') {
+      writeJson(res, 409, { error: 'conflict', message: code, requestId });
+      return;
+    }
+    if (['REVOKED_MANDATE_CANNOT_RESURRECT','MANDATE_EXPIRED','INVALID_MANDATE_STATUS_TRANSITION'].includes(code)) {
+      writeJson(res, 409, { error: 'conflict', message: code, requestId });
+      return;
+    }
+    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE','INVALID_WORKER_DEFINITION','INVALID_WORKER_STATUS','INVALID_JOB','INVALID_STRING','INVALID_MODEL_SELECTION','MODEL_PROVIDER_NOT_CONFIGURED','JOB_LEAD_REQUIRED','JOB_WORKER_NOT_AVAILABLE','WORKER_DEFINITION_NOT_FOUND','INVALID_WALLET_INPUT','INVALID_WALLET_NAMESPACE','INVALID_WALLET_NETWORK','INVALID_WALLET_NAME','INVALID_EVM_ADDRESS','INVALID_SOLANA_ADDRESS','INVALID_NATIVE_BALANCE','WALLET_ADDRESS_MISMATCH','INVALID_WALLET_STATUS','INVALID_AGENT_ACCOUNT_INPUT','CONNECTED_OWNER_WALLET_REQUIRED','AGENT_ACCOUNT_EVM_OWNER_REQUIRED','AGENT_ACCOUNT_NETWORK_REQUIRED','UNSUPPORTED_CONNECTED_WALLET_NAMESPACE','INVALID_MANDATE_WORKER','INVALID_MANDATE_ACCOUNT','INVALID_MANDATE_ENVIRONMENT','INVALID_MANDATE_STATUS','INVALID_MANDATE_REVISION','INVALID_MANDATE_TITLE','INVALID_MANDATE_PURPOSE','INVALID_AUTHORITY_LEVEL','INVALID_MANDATE_SCOPE','INVALID_MANDATE_POLICY','INVALID_MANDATE_CAPABILITIES','MANDATE_CAPABILITY_REQUIRED','INVALID_MANDATE_NETWORKS','INVALID_MANDATE_ASSETS','INVALID_MANDATE_PROTOCOLS','INVALID_MANDATE_DESTINATIONS','ACT_MANDATE_ASSET_ALLOWLIST_REQUIRED','ACT_MANDATE_REQUIRES_AGENT_ACCOUNT','INVALID_CAPITAL_LIMIT','INVALID_PER_ACTION_LIMIT','INVALID_PERIOD_BUDGET','INVALID_SERVICE_BUDGET','ACT_MANDATE_HARD_LIMITS_REQUIRED','INVALID_APPROVAL_POLICY','INVALID_APPROVAL_THRESHOLD','INVALID_MANDATE_VALIDITY','ACT_MANDATE_EXPIRY_REQUIRED','INVALID_MANDATE_CHANGE_SUMMARY','MANDATE_WORKER_NOT_OWNED','MANDATE_ACCOUNT_NOT_OWNED','MANDATE_ACCOUNT_NOT_AVAILABLE','UNKNOWN_MANDATE_CAPABILITY','INVALID_AUTHORITY_ENVELOPE','INVALID_AUTHORITY_VALUE','INVALID_AUTHORITY_LEVERAGE','INVALID_AUTHORITY_CONTROL','INVALID_MANDATE_INTENT'].includes(code)) {
       writeJson(res, 400, { error: 'invalid_request', message: code, requestId });
       return;
     }

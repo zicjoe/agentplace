@@ -50,6 +50,9 @@ importers:
       '@agent-place/wallets':
         specifier: workspace:*
         version: link:../../packages/wallets
+      '@agent-place/authority':
+        specifier: workspace:*
+        version: link:../../packages/authority
 
   apps/scheduler:
     dependencies:
@@ -143,7 +146,11 @@ importers:
         specifier: 8.23.1
         version: 8.23.1
 
-  packages/authority: {}
+  packages/authority:
+    dependencies:
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
 
   packages/billing: {}
 

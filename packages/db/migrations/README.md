@@ -11,3 +11,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f packages/db/migrations/0001_foundatio
 ```
 
 Production deployment must apply migrations through a controlled release job with backups and rollback/forward-fix procedures.
+
+## 0011_mandates_authority.sql
+
+Adds M7 durable Mandates with immutable policy revisions, deterministic authority decision evidence, separate capital/transaction/period/service budget fields, owner/environment autonomy pause state, and idempotent authority budget usage accounting. Revoked Mandates are guarded against resurrection at the database boundary.

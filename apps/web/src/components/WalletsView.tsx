@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useAppState, useDispatch, uid, runStablecoinApproveEachMove, runStablecoinManageWithRules } from '../state/AppContext';
 import type { WalletResource, WalletMode } from '../state/types';
 import { connectDurableEvmWallet, createDurableAgentAccount, createDurableWatchWallet, disconnectDurableWallet, fetchWalletState, refreshDurableEvmWallet, removeDurableWallet, updateDurableWallet } from '../platform/walletApi';
+import { applyAuthorityState, fetchAuthorityState, setDurableMandateStatus } from '../platform/authorityApi';
+import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { MandateEditor } from './MandateEditor';
 
 // ── Shared ────────────────────────────────────────────────────────────────────
 
@@ -310,7 +313,7 @@ function AddWalletModal({ onClose, initialStep }: { onClose: () => void; initial
             <div className="space-y-4">
               <div className="border border-border rounded-lg bg-panel-raised px-4 py-3">
                 <p className="text-xs font-medium text-text">Why use an Agent Account?</p>
-                <p className="text-xs text-text-sub mt-1 leading-relaxed">It is the future execution home for Workers that may operate under rules you define. M6 only creates the durable setup: no smart account is fabricated or deployed, and no Worker receives authority.</p>
+                <p className="text-xs text-text-sub mt-1 leading-relaxed">It is the future execution home for Workers that may operate under rules you define. The account starts with no Worker authority. M7 can attach a structured mandate, but no smart account is fabricated or deployed and M7 does not add signing or execution infrastructure.</p>
               </div>
               {connectedOwners.length === 0 ? (
                 <p className="text-xs text-warning bg-warning/10 border border-warning/20 rounded px-3 py-2">Connect an EVM owner wallet first. AgentPlace will not create an ownerless Agent Account record.</p>
@@ -378,6 +381,65 @@ function AddWalletModal({ onClose, initialStep }: { onClose: () => void; initial
   );
 }
 
+function AccountAuthorityPanel({ wallet }: { wallet: WalletResource }) {
+  const state = useAppState();
+  const dispatch = useDispatch();
+  const [workerId, setWorkerId] = useState(state.workers[0]?.id ?? '');
+  const [editingWorkerId, setEditingWorkerId] = useState<string | null>(null);
+  const [editingMandateId, setEditingMandateId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const mandates = (state.mandates ?? []).filter((mandate) => mandate.accountId === wallet.id);
+  const selectedWorker = state.workers.find((worker) => worker.id === (editingWorkerId ?? workerId));
+  const editingMandate = mandates.find((mandate) => mandate.id === editingMandateId);
+
+  async function statusChange(mandateId: string, status: 'ACTIVE' | 'PAUSED' | 'REVOKED') {
+    if (status === 'REVOKED' && !window.confirm('Revoke this Worker authority permanently? A new mandate will be required to delegate authority again.')) return;
+    setBusyId(mandateId); setError(null);
+    try {
+      await setDurableMandateStatus(mandateId, status);
+      applyAuthorityState(dispatch, await fetchAuthorityState());
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Authority update failed.'); }
+    finally { setBusyId(null); }
+  }
+
+  return (
+    <div className="border border-border rounded-lg bg-panel px-4 py-4">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div><p className="text-[10px] font-mono uppercase tracking-wider text-text-dim">Worker authority</p><p className="text-xs text-text-muted mt-1">Who may use this account, under which structured rules.</p></div>
+        <span className="text-[10px] text-text-dim">{mandates.filter((mandate)=>mandate.status==='active').length} active</span>
+      </div>
+      <div className="space-y-2">
+        {mandates.map((mandate) => (
+          <div key={mandate.id} className="rounded border border-border-dim px-3 py-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0"><button onClick={() => dispatch({type:'SET_ACTIVE_WORKER',id:mandate.workerId})} className="text-xs font-medium text-primary hover:underline">{mandate.workerName}</button><p className="text-[11px] text-text-muted mt-0.5">{mandate.authorityLevel === 'ACT_WITHIN_MANDATE' ? 'Act within mandate' : mandate.authorityLevel === 'PREPARE' ? 'Prepare · approval required' : 'Observe only'} · {mandate.environment === 'mainnet' ? 'Mainnet' : 'Testnet'} · {mandate.status}</p></div>
+              <button onClick={() => { setEditingWorkerId(mandate.workerId); setEditingMandateId(mandate.id); }} className="text-[11px] text-primary hover:underline">Review</button>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-3 text-[11px]">
+              {mandate.status === 'draft' && <button disabled={busyId===mandate.id} onClick={() => void statusChange(mandate.id,'ACTIVE')} className="text-primary hover:underline">Activate</button>}
+              {mandate.status === 'active' && <button disabled={busyId===mandate.id} onClick={() => void statusChange(mandate.id,'PAUSED')} className="text-text-muted hover:text-warn">Pause</button>}
+              {mandate.status === 'paused' && <button disabled={busyId===mandate.id} onClick={() => void statusChange(mandate.id,'ACTIVE')} className="text-primary hover:underline">Resume</button>}
+              {mandate.status !== 'revoked' && <button disabled={busyId===mandate.id} onClick={() => void statusChange(mandate.id,'REVOKED')} className="text-danger hover:underline">Revoke</button>}
+            </div>
+          </div>
+        ))}
+        {mandates.length === 0 && <p className="text-xs text-text-muted">No Worker has authority over this account.</p>}
+      </div>
+      {WEB_RUNTIME_SETTINGS.dataMode === 'api' && state.user && state.workers.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <select value={workerId} onChange={(event)=>setWorkerId(event.target.value)} className="min-w-44 rounded border border-border bg-bg px-2 py-1.5 text-xs text-text">{state.workers.map((worker)=><option key={worker.id} value={worker.id}>{worker.name}</option>)}</select>
+          <button disabled={!workerId} onClick={() => { setEditingWorkerId(workerId); setEditingMandateId(null); }} className="text-xs text-primary border border-primary/30 rounded px-3 py-1.5 hover:bg-primary-dim/10">Set Worker authority</button>
+        </div>
+      )}
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      {editingWorkerId && selectedWorker && (
+        <MandateEditor workerId={selectedWorker.id} workerName={selectedWorker.name} defaultAccountId={wallet.id} existing={editingMandate} onClose={() => {setEditingWorkerId(null);setEditingMandateId(null);}} />
+      )}
+    </div>
+  );
+}
+
 // ── Agent Account detail ──────────────────────────────────────────────────────
 
 function AgentAccountDetail({ wallet }: { wallet: WalletResource }) {
@@ -413,7 +475,7 @@ function AgentAccountDetail({ wallet }: { wallet: WalletResource }) {
               ['Lifecycle', account?.lifecycleStatus === 'ready-for-deployment' ? 'Ready for deployment' : account?.lifecycleStatus ?? 'setup'],
               ['Deployment status', account?.deploymentStatus ?? 'not-deployed'],
               ['Account standard', account?.accountStandard === 'unassigned' || !account?.accountStandard ? 'Not selected yet' : account.accountStandard],
-              ['Worker authority', 'None'],
+              ['Worker authority', `${(state.mandates ?? []).filter((mandate) => mandate.accountId === wallet.id && mandate.status === 'active').length} active mandate(s)`],
               ['Owner wallet', ownerWallet ? `${ownerWallet.name} · ${ownerWallet.address.slice(0, 8)}…${ownerWallet.address.slice(-4)}` : 'Unavailable'],
             ].map(([label, value]) => (
               <div key={label} className="flex items-start justify-between gap-4 text-xs">
@@ -430,9 +492,11 @@ function AgentAccountDetail({ wallet }: { wallet: WalletResource }) {
             </div>
           </div>
 
+          <AccountAuthorityPanel wallet={wallet} />
+
           <div className="border border-border-dim rounded-lg bg-panel-raised px-4 py-3">
-            <p className="text-xs font-medium text-text mb-1">What comes next</p>
-            <p className="text-xs text-text-sub leading-relaxed">M7 introduces Mandates + the Authority Engine. Smart-account deployment and financial execution remain separately gated so creating this setup cannot move funds by itself.</p>
+            <p className="text-xs font-medium text-text mb-1">Authority is not execution</p>
+            <p className="text-xs text-text-sub leading-relaxed">M7 can store and evaluate constrained Worker authority. This Agent Account is still not deployed, has no signer, and cannot move funds until separately approved execution infrastructure exists.</p>
           </div>
         </div>
       </div>
@@ -530,6 +594,8 @@ function ConnectedWalletDetail({ wallet }: { wallet: WalletResource }) {
               {(wallet.networkStates ?? []).length === 0 && <p className="text-xs text-text-muted">No network observation stored.</p>}
             </div>
           </div>
+
+          <AccountAuthorityPanel wallet={wallet} />
 
           {error && <p className="text-xs text-danger bg-danger/10 border border-danger/20 rounded px-3 py-2">{error}</p>}
 
@@ -644,6 +710,8 @@ function WatchOnlyDetail({ wallet }: { wallet: WalletResource }) {
               ))}
             </div>
           </div>
+
+          <AccountAuthorityPanel wallet={wallet} />
 
           {wallet.balances.length > 0 && (
             <div className="border border-border rounded-lg bg-panel px-4 py-4">

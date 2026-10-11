@@ -306,16 +306,61 @@ export interface Mandate {
   id: string;
   workerId: string;
   workerName: string;
-  agentAccountId: string;
+  accountId?: string;
+  accountName?: string;
+  accountMode?: 'watch-only' | 'connected' | 'agent-account';
+  agentAccountId?: string;
+  environment?: 'mainnet' | 'testnet';
+  revision?: number;
+  authorityLevel?: 'OBSERVE' | 'PREPARE' | 'ACT_WITHIN_MANDATE';
+  title?: string;
+  purpose?: string;
   goal: string;
   managedCapital: string;
   reserveCapital: string;
   preferredProtocols: string[];
   riskPosture: string;
   restrictions: string[];
+  allowedCapabilities?: string[];
+  allowedNetworks?: Array<{ family: string; networkId: string }>;
+  assetScope?: 'ANY' | 'ALLOW_LIST';
+  allowedAssets?: string[];
+  protocolScope?: 'ANY' | 'ALLOW_LIST';
+  allowedProtocols?: string[];
+  destinationScope?: 'ANY' | 'ALLOW_LIST';
+  allowedDestinations?: string[];
+  capitalLimitUsd?: string;
+  perActionLimitUsd?: string;
+  periodBudget?: { limitUsd: string; period: 'day' | 'week' | 'month' };
+  serviceBudget?: { limitUsd: string; period: 'day' | 'week' | 'month' };
+  approvalPolicy?: { mode: 'ALWAYS' | 'THRESHOLD' | 'WITHIN_LIMITS'; thresholdUsd?: string; askForNewProtocols: boolean; askForNewDestinations: boolean };
+  borrowingAllowed?: boolean;
+  leverageAllowed?: boolean;
+  validFrom?: Date;
   expiry: Date;
-  status: 'draft' | 'active' | 'paused' | 'revoked';
+  status: 'draft' | 'active' | 'paused' | 'revoked' | 'expired';
+  changeSummary?: string;
   createdAt: Date;
+}
+
+export interface AuthorityDecisionRecord {
+  id: string;
+  mandateId?: string;
+  mandateRevision?: number;
+  workerId: string;
+  accountId: string;
+  environment: 'mainnet' | 'testnet';
+  capabilityId: string;
+  operation: 'OBSERVE' | 'PREPARE' | 'EXECUTE';
+  decision: 'ALLOWED' | 'APPROVAL_REQUIRED' | 'DENIED';
+  reasons: Array<{ code: string; message: string; field?: string; expected?: string; actual?: string }>;
+  valueUsd?: string;
+  createdAt: Date;
+}
+
+export interface AuthorityControlStates {
+  mainnetPaused: boolean;
+  testnetPaused: boolean;
 }
 
 export interface AuthorityGrant {
@@ -742,6 +787,8 @@ export interface AppState {
   agentAccounts: AgentAccount[];
   mandates: Mandate[];
   authorityGrants: AuthorityGrant[];
+  authorityDecisions: AuthorityDecisionRecord[];
+  authorityControlStates: AuthorityControlStates;
   financialActions: FinancialAction[];
   attentionItems: AttentionItem[];
   routines: Routine[];

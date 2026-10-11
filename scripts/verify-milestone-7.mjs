@@ -1,0 +1,24 @@
+import { readFile } from 'node:fs/promises';
+const read=(path)=>readFile(path,'utf8');
+const [rootRaw,migration,authority,api,authorityApi,editor,worker,wallets,security,jobs,viewport,roadmap,milestone,securityDoc] = await Promise.all([
+  read('package.json'),read('packages/db/migrations/0011_mandates_authority.sql'),read('packages/authority/src/index.ts'),read('apps/api/src/server.ts'),read('apps/web/src/platform/authorityApi.ts'),read('apps/web/src/components/MandateEditor.tsx'),read('apps/web/src/components/WorkerWorkspace.tsx'),read('apps/web/src/components/WalletsView.tsx'),read('apps/web/src/components/SecurityAuthorityView.tsx'),read('packages/jobs/src/index.ts'),read('tests/viewport-layout.test.mjs'),read('docs/ROADMAP.md'),read('docs/MILESTONE-7.md'),read('docs/SECURITY-BOUNDARIES.md')
+]);
+const root=JSON.parse(rootRaw);
+if(root.version!=='0.10.0') throw new Error('M7 replacement must be AgentPlace v0.10.0.');
+if(!root.scripts?.['verify:milestone-7']||!root.scripts?.check?.includes('verify:milestone-7')) throw new Error('M7 verifier must be part of pnpm check.');
+for(const table of ['mandate','mandate_revision','authority_control_state','authority_decision','authority_budget_usage']) if(!migration.includes(`CREATE TABLE IF NOT EXISTS ${table}`)) throw new Error(`Missing M7 table ${table}.`);
+for(const invariant of ['MANDATE_REVISION_IMMUTABLE','REVOKED_MANDATE_CANNOT_RESURRECT','MANDATE_MUST_ACTIVATE_AFTER_REVISION',"status IN ('DRAFT','ACTIVE','PAUSED','EXPIRED','REVOKED')"]) if(!migration.includes(invariant)) throw new Error(`Missing M7 persistence invariant ${invariant}.`);
+for(const code of ['NO_MANDATE','MANDATE_PAUSED','MANDATE_REVOKED','MANDATE_EXPIRED','UNKNOWN_CAPABILITY','NETWORK_NOT_ALLOWED','ASSET_NOT_ALLOWED','CAPABILITY_NOT_ALLOWED','PER_ACTION_LIMIT_EXCEEDED','PERIOD_BUDGET_EXCEEDED','MAINNET_AUTONOMY_GATED']) if(!authority.includes(code)) throw new Error(`Authority engine missing ${code}.`);
+if(!authority.includes("accountMode !== 'agent-account'")||!authority.includes('ACT_MANDATE_HARD_LIMITS_REQUIRED')||!authority.includes('ACT_MANDATE_EXPIRY_REQUIRED')||!authority.includes('AUTHORITY_DECISION_STALE')) throw new Error('ACT WITHIN MANDATE must remain tightly bounded to Agent Accounts and hard limits.');
+if(!authority.includes("borrowingAllowed: /(?:allow|may|can|permitted to)")||!authority.includes("leverageAllowed: /(?:allow|may|can|permitted to)")) throw new Error('Natural-language drafting must default sensitive borrowing/leverage authority closed.');
+for(const route of ["'/api/v1/authority'","'/api/v1/mandates'","'/api/v1/mandates/translate'","'/api/v1/authority/evaluate'","'/api/v1/authority/control'","'/api/v1/authority/revoke-all'"]) if(!api.includes(route)) throw new Error(`Missing M7 API route ${route}.`);
+if(!authorityApi.includes('applyAuthorityState')||!authorityApi.includes('fetchAuthorityState')) throw new Error('Web state must hydrate durable authority.');
+if(!editor.includes('Draft structured fields')||!editor.includes('This never activates authority by itself')||!editor.includes('ACT WITHIN MANDATE requires an Agent Account')) throw new Error('Mandate editor must preserve review-first natural-language drafting and explicit ACT boundaries.');
+if(!worker.includes('No mandate · no Worker financial authority.')||!worker.includes('Edit authority')) throw new Error('Worker Workspace must expose M7 authority clearly.');
+if(!wallets.includes('AccountAuthorityPanel')||!wallets.includes('Set Worker authority')||!wallets.includes('Revoke')) throw new Error('Wallet/account surfaces must show and revoke Worker authority.');
+if(!security.includes('Mandates & authority')||!security.includes('Recent authority decisions')||!security.includes('revokeAllDurableAuthority')||!security.includes('setAuthorityControl(target, true)')) throw new Error('Security & Authority must expose durable mandates, decisions and revocation.');
+if(!jobs.includes("r.event_type.startsWith('mandate.')")||!jobs.includes("?'authority'")) throw new Error('Authority events must feed Activity.');
+if(!viewport.includes("MandateEditor.tsx")) throw new Error('M7 mandate dialog must be covered by viewport regression testing.');
+if(!roadmap.includes('Milestone 7 — Mandates + Authority Engine')||!milestone.includes('Default authority = none')||!securityDoc.includes('Mandates + Authority Engine')) throw new Error('M7 documentation is incomplete.');
+for(const forbidden of ['privateKey','seedPhrase','seed_phrase']) if(migration.includes(forbidden)) throw new Error(`Authority schema must not store ${forbidden}.`);
+console.log('PASS: Milestone 7 adds durable versioned mandates, deterministic fail-closed authority decisions, separated budgets, approval policy, account/Worker authority UX, audit evidence and permanent revocation without enabling unrestricted execution.');
