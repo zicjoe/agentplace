@@ -40,7 +40,7 @@ AgentPlace also has a supply-side model: experts can turn methods into Workers o
 
 | Build metadata | Value |
 |---|---|
-| Version | `v0.10.0` Milestone 7 Mandates + Authority Engine candidate |
+| Version | `v0.11.0` Milestone 7 Mandates + Authority Engine candidate |
 | Production app | https://www.agentplace.tech |
 | Frontend | Vercel |
 | API + background Worker | Railway |
@@ -444,13 +444,13 @@ M5    Router v1
 M5B.1 Core crypto intelligence fabric
 M5B.2 Telegraph integration through M5B.2.3; M5B.2.4 paid live acceptance deliberately deferred
 M6    Wallet Foundation — v0.9.1 frozen (viewport/layout hardened)
-M7    Mandates + Authority Engine — v0.10.0 candidate
+M7    Mandates + Authority Engine — v0.10.0 frozen
+M8    Action Preparation + Action Review — v0.11.0 candidate
 ```
 
 Next major platform layers include:
 
 ```text
-M7    Mandates + Authority Engine
 M8    Action Preparation + Action Review
 M9    Testnet Execution + Observation
 M10   Settlement + Verification + Receipts

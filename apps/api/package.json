@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/api",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -29,6 +29,8 @@
     "@agent-place/router": "workspace:*",
     "@agent-place/intelligence": "workspace:*",
     "@agent-place/wallets": "workspace:*",
-    "@agent-place/authority": "workspace:*"
+    "@agent-place/authority": "workspace:*",
+    "@agent-place/execution": "workspace:*",
+    "@agent-place/risk": "workspace:*"
   }
 }

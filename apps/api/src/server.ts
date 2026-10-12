@@ -40,6 +40,17 @@ import {
   type MandatePolicyInput,
   type NetworkPolicyRef,
 } from '@agent-place/authority';
+import {
+  createFinancialAction,
+  decideActionApproval,
+  getFinancialAction,
+  listFinancialActions,
+  prepareFinancialAction,
+  createServiceCostReview,
+  decideServiceCostReview,
+  type CreateFinancialActionInput,
+  type FinancialActionKind,
+} from '@agent-place/execution';
 import { getRouteDecisionForJob } from '@agent-place/router';
 import { listJobIntelligenceEvidence } from '@agent-place/intelligence';
 import { createJob, enqueueIntelligenceTask, getIntelligenceTask, getLatestIntelligenceTask, getJob, getJobEvidence, jobStatuses, listActivity, listJobs, setJobConversation, type JobDraft } from '@agent-place/jobs';
@@ -260,6 +271,31 @@ function parseActionEnvelope(value: unknown): ActionEnvelope {
     envelope.borrowing = row.borrowing;
   }
   return envelope;
+}
+
+function parseFinancialActionInput(value: unknown): CreateFinancialActionInput {
+  const body=asRecord(value);
+  const actionType=body.actionType;
+  if(actionType!=='transfer'&&actionType!=='swap'&&actionType!=='bridge') throw new Error('INVALID_FINANCIAL_ACTION_TYPE');
+  const env=parseEnvironment(body.environment);
+  const parseNet=(raw:unknown)=>{const n=asRecord(raw);return {family:requiredString(n.family,'INVALID_ACTION_NETWORK',64),networkId:requiredString(n.networkId,'INVALID_ACTION_NETWORK',128)};};
+  const out:CreateFinancialActionInput={
+    accountId:requiredString(body.accountId,'INVALID_ACTION_ACCOUNT',160), environment:env, actionType:actionType as FinancialActionKind,
+    title:requiredString(body.title,'INVALID_ACTION_TITLE',200), rationale:requiredString(body.rationale,'INVALID_ACTION_RATIONALE',2000),
+    network:parseNet(body.network), asset:requiredString(body.asset,'INVALID_ACTION_ASSET',128), amountDisplay:requiredString(body.amountDisplay,'INVALID_ACTION_AMOUNT',128),
+  };
+  if(body.workerId!==undefined) out.workerId=requiredString(body.workerId,'INVALID_ACTION_WORKER',128);
+  if(body.jobId!==undefined) out.jobId=requiredString(body.jobId,'INVALID_ACTION_JOB',128);
+  if(body.destinationNetwork!==undefined) out.destinationNetwork=parseNet(body.destinationNetwork);
+  if(body.assetAddress!==undefined) out.assetAddress=requiredString(body.assetAddress,'INVALID_ACTION_ASSET_ADDRESS',160);
+  if(body.outputAsset!==undefined) out.outputAsset=requiredString(body.outputAsset,'INVALID_ACTION_OUTPUT_ASSET',128);
+  if(body.outputAssetAddress!==undefined) out.outputAssetAddress=requiredString(body.outputAssetAddress,'INVALID_ACTION_OUTPUT_ASSET_ADDRESS',160);
+  if(body.amountAtomic!==undefined) out.amountAtomic=requiredString(body.amountAtomic,'INVALID_ACTION_ATOMIC_AMOUNT',100);
+  if(body.valueUsd!==undefined) out.valueUsd=requiredString(body.valueUsd,'INVALID_ACTION_VALUE',64);
+  if(body.protocol!==undefined) out.protocol=requiredString(body.protocol,'INVALID_ACTION_PROTOCOL',128);
+  if(body.destination!==undefined) out.destination=requiredString(body.destination,'INVALID_ACTION_DESTINATION',256);
+  if(body.slippageBps!==undefined){ if(typeof body.slippageBps!=='number'||!Number.isInteger(body.slippageBps)) throw new Error('INVALID_ACTION_SLIPPAGE'); out.slippageBps=body.slippageBps; }
+  return out;
 }
 
 function isJobDraft(value: unknown): value is JobDraft {
@@ -717,6 +753,43 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     const [mandates, controls] = await Promise.all([listMandates(identity.appUserId), getAuthorityControlState(identity.appUserId)]);
     writeJson(res, 200, { revokedCount, mandates, controls });
     return;
+  }
+
+
+  if (url.pathname === '/api/v1/actions' && req.method === 'GET') {
+    const identity=await requireIdentity(req);
+    writeJson(res,200,{actions:await listFinancialActions(identity.appUserId,100)}); return;
+  }
+  if (url.pathname === '/api/v1/actions' && req.method === 'POST') {
+    const identity=await requireIdentity(req); const body=asRecord(await readJson(req));
+    const action=await createFinancialAction(identity.appUserId,parseFinancialActionInput(body.action));
+    writeJson(res,201,{action}); return;
+  }
+  const actionPrepareMatch=url.pathname.match(/^\/api\/v1\/actions\/([^/]+)\/prepare$/);
+  if(actionPrepareMatch&&req.method==='POST'){
+    const identity=await requireIdentity(req); const action=await prepareFinancialAction(identity.appUserId,decodeURIComponent(actionPrepareMatch[1]??''),{mainnetAutonomyEnabled:environment.mainnetAutonomyEnabled});
+    writeJson(res,200,{action}); return;
+  }
+  const actionApprovalMatch=url.pathname.match(/^\/api\/v1\/actions\/([^/]+)\/approval$/);
+  if(actionApprovalMatch&&req.method==='POST'){
+    const identity=await requireIdentity(req); const body=asRecord(await readJson(req));
+    if(body.decision!=='APPROVED'&&body.decision!=='REJECTED') throw new Error('INVALID_ACTION_APPROVAL_DECISION');
+    writeJson(res,200,await decideActionApproval(identity.appUserId,decodeURIComponent(actionApprovalMatch[1]??''),body.decision)); return;
+  }
+  const actionMatch=url.pathname.match(/^\/api\/v1\/actions\/([^/]+)$/);
+  if(actionMatch&&req.method==='GET'){
+    const identity=await requireIdentity(req); const action=await getFinancialAction(identity.appUserId,decodeURIComponent(actionMatch[1]??''));
+    if(!action)return writeJson(res,404,{error:'not_found',message:'Financial action not found.',requestId}); writeJson(res,200,{action}); return;
+  }
+  if(url.pathname==='/api/v1/service-cost-reviews'&&req.method==='POST'){
+    const identity=await requireIdentity(req); const body=asRecord(await readJson(req));
+    const review=await createServiceCostReview(identity.appUserId,{provider:requiredString(body.provider,'INVALID_SERVICE_PROVIDER',128),serviceDescription:requiredString(body.serviceDescription,'INVALID_SERVICE_DESCRIPTION',500),amountUsd:requiredString(body.amountUsd,'INVALID_SERVICE_COST',64),...(body.thresholdUsd!==undefined?{thresholdUsd:requiredString(body.thresholdUsd,'INVALID_SERVICE_THRESHOLD',64)}:{}),...(body.expiresAt!==undefined?{expiresAt:requiredString(body.expiresAt,'INVALID_SERVICE_EXPIRY',80)}:{}),...(body.workerId!==undefined?{workerId:requiredString(body.workerId,'INVALID_SERVICE_WORKER',128)}:{}),...(body.jobId!==undefined?{jobId:requiredString(body.jobId,'INVALID_SERVICE_JOB',128)}:{})});
+    writeJson(res,201,{review}); return;
+  }
+  const serviceReviewMatch=url.pathname.match(/^\/api\/v1\/service-cost-reviews\/([^/]+)\/decision$/);
+  if(serviceReviewMatch&&req.method==='POST'){
+    const identity=await requireIdentity(req); const body=asRecord(await readJson(req)); if(body.decision!=='APPROVED'&&body.decision!=='REJECTED')throw new Error('INVALID_SERVICE_COST_DECISION');
+    writeJson(res,200,{review:await decideServiceCostReview(identity.appUserId,decodeURIComponent(serviceReviewMatch[1]??''),body.decision)}); return;
   }
 
   if (url.pathname === '/api/v1/jobs' && req.method === 'GET') {

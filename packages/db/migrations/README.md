@@ -15,3 +15,8 @@ Production deployment must apply migrations through a controlled release job wit
 ## 0011_mandates_authority.sql
 
 Adds M7 durable Mandates with immutable policy revisions, deterministic authority decision evidence, separate capital/transaction/period/service budget fields, owner/environment autonomy pause state, and idempotent authority budget usage accounting. Revoked Mandates are guarded against resurrection at the database boundary.
+
+
+## 0012_action_preparation_review.sql
+
+Adds M8 durable Financial Actions, immutable prepared revisions/digests, quote/preflight/risk evidence, exact-action approvals, and separate service-cost reviews. It adds no signer, private-key custody or transaction submission path.

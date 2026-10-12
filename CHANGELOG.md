@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.11.0 — M8 Action Preparation + Action Review
+
+- Added durable Financial Actions and immutable preparation revisions.
+- Added real LI.FI quote adapter with truthful unavailable/failure states.
+- Added RPC preflight, structured risk evidence, M7 Authority binding and exact-action approvals.
+- Added quote refresh/revision invalidation and separate Service Cost Review persistence.
+- Production Action Review now states explicitly that M8 does not sign or submit transactions.
+- Added migration `0012_action_preparation_review.sql`, M8 verifier and manual testing guide.
+
 ## 0.10.0 — Milestone 7 Mandates + Authority Engine
 
 - Added durable owner-scoped Mandates with immutable revisions and Draft/Active/Paused/Expired/Revoked lifecycle.

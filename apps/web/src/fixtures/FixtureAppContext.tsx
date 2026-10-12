@@ -54,6 +54,7 @@ import { createDurableJob, fetchWorkState, installDurableWorker } from '../platf
 import { fetchWalletState } from '../platform/walletApi';
 import { fetchAuthorityState } from '../platform/authorityApi';
 import { isJobConversation } from '../platform/conversationNavigation';
+import { createAction, prepareAction } from '../platform/actionApi';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -2223,6 +2224,29 @@ export function runGenericManagerResponse(
 // ── Bridge flow ───────────────────────────────────────────────────────────────
 
 export function runBridgeFlow(dispatch: React.Dispatch<Action>, convId: string) {
+  if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+    const msgId=uid();
+    dispatch({type:'ADD_MSG',convId,msg:{id:msgId,role:'manager',content:'',timestamp:new Date(),isStreaming:true}});
+    void (async()=>{
+      try {
+        const walletState=await fetchWalletState();
+        const wallet=walletState.wallets.find(w=>w.mode==='connected'&&!w.disconnected);
+        if(!wallet){dispatch({type:'UPDATE_MSG',convId,msgId,updates:{content:'Connect an EVM wallet before preparing this bridge. Connecting still grants no spending authority.',isStreaming:false,uiCard:'connect-wallet-cta'}});return;}
+        const address=wallet.address;
+        const created=await createAction({
+          accountId:wallet.id, environment:'mainnet', actionType:'bridge', title:'Bridge 500 USDC · Arbitrum → Base',
+          rationale:'You asked AgentPlace to move 500 USDC from Arbitrum to Base using the best eligible route.',
+          network:{family:'evm',networkId:'arbitrum'}, destinationNetwork:{family:'evm',networkId:'base'}, asset:'USDC',
+          assetAddress:'0xaf88d065e77c8cC2239327C5EDb3A432268e5831', outputAsset:'USDC', outputAssetAddress:'0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+          amountDisplay:'500 USDC', amountAtomic:'500000000', valueUsd:'500', destination:address, slippageBps:50, protocol:'LI.FI'
+        });
+        const prepared=await prepareAction(created.id);
+        dispatch({type:'UPDATE_MSG',convId,msgId,updates:{content:prepared.status==='DENIED'?'I prepared the exact bridge action, but the deterministic authority/risk gates blocked it. Nothing was submitted. Open Action Review to see why.':prepared.status==='APPROVAL_REQUIRED'?'I prepared the exact bridge action with current quote/preflight evidence. It needs your approval. Nothing has been signed or submitted.':'The bridge action is inside current authority and is prepared for future execution infrastructure. Nothing has been signed or submitted.',isStreaming:false}});
+        dispatch({type:'SET_ACTIVE_ACTION',id:prepared.id});
+      } catch(error){dispatch({type:'UPDATE_MSG',convId,msgId,updates:{content:`I could not prepare a production bridge action: ${error instanceof Error?error.message:'unknown error'}. Nothing was submitted.`,isStreaming:false}});}
+    })();
+    return;
+  }
   const msg1Id = uid();
   const msg2Id = uid();
   const jobId = uid();

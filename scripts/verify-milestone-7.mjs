@@ -4,7 +4,7 @@ const [rootRaw,migration,authority,api,authorityApi,editor,worker,wallets,securi
   read('package.json'),read('packages/db/migrations/0011_mandates_authority.sql'),read('packages/authority/src/index.ts'),read('apps/api/src/server.ts'),read('apps/web/src/platform/authorityApi.ts'),read('apps/web/src/components/MandateEditor.tsx'),read('apps/web/src/components/WorkerWorkspace.tsx'),read('apps/web/src/components/WalletsView.tsx'),read('apps/web/src/components/SecurityAuthorityView.tsx'),read('packages/jobs/src/index.ts'),read('tests/viewport-layout.test.mjs'),read('docs/ROADMAP.md'),read('docs/MILESTONE-7.md'),read('docs/SECURITY-BOUNDARIES.md')
 ]);
 const root=JSON.parse(rootRaw);
-if(root.version!=='0.10.0') throw new Error('M7 replacement must be AgentPlace v0.10.0.');
+const [major,minor]=root.version.split('.').map(Number); if(major!==0||minor<10) throw new Error('Repository must preserve the M7 v0.10.0 baseline or a later 0.x production milestone.');
 if(!root.scripts?.['verify:milestone-7']||!root.scripts?.check?.includes('verify:milestone-7')) throw new Error('M7 verifier must be part of pnpm check.');
 for(const table of ['mandate','mandate_revision','authority_control_state','authority_decision','authority_budget_usage']) if(!migration.includes(`CREATE TABLE IF NOT EXISTS ${table}`)) throw new Error(`Missing M7 table ${table}.`);
 for(const invariant of ['MANDATE_REVISION_IMMUTABLE','REVOKED_MANDATE_CANNOT_RESURRECT','MANDATE_MUST_ACTIVATE_AFTER_REVISION',"status IN ('DRAFT','ACTIVE','PAUSED','EXPIRED','REVOKED')"]) if(!migration.includes(invariant)) throw new Error(`Missing M7 persistence invariant ${invariant}.`);

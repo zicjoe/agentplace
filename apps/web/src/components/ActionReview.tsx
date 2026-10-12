@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppState, useDispatch, uid, triggerBridgeExecution } from '../state/AppContext';
+import { decideAction, fetchAction, prepareAction, type ApiFinancialAction } from '../platform/actionApi';
+import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 
 const PERPS_ACTION_ID = '__perps-demo__';
 
@@ -68,19 +70,76 @@ export function ActionReview() {
   const [rejected, setRejected] = useState(false);
   const [showWalletSign, setShowWalletSign] = useState(false);
   const [walletSigned, setWalletSigned] = useState(false);
+  const [serverAction, setServerAction] = useState<ApiFinancialAction | null>(null);
+  const [serverBusy, setServerBusy] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   const actionId = state.activeActionId;
   const isPerpsDemo = actionId === PERPS_ACTION_ID;
 
-  const action = isPerpsDemo
-    ? PERPS_ACTION
-    : (state.financialActions ?? []).find((a) => a.id === actionId);
+  useEffect(() => {
+    if (!actionId?.startsWith('fa_') || WEB_RUNTIME_SETTINGS.dataMode !== 'api') { setServerAction(null); setServerError(null); return; }
+    let live=true; setServerBusy(true); setServerError(null);
+    void fetchAction(actionId).then((value)=>{if(live)setServerAction(value);}).catch((error)=>{if(live)setServerError(error instanceof Error?error.message:'Unable to load action.');}).finally(()=>{if(live)setServerBusy(false);});
+    return ()=>{live=false;};
+  }, [actionId]);
+
+  const durablePrepared=serverAction?.prepared;
+  const durableDecision=durablePrepared?.authorityDecision.decision;
+  const durablePseudo = serverAction ? {
+    id: serverAction.id,
+    title: serverAction.title,
+    actionType: serverAction.actionType,
+    economicEffect: serverAction.actionType === 'bridge'
+      ? `${serverAction.amountDisplay} will be prepared from ${serverAction.network.networkId} to ${serverAction.destinationNetwork?.networkId ?? 'destination network'}.`
+      : serverAction.actionType === 'swap'
+      ? `${serverAction.amountDisplay} ${serverAction.asset} -> ${serverAction.outputAsset ?? 'output asset'}.`
+      : `${serverAction.amountDisplay} ${serverAction.asset} will be prepared for the explicit destination.`,
+    rationale: serverAction.rationale,
+    authorityDecision: durableDecision === 'ALLOWED' ? 'within-mandate' as const : durableDecision === 'DENIED' ? 'blocked' as const : 'needs-approval' as const,
+    authorityReason: durablePrepared?.authorityDecision.reasons.map((r)=>r.message).join(' · ') || 'Preparing deterministic authority decision.',
+    risks: durablePrepared?.risk.checks.filter((c)=>c.status!=='PASS').map((c)=>`${c.label}: ${c.message}`) ?? [],
+    technicalDetails: {
+      'Capability': serverAction.capabilityId,
+      'Account': serverAction.accountId,
+      'Network': `${serverAction.network.family}:${serverAction.network.networkId}`,
+      ...(serverAction.destinationNetwork ? {'Destination network':`${serverAction.destinationNetwork.family}:${serverAction.destinationNetwork.networkId}`} : {}),
+      'Asset': serverAction.asset,
+      'Amount': serverAction.amountDisplay,
+      'Preparation revision': String(serverAction.currentRevision),
+      'Action digest': durablePrepared?.actionDigest ?? 'Not prepared',
+      'Quote': durablePrepared?.quote ? `${durablePrepared.quote.provider} · ${durablePrepared.quote.status}` : 'Not required / unavailable',
+      'Simulation': durablePrepared?.simulation.status ?? 'Not available',
+      'Risk': durablePrepared?.risk.status ?? 'Not assessed',
+      'Execution': 'Not enabled in M8',
+    },
+    workerId: serverAction.workerId,
+    workerName: undefined,
+    grantId: undefined,
+    mandateId: undefined,
+    agentAccountId: undefined,
+    walletId: serverAction.accountId,
+    environment: serverAction.environment,
+    amount: serverAction.amountDisplay,
+    asset: serverAction.asset,
+    protocol: serverAction.protocol,
+    network: serverAction.network.networkId,
+    status: serverAction.status === 'DENIED' ? 'blocked' as const : serverAction.status === 'REJECTED' ? 'rejected' as const : serverAction.status === 'READY_FOR_EXECUTION' ? 'approved' as const : 'pending-review' as const,
+    blockedReason: durableDecision === 'DENIED' ? durablePrepared?.authorityDecision.reasons.map((r)=>r.message).join(' · ') : undefined,
+    createdAt: new Date(serverAction.createdAt),
+  } : null;
+  const action = durablePseudo ?? (isPerpsDemo ? PERPS_ACTION : (state.financialActions ?? []).find((a) => a.id === actionId));
 
   function handleClose() {
     dispatch({ type: 'SET_ACTIVE_ACTION', id: null });
   }
 
   function handleApproveOnce() {
+    if (serverAction) {
+      setServerBusy(true); setServerError(null);
+      void decideAction(serverAction.id,'APPROVED').then((updated)=>{setServerAction(updated);setApproved(true);}).catch((error)=>setServerError(error instanceof Error?error.message:'Approval failed.')).finally(()=>setServerBusy(false));
+      return;
+    }
     if (!action || isPerpsDemo) {
       setApproved(true);
       return;
@@ -137,6 +196,11 @@ export function ActionReview() {
   }
 
   function handleReject() {
+    if (serverAction) {
+      setServerBusy(true); setServerError(null);
+      void decideAction(serverAction.id,'REJECTED').then((updated)=>{setServerAction(updated);setRejected(true);}).catch((error)=>setServerError(error instanceof Error?error.message:'Rejection failed.')).finally(()=>setServerBusy(false));
+      return;
+    }
     if (!action || isPerpsDemo) {
       setRejected(true);
       return;
@@ -149,9 +213,9 @@ export function ActionReview() {
 
   if (!action) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 backdrop-blur-sm">
-        <div className="bg-panel border border-border rounded-xl p-6 text-center">
-          <p className="text-sm text-text-muted">Action not found</p>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 backdrop-blur-sm px-4">
+        <div className="w-full max-w-sm bg-panel border border-border rounded-xl p-6 text-center">
+          <p className="text-sm text-text-muted">{serverBusy ? 'Loading prepared action…' : serverError ?? 'Action not found'}</p>
           <button onClick={handleClose} className="mt-3 text-xs text-primary hover:underline">Close</button>
         </div>
       </div>
@@ -202,7 +266,7 @@ export function ActionReview() {
               </svg>
               <p className="text-sm font-medium text-text mb-1">Approved once.</p>
               <p className="text-xs text-text-sub">This approval applies only to this exact action. No future authority was created.</p>
-              <p className="text-xs text-text-muted mt-2">Mock: In production, your wallet would sign the transaction now.</p>
+              <p className="text-xs text-text-muted mt-2">Ready for signature/execution infrastructure. M8 does not sign or submit transactions.</p>
               <button onClick={handleClose} className="mt-3 text-xs text-primary border border-primary/30 rounded px-3 py-1.5 hover:bg-primary-dim/20 transition-colors">
                 Return to work
               </button>
@@ -502,6 +566,13 @@ export function ActionReview() {
           </div>
         )}
 
+        {serverError && action && (
+          <div className="px-5 pb-3 shrink-0"><div className="border border-danger/30 rounded bg-danger/5 px-3 py-2 text-xs text-danger">{serverError}</div></div>
+        )}
+        {serverAction && !approved && !rejected && durablePrepared?.quote?.expiresAt && new Date(durablePrepared.quote.expiresAt).getTime() <= Date.now() && (
+          <div className="px-5 pb-3 shrink-0"><button disabled={serverBusy} onClick={()=>{setServerBusy(true);void prepareAction(serverAction.id).then(setServerAction).catch((e)=>setServerError(e instanceof Error?e.message:'Refresh failed.')).finally(()=>setServerBusy(false));}} className="w-full py-2.5 text-sm font-medium bg-primary text-white rounded disabled:opacity-50">Refresh quote and preparation</button></div>
+        )}
+
         {/* Actions footer */}
         {!approved && !rejected && !isUnsafe && (
           <div className="px-5 py-4 border-t border-border shrink-0 space-y-2">
@@ -553,7 +624,7 @@ export function ActionReview() {
                   onClick={handleApproveOnce}
                   className="w-full py-2.5 text-sm font-medium bg-primary text-white rounded hover:bg-primary-hover transition-colors"
                 >
-                  Approve once — continue to wallet
+                  Approve once — mark ready for signature
                 </button>
                 <button
                   onClick={handleReject}
@@ -595,7 +666,7 @@ export function ActionReview() {
         )}
       </div>
 
-      {showWalletSign && !walletSigned && (
+      {!serverAction && showWalletSign && !walletSigned && (
         <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-bg/90 backdrop-blur-sm px-4 py-4 sm:py-6">
           <div className="w-full max-w-sm my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto bg-panel border border-border rounded-xl px-5 py-6">
             <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim mb-3">Wallet · Sign transaction</p>
@@ -636,7 +707,7 @@ export function ActionReview() {
         </div>
       )}
 
-      {showWalletSign && walletSigned && (
+      {!serverAction && showWalletSign && walletSigned && (
         <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-bg/90 backdrop-blur-sm px-4 py-4 sm:py-6">
           <div className="w-full max-w-sm my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto bg-panel border border-border rounded-xl px-5 py-6 text-center">
             <svg className="w-6 h-6 text-accent mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

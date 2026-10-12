@@ -53,6 +53,12 @@ importers:
       '@agent-place/authority':
         specifier: workspace:*
         version: link:../../packages/authority
+      '@agent-place/execution':
+        specifier: workspace:*
+        version: link:../../packages/execution
+      '@agent-place/risk':
+        specifier: workspace:*
+        version: link:../../packages/risk
 
   apps/scheduler:
     dependencies:
@@ -185,7 +191,17 @@ importers:
         specifier: 8.23.1
         version: 8.23.1
 
-  packages/execution: {}
+  packages/execution:
+    dependencies:
+      '@agent-place/authority':
+        specifier: workspace:*
+        version: link:../authority
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
+      '@agent-place/risk':
+        specifier: workspace:*
+        version: link:../risk
 
   packages/jobs:
     dependencies:

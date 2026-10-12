@@ -30,3 +30,12 @@ Milestone 0 establishes boundaries before financial execution exists.
 - Mainnet autonomy remains behind the production runtime safety gate even if a mandate is otherwise valid.
 - M7 stores no private keys, seed phrases, signing secrets or session keys and adds no arbitrary signer/contract-call path.
 - Every authority evaluation is durably recorded with structured reasons; authority/mandate lifecycle facts project into Activity.
+
+
+## M8 Action Preparation boundary
+
+- Prepared actions are unsigned and immutable by revision; material refreshes create a new digest/revision and invalidate prior exact-action approvals.
+- Quote/provider output is evidence, never authority. Missing/failed quotes are shown truthfully.
+- Risk/preflight and Authority are separate gates. `READY_FOR_EXECUTION` does not mean signed, submitted or executed.
+- M8 contains no `eth_sendTransaction`, `eth_sendRawTransaction`, private-key, seed-phrase, session-key or arbitrary-contract-call execution path.
+- Service Cost Review is separate from wallet capital authority.
