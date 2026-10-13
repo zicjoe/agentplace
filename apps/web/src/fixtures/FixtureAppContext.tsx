@@ -2262,7 +2262,7 @@ export function runBridgeFlow(dispatch: React.Dispatch<Action>, convId: string) 
         const created=await createAction({
           accountId:wallet.id, environment:'mainnet', actionType:'bridge', title:'Bridge 500 USDC · Arbitrum → Base',
           rationale:'You asked AgentPlace to move 500 USDC from Arbitrum to Base using the best eligible route.',
-          network:{family:'evm',networkId:'arbitrum'}, destinationNetwork:{family:'evm',networkId:'base'}, asset:'USDC',
+          network:{family:'eip155',networkId:'arbitrum'}, destinationNetwork:{family:'eip155',networkId:'base'}, asset:'USDC',
           assetAddress:'0xaf88d065e77c8cC2239327C5EDb3A432268e5831', outputAsset:'USDC', outputAssetAddress:'0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
           amountDisplay:'500 USDC', amountAtomic:'500000000', valueUsd:'500', destination:address, slippageBps:50, protocol:'LI.FI'
         });

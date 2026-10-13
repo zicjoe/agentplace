@@ -18,3 +18,11 @@ test('M8 conversation renders a durable Action Review handoff', () => {
   assert.match(chat, /SET_ACTIVE_ACTION/);
   assert.match(types, /action-review:\$\{string\}/);
 });
+
+
+test('M8 bridge preparation uses the same canonical EVM network family as mandates', () => {
+  const worker = readFileSync('apps/worker/src/index.ts', 'utf8');
+  assert.match(worker, /network:\s*\{\s*family:\s*'eip155',\s*networkId:\s*sourceNetwork\s*\}/);
+  assert.match(worker, /destinationNetwork:\s*\{\s*family:\s*'eip155',\s*networkId:\s*destinationNetwork\s*\}/);
+  assert.doesNotMatch(worker, /network:\s*\{\s*family:\s*'evm',\s*networkId:\s*sourceNetwork\s*\}/);
+});
