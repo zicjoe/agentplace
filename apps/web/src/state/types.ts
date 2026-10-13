@@ -554,6 +554,7 @@ export interface AttentionItem {
 export interface DiscoverSupplyItem {
   id: string;
   type: 'worker' | 'workflow' | 'capability';
+  workerDefinitionId?: string;
   name: string;
   tagline: string;
   description: string;

@@ -1,4 +1,5 @@
 # Changelog
+- Fixed Execution Operator Discover installation to use the durable backend worker definition `w-execution`, so Add Worker persists in the production workforce instead of being reverted after a failed install.
 - Fixed a syntax error in the M8 Execution Operator Discover fixture caused by an unescaped apostrophe in the listing description.
 - Fixed M8 production action preparation JSONB persistence so PostgreSQL receives explicit JSON for authority reasons, prepared payloads, risk checks, quote evidence, and simulation evidence.
 - Fixed the M8 authority-test handoff by publishing Execution Operator in Discover and deep-linking contextual specialist views to the matching installable Worker listing.

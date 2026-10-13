@@ -539,6 +539,7 @@ export const MOCK_DISCOVER_SUPPLY: DiscoverSupplyItem[] = [
   {
     id: 'ds-exec-operator',
     type: 'worker',
+    workerDefinitionId: 'w-execution',
     name: 'Execution Operator',
     tagline: 'Prepares supported onchain actions for review under deterministic authority',
     description: "Coordinates supported transfer, swap, and bridge actions using AgentPlace's canonical action model. It prepares exact actions, quote and preflight evidence, and authority decisions. Signing and transaction submission remain separate and are not enabled in M8.",

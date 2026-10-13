@@ -79,7 +79,7 @@ export function DiscoverDetail() {
 
   if (!item) return null;
 
-  const installedWorkerId = item.type === 'worker' ? item.id.replace('ds-', 'w-') : null;
+  const installedWorkerId = item.type === 'worker' ? (item.workerDefinitionId ?? item.id.replace('ds-', 'w-')) : null;
   const isAdded = installedWorkerId ? state.workers.some((w) => w.id === installedWorkerId) : false;
 
   function handleAdd() {

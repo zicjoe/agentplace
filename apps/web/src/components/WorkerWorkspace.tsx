@@ -226,7 +226,7 @@ function ContextualWorkerWorkspace({
   const dispatch = useDispatch();
   const primaryJob = jobs[0];
   const discoverItem = (state.discoverSupply ?? []).find(
-    (item) => item.type === 'worker' && item.id.replace('ds-', 'w-') === worker.id
+    (item) => item.type === 'worker' && (item.workerDefinitionId ?? item.id.replace('ds-', 'w-')) === worker.id
   );
 
   return (
