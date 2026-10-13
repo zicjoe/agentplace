@@ -56,6 +56,9 @@ importers:
       '@agent-place/authority':
         specifier: workspace:*
         version: link:../../packages/authority
+      '@agent-place/execution':
+        specifier: workspace:*
+        version: link:../../packages/execution
       '@agent-place/risk':
         specifier: workspace:*
         version: link:../../packages/risk
@@ -111,9 +114,6 @@ importers:
       '@agent-place/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@agent-place/execution':
-        specifier: workspace:*
-        version: link:../../packages/execution
       '@agent-place/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs

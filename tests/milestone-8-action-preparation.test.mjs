@@ -7,3 +7,12 @@ test('M8 remains preparation-only and exact-action approvals are revision bound'
  assert.match(src,/actionDigest/); assert.match(src,/decision='INVALIDATED'/); assert.doesNotMatch(src,/eth_sendRawTransaction|eth_sendTransaction/);
 });
 test('M8 uses provider-neutral canonical action capabilities',()=>{const src=readFileSync('packages/execution/src/index.ts','utf8');assert.match(src,/asset\.transfer\.execute/);assert.match(src,/swap\.execute/);assert.match(src,/bridge\.execute/);});
+
+test('M8 serializes every JSONB action-preparation payload explicitly for PostgreSQL',()=>{
+ const src=readFileSync('packages/execution/src/index.ts','utf8');
+ assert.match(src,/prepared_payload,validation[\s\S]*\$5::jsonb,\$6::jsonb[\s\S]*\$9::jsonb[\s\S]*\$11::jsonb/);
+ assert.match(src,/JSON\.stringify\(authority\.reasons\)/);
+ assert.match(src,/JSON\.stringify\(risk\.checks\)/);
+ assert.match(src,/rawEvidence\?JSON\.stringify\(quoteResult\.quote\.rawEvidence\):null/);
+ assert.match(src,/sim\.evidence\?JSON\.stringify\(sim\.evidence\):null/);
+});

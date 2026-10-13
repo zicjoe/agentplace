@@ -1,4 +1,5 @@
 # Changelog
+- Fixed M8 production action preparation JSONB persistence so PostgreSQL receives explicit JSON for authority reasons, prepared payloads, risk checks, quote evidence, and simulation evidence.
 
 - M8 production Manager bridge handoff now creates/prepares the durable action and exposes Action Review instead of falling through to the legacy read-only Router response.
 
