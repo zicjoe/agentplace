@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { listCanonicalCapabilities } from '@agent-place/capabilities';
 import { addMessage, createConversation, getIntelligenceContext } from '@agent-place/context';
 import { closeDatabasePool, getDatabasePool } from '@agent-place/db';
+import { createFinancialAction, prepareFinancialAction } from '@agent-place/execution';
 import {
   addJobEvidence,
   appendJobEvent,
@@ -53,7 +54,8 @@ export const service = defineService({
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const pollMs = Math.max(500, Number.parseInt(process.env.AI_WORKER_POLL_MS ?? '1500', 10) || 1500);
 let stopping = false;
-const deploymentEnvironment = parseEnvironmentContract(process.env).environment;
+const environmentContract = parseEnvironmentContract(process.env);
+const deploymentEnvironment = environmentContract.environment;
 
 const decisionSchema = {
   type: 'object',
@@ -247,7 +249,7 @@ async function decide(task: IntelligenceTask, context: IntelligenceContextValue)
   const available = capabilities.filter((capability) => capability.lifecycleStatus !== 'planned').map((capability) => capability.id);
   const knownCapabilityIds = new Set(capabilities.map((capability) => capability.id));
   const capabilityCatalog = capabilities.map((capability) => `${capability.id} [${capability.lifecycleStatus}] — ${capability.purpose}`).join('\n');
-  const system = `You are AgentPlace Manager, the orchestration intelligence for a crypto Worker operating system. Convert the user's request into a bounded structured proposal for the deterministic AgentPlace Router. Use a Job for requests needing current research, comparison, multiple steps, evidence, or specialist work. Use direct only for simple conversational guidance that does not require current external facts. Never claim wallet authority, financial execution, live onchain facts, or capabilities that are not available. Router v1 is read-only: if the user asks AgentPlace to move funds or execute a financial action, do not pretend execution exists; explain that execution is not available in this milestone. Choose the smallest competent Worker team. For research Jobs, researchRequirements must enumerate every material dimension the user asked to have answered, including any dimension that may be unavailable. Do not collapse distinct requested checks into one vague item. intentDomain should be a short stable domain label such as research, token-intelligence, wallet-intelligence, portfolio, defi, stablecoins, perps, transactions, or create. requestedNetworks should contain only networks explicitly relevant to the request; otherwise use an empty array. Always use canonical network IDs exactly: ethereum, base, arbitrum, bnb, solana, or the explicit testnet IDs allowed by the schema. Never put display labels such as \"Arbitrum One (42161)\" into requestedNetworks. requiredCapabilities must include every known canonical capability ID materially required by the request even when its lifecycle is planned; this is planning metadata and does not make it available. optionalCapabilities are useful but non-essential capabilities. capabilityGraph must describe the proposed dependency order using only capability IDs from requiredCapabilities or optionalCapabilities. intelligenceSubjects must identify the concrete assets/addresses/protocols needed by routed intelligence capabilities. Use kind token for tokens, wallet for wallet addresses, protocol for DeFi protocols, and stablecoin for stablecoins. query should be a concise symbol/name/address. Include network/address when the user supplies them or they are unambiguous; otherwise leave those strings empty so the intelligence fabric can resolve safely. Do not invent contract addresses. The deterministic Router will validate Workers, capability lifecycle, environment, provider configuration, health, networks and read/write boundaries after your proposal. Never invent capability IDs outside the catalog.
+  const system = `You are AgentPlace Manager, the orchestration intelligence for a crypto Worker operating system. Convert the user's request into a bounded structured proposal for the deterministic AgentPlace Router. Use a Job for requests needing current research, comparison, multiple steps, evidence, or specialist work. Use direct only for simple conversational guidance that does not require current external facts. Never claim wallet authority, signing, submission, settlement, live onchain facts, or capabilities that are not available. Router v1 remains read-only for research Jobs. M8 can prepare supported financial actions before this planner runs, but it still cannot sign or submit transactions; if an unsupported financial request reaches this planner, explain the exact limitation rather than claiming execution. Choose the smallest competent Worker team. For research Jobs, researchRequirements must enumerate every material dimension the user asked to have answered, including any dimension that may be unavailable. Do not collapse distinct requested checks into one vague item. intentDomain should be a short stable domain label such as research, token-intelligence, wallet-intelligence, portfolio, defi, stablecoins, perps, transactions, or create. requestedNetworks should contain only networks explicitly relevant to the request; otherwise use an empty array. Always use canonical network IDs exactly: ethereum, base, arbitrum, bnb, solana, or the explicit testnet IDs allowed by the schema. Never put display labels such as \"Arbitrum One (42161)\" into requestedNetworks. requiredCapabilities must include every known canonical capability ID materially required by the request even when its lifecycle is planned; this is planning metadata and does not make it available. optionalCapabilities are useful but non-essential capabilities. capabilityGraph must describe the proposed dependency order using only capability IDs from requiredCapabilities or optionalCapabilities. intelligenceSubjects must identify the concrete assets/addresses/protocols needed by routed intelligence capabilities. Use kind token for tokens, wallet for wallet addresses, protocol for DeFi protocols, and stablecoin for stablecoins. query should be a concise symbol/name/address. Include network/address when the user supplies them or they are unambiguous; otherwise leave those strings empty so the intelligence fabric can resolve safely. Do not invent contract addresses. The deterministic Router will validate Workers, capability lifecycle, environment, provider configuration, health, networks and read/write boundaries after your proposal. Never invent capability IDs outside the catalog.
 
 Workers:
 ${catalog.map((worker) => `${worker.id}: ${worker.name} — ${worker.responsibility}`).join('\n')}
@@ -332,6 +334,7 @@ async function addAssistantMessage(
   worker?: { name: string; role: string },
   jobId?: string,
   messageId?: string,
+  uiCard?: string,
 ): Promise<void> {
   const now = new Date().toISOString();
   await addMessage(ownerUserId, conversationId, {
@@ -340,6 +343,7 @@ async function addAssistantMessage(
     ...(worker ? { specialist: worker } : {}),
     content,
     ...(jobId ? { jobId } : {}),
+    ...(uiCard ? { uiCard } : {}),
     createdAt: now,
     updatedAt: now,
   });
@@ -578,9 +582,123 @@ ${coverageInstructions}`;
   }
 }
 
+
+function canonicalEvmNetwork(value: string): string | undefined {
+  const normalized = value.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  const aliases: Record<string, string> = {
+    'ethereum': 'ethereum', 'eth': 'ethereum', 'mainnet': 'ethereum',
+    'base': 'base', 'arbitrum': 'arbitrum', 'arbitrum one': 'arbitrum',
+    'bnb': 'bnb', 'bnb chain': 'bnb', 'bsc': 'bnb',
+    'ethereum sepolia': 'ethereum-sepolia', 'sepolia': 'ethereum-sepolia',
+    'base sepolia': 'base-sepolia', 'arbitrum sepolia': 'arbitrum-sepolia',
+    'bnb testnet': 'bnb-testnet',
+  };
+  return aliases[normalized];
+}
+
+function knownAssetAddress(networkId: string, asset: string): string | undefined {
+  if (asset.toUpperCase() !== 'USDC') return undefined;
+  const addresses: Record<string, string> = {
+    ethereum: '0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+    arbitrum: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+    base: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+  };
+  return addresses[networkId];
+}
+
+function decimalToAtomic(amount: string, decimals: number): string | undefined {
+  if (!/^\d+(?:\.\d+)?$/.test(amount)) return undefined;
+  const [whole, fraction = ''] = amount.split('.');
+  if (fraction.length > decimals) return undefined;
+  const atomic = `${whole}${fraction.padEnd(decimals, '0')}`.replace(/^0+(?=\d)/, '');
+  return atomic || '0';
+}
+
+function authorityEnvironmentForNetwork(networkId: string): 'mainnet' | 'testnet' {
+  return /(sepolia|holesky|testnet|devnet)/.test(networkId) ? 'testnet' : 'mainnet';
+}
+
+async function tryPrepareBridgeRequest(task: IntelligenceTask, context: IntelligenceContextValue): Promise<boolean> {
+  if (context.scope !== 'manager') return false;
+  const user = lastUserMessage(context).trim();
+  const match = user.match(/\bbridge\s+(\d+(?:\.\d+)?)\s+([A-Za-z0-9._-]+)\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+using\b|\s+with\b|[.!?]|$)/i);
+  if (!match) return false;
+
+  const amount = match[1] ?? '';
+  const asset = (match[2] ?? '').toUpperCase();
+  const sourceNetwork = canonicalEvmNetwork(match[3] ?? '');
+  const destinationNetwork = canonicalEvmNetwork(match[4] ?? '');
+  if (!sourceNetwork || !destinationNetwork) {
+    await addAssistantMessage(task.ownerUserId, context.conversationId, 'I can prepare this bridge, but I need supported source and destination networks before I can create an exact action. Nothing was submitted.');
+    return true;
+  }
+
+  const walletResult = await getDatabasePool().query<{ id: string; address: string }>(
+    `SELECT id,address FROM wallet_resource WHERE owner_user_id=$1 AND mode='connected' AND namespace='eip155' AND status='active' AND removed_at IS NULL AND address IS NOT NULL ORDER BY updated_at DESC`,
+    [task.ownerUserId],
+  );
+  if (walletResult.rows.length === 0) {
+    await addAssistantMessage(task.ownerUserId, context.conversationId, 'Connect an EVM wallet before preparing this bridge. Connecting still grants no spending authority.', undefined, undefined, undefined, 'connect-wallet-cta');
+    return true;
+  }
+  if (walletResult.rows.length > 1) {
+    await addAssistantMessage(task.ownerUserId, context.conversationId, 'You have more than one connected EVM wallet. Choose the account you want to use before I prepare an exact bridge action. Nothing was submitted.');
+    return true;
+  }
+
+  const wallet = walletResult.rows[0]!;
+  const amountAtomic = asset === 'USDC' || asset === 'USDT' ? decimalToAtomic(amount, 6) : undefined;
+  const sourceAssetAddress = knownAssetAddress(sourceNetwork, asset);
+  const destinationAssetAddress = knownAssetAddress(destinationNetwork, asset);
+  const created = await createFinancialAction(task.ownerUserId, {
+    accountId: wallet.id,
+    environment: authorityEnvironmentForNetwork(sourceNetwork),
+    actionType: 'bridge',
+    title: `Bridge ${amount} ${asset} - ${sourceNetwork} to ${destinationNetwork}`,
+    rationale: user,
+    network: { family: 'evm', networkId: sourceNetwork },
+    destinationNetwork: { family: 'evm', networkId: destinationNetwork },
+    asset,
+    outputAsset: asset,
+    amountDisplay: `${amount} ${asset}`,
+    ...(asset === 'USDC' || asset === 'USDT' ? { valueUsd: amount } : {}),
+    destination: wallet.address,
+    protocol: 'LI.FI',
+    slippageBps: 50,
+    ...(amountAtomic ? { amountAtomic } : {}),
+    ...(sourceAssetAddress ? { assetAddress: sourceAssetAddress } : {}),
+    ...(destinationAssetAddress ? { outputAssetAddress: destinationAssetAddress } : {}),
+  });
+  const prepared = await prepareFinancialAction(task.ownerUserId, created.id, {
+    mainnetAutonomyEnabled: environmentContract.mainnetAutonomyEnabled,
+  });
+  const authorityText = prepared.prepared?.authorityDecision.decision === 'DENIED'
+    ? 'The deterministic authority rules blocked it.'
+    : prepared.prepared?.authorityDecision.decision === 'APPROVAL_REQUIRED'
+      ? 'It needs your approval.'
+      : 'It is within current authority and is ready for future execution infrastructure.';
+  const quoteText = prepared.prepared?.quote
+    ? ` Quote: ${prepared.prepared.quote.provider} ${prepared.prepared.quote.status}.`
+    : ' No executable quote was available.';
+  await addAssistantMessage(
+    task.ownerUserId,
+    context.conversationId,
+    `I prepared the exact bridge action. ${authorityText}${quoteText} Nothing has been signed or submitted.`,
+    undefined,
+    undefined,
+    `msg_action_prepared_${task.id}`,
+    `action-review:${prepared.id}`,
+  );
+  return true;
+}
+
 async function processTask(task: IntelligenceTask): Promise<void> {
   const context = await getIntelligenceContext(task.ownerUserId, task.conversationId);
   if (!context) throw new Error('INTELLIGENCE_CONTEXT_NOT_FOUND');
+  if (await tryPrepareBridgeRequest(task, context)) {
+    await completeIntelligenceTask(task.id);
+    return;
+  }
   const decision = await decide(task, context);
 
   if (decision.responseMode === 'clarify') {

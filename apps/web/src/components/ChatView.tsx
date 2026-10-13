@@ -676,6 +676,11 @@ export function ChatView() {
   const bridgeCompletionMsg = [...conv.messages].reverse().find((m) => m.uiCard === 'bridge-completion');
   const showBridgeCompletion = !!bridgeCompletionMsg && !isStreaming;
 
+  // durable M8 action review
+  const actionReviewMsg = [...conv.messages].reverse().find((m) => m.uiCard?.startsWith('action-review:'));
+  const actionReviewId = actionReviewMsg?.uiCard?.startsWith('action-review:') ? actionReviewMsg.uiCard.slice('action-review:'.length) : undefined;
+  const showActionReview = !!actionReviewId && !isStreaming;
+
   return (
     <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       {/* Header */}
@@ -939,6 +944,25 @@ export function ChatView() {
           {/* bridge-completion */}
           {showBridgeCompletion && (
             <BridgeCompletionCard jobId={bridgeCompletionMsg!.jobId} convId={conv.id} />
+          )}
+
+          {/* durable M8 action-review */}
+          {showActionReview && (
+            <div className="flex justify-center pt-2">
+              <div className="border border-primary/20 rounded-lg px-5 py-4 bg-primary-dim/5 max-w-md w-full">
+                <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">Financial action prepared</p>
+                <p className="text-sm font-medium text-text mb-1">Review the exact action</p>
+                <p className="text-xs text-text-sub mb-4 leading-relaxed">
+                  Inspect the current quote, preflight, risk and deterministic authority decision. Nothing has been signed or submitted.
+                </p>
+                <button
+                  onClick={() => dispatch({ type: 'SET_ACTIVE_ACTION', id: actionReviewId! })}
+                  className="w-full px-4 py-2.5 bg-primary text-white text-sm rounded font-medium hover:bg-primary-hover transition-colors"
+                >
+                  Open Action Review
+                </button>
+              </div>
+            </div>
           )}
 
           {productionConversation && (

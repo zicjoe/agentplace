@@ -1,5 +1,7 @@
 # Changelog
 
+- M8 production Manager bridge handoff now creates/prepares the durable action and exposes Action Review instead of falling through to the legacy read-only Router response.
+
 ## v0.11.0 — M8 Action Preparation + Action Review
 
 - Added durable Financial Actions and immutable preparation revisions.

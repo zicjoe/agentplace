@@ -8,6 +8,12 @@ for(const token of ['financial_action','prepared_action_revision','action_quote'
 const execution=readFileSync('packages/execution/src/index.ts','utf8');
 for(const token of ['createFinancialAction','prepareFinancialAction','decideActionApproval','LI.FI','READY_FOR_EXECUTION','Nothing submitted','createServiceCostReview']) if(!execution.includes(token)) throw new Error(`M8 execution missing ${token}`);
 if(/sendTransaction|eth_sendTransaction|eth_sendRawTransaction|privateKey|seed phrase/i.test(execution)) throw new Error('M8 must not sign or submit transactions or handle raw secrets.');
+
+const worker=readFileSync('apps/worker/src/index.ts','utf8');
+for(const token of ['tryPrepareBridgeRequest','createFinancialAction','prepareFinancialAction','action-review:','Nothing has been signed or submitted']) if(!worker.includes(token)) throw new Error(`M8 production Manager action handoff missing ${token}`);
+if(worker.includes('Router v1 is read-only: if the user asks AgentPlace to move funds or execute a financial action')) throw new Error('M8 worker still contains the legacy blanket read-only financial-action response.');
+const chatView=readFileSync('apps/web/src/components/ChatView.tsx','utf8');
+for(const token of ['action-review:','Open Action Review','Nothing has been signed or submitted']) if(!chatView.includes(token)) throw new Error(`M8 conversation Action Review handoff missing ${token}`);
 const actionReview=readFileSync('apps/web/src/components/ActionReview.tsx','utf8');
 for(const token of ['M8 does not sign or submit transactions','mark ready for signature','max-h-[92vh]','overflow-y-auto']) if(!actionReview.includes(token)) throw new Error(`M8 Action Review missing ${token}`);
 console.log('PASS: M8 Action Preparation + Action Review has durable exact-action preparation, quote/preflight/risk evidence, deterministic authority binding, exact-action approval, service-cost separation, and no signing/submission.');

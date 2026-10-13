@@ -3,7 +3,7 @@
 Use production/testnet accounts carefully. M8 must move **zero funds**.
 
 1. Run `pnpm check`.
-2. At 100% browser zoom, open a Manager conversation and ask: `Bridge 500 USDC from Arbitrum to Base using the best route.`
+2. At 100% browser zoom, open a signed-in Manager conversation and ask: `Bridge 500 USDC from Arbitrum to Base using the best route.` The production intelligence worker must create a durable Financial Action instead of returning the legacy read-only milestone message.
 3. If no Connected Wallet exists, AgentPlace should ask you to connect one and should not fabricate a quote.
 4. With a Connected Wallet and no mandate, preparation should fail closed at deterministic authority. Action Review must say nothing was submitted/no funds moved.
 5. Give Execution Operator a PREPARE mandate for that account/environment/network/capability, then retry. The prepared action should require exact human approval rather than claim execution.

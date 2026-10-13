@@ -29,7 +29,7 @@
     "migrate": "pnpm db:migrate && pnpm auth:migrate",
     "verify:milestone-2": "node scripts/verify-milestone-2.mjs",
     "verify:milestone-3": "node scripts/verify-milestone-3.mjs",
-    "build:worker": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db build && pnpm --filter @agent-place/context build && pnpm --filter @agent-place/workers build && pnpm --filter @agent-place/jobs build && pnpm --filter @agent-place/capabilities build && pnpm --filter @agent-place/models build && pnpm --filter @agent-place/telegraph build && pnpm --filter @agent-place/router build && pnpm --filter @agent-place/intelligence build && pnpm --filter @agent-place/worker build",
+    "build:worker": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db build && pnpm --filter @agent-place/authority build && pnpm --filter @agent-place/risk build && pnpm --filter @agent-place/execution build && pnpm --filter @agent-place/context build && pnpm --filter @agent-place/workers build && pnpm --filter @agent-place/jobs build && pnpm --filter @agent-place/capabilities build && pnpm --filter @agent-place/models build && pnpm --filter @agent-place/telegraph build && pnpm --filter @agent-place/router build && pnpm --filter @agent-place/intelligence build && pnpm --filter @agent-place/worker build",
     "start:worker": "pnpm --filter @agent-place/worker start",
     "verify:milestone-4": "node scripts/verify-milestone-4.mjs",
     "verify:milestone-5": "node scripts/verify-milestone-5.mjs",

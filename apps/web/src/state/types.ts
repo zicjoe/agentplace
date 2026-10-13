@@ -48,7 +48,7 @@ export interface ChatMessage {
   timestamp: Date;
   isStreaming?: boolean;
   jobId?: string;
-  uiCard?: 'stablecoin-mode-select' | 'watch-address-form' | 'perps-action-trigger' | 'mandate-review' | 'connect-wallet-cta' | 'create-agent-account-cta' | 'fund-agent-account-cta' | 'bridge-quote' | 'bridge-completion';
+  uiCard?: 'stablecoin-mode-select' | 'watch-address-form' | 'perps-action-trigger' | 'mandate-review' | 'connect-wallet-cta' | 'create-agent-account-cta' | 'fund-agent-account-cta' | 'bridge-quote' | 'bridge-completion' | `action-review:${string}`;
 }
 
 export interface Conversation {
