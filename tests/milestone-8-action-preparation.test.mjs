@@ -26,3 +26,12 @@ test('M8 never exposes Approve once when quote/preflight readiness leaves a dura
  assert.match(api,/ACTION_NOT_APPROVABLE/);
  assert.match(api,/not ready for approval/);
 });
+
+
+test('LI.FI quote requests use canonical eip155 chain resolution and the actual source wallet address',()=>{
+ const src=readFileSync('packages/execution/src/index.ts','utf8');
+ assert.match(src,/family!==['\"]eip155['\"]&&family!==['\"]evm['\"]/);
+ assert.match(src,/SELECT address,namespace FROM wallet_resource/);
+ assert.match(src,/fromAmount:action\.amountAtomic,fromAddress/);
+ assert.match(src,/fetchLifiQuote\(base,fromAddress\)/);
+});
