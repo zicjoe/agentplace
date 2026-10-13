@@ -223,8 +223,12 @@ export function ActionReview() {
   }
 
   const isBlocked = action.authorityDecision === 'blocked' || action.status === 'blocked';
-  const isWithinMandate = action.authorityDecision === 'within-mandate';
-  const needsApproval = action.authorityDecision === 'needs-approval';
+  const authorityWithinMandate = action.authorityDecision === 'within-mandate';
+  const authorityNeedsApproval = action.authorityDecision === 'needs-approval';
+  const isWithinMandate = authorityWithinMandate && (!serverAction || serverAction.status === 'READY_FOR_EXECUTION');
+  const needsApproval = authorityNeedsApproval && (!serverAction || serverAction.status === 'APPROVAL_REQUIRED');
+  const approvalUnavailable = Boolean(serverAction && authorityNeedsApproval && serverAction.status !== 'APPROVAL_REQUIRED' && !isBlocked);
+  const readyUnavailable = Boolean(serverAction && authorityWithinMandate && serverAction.status !== 'READY_FOR_EXECUTION' && !isBlocked);
   const isQuoteExpired = action.actionType === 'bridge' && state.scenario === 'quote-expired' && (action as any).quote && !(action as any).quote.expired;
   const isMaterialChange = !!(action as any).providerChangeNote && !approved && !rejected;
   const isStaleData = (action as any).dataQuality && ((action as any).dataQuality.status === 'stale' || (action as any).dataQuality.status === 'conflicting') && !approved && !rejected;
@@ -576,6 +580,18 @@ export function ActionReview() {
         {/* Actions footer */}
         {!approved && !rejected && !isUnsafe && (
           <div className="px-5 py-4 border-t border-border shrink-0 space-y-2">
+            {approvalUnavailable && (
+              <div className="border border-warn/30 rounded-lg bg-warn/5 px-3 py-3 text-xs text-text-sub">
+                <p className="font-medium text-warn mb-1">Approval is not available yet</p>
+                <p>The authority decision requires your approval, but this prepared action is not currently executable. Refresh or obtain a valid quote/preflight first. Nothing has been signed or submitted.</p>
+              </div>
+            )}
+            {readyUnavailable && (
+              <div className="border border-warn/30 rounded-lg bg-warn/5 px-3 py-3 text-xs text-text-sub">
+                <p className="font-medium text-warn mb-1">Action is not ready for execution</p>
+                <p>The authority rules allow this proposal, but quote/preflight readiness has not been satisfied. Nothing has been signed or submitted.</p>
+              </div>
+            )}
             {isBlocked && (
               <>
                 <button

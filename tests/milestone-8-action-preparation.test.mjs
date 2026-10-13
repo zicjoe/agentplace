@@ -16,3 +16,13 @@ test('M8 serializes every JSONB action-preparation payload explicitly for Postgr
  assert.match(src,/rawEvidence\?JSON\.stringify\(quoteResult\.quote\.rawEvidence\):null/);
  assert.match(src,/sim\.evidence\?JSON\.stringify\(sim\.evidence\):null/);
 });
+
+
+test('M8 never exposes Approve once when quote/preflight readiness leaves a durable action only PREPARED',()=>{
+ const ui=readFileSync('apps/web/src/components/ActionReview.tsx','utf8');
+ assert.match(ui,/serverAction\.status === 'APPROVAL_REQUIRED'/);
+ assert.match(ui,/Approval is not available yet/);
+ const api=readFileSync('apps/api/src/server.ts','utf8');
+ assert.match(api,/ACTION_NOT_APPROVABLE/);
+ assert.match(api,/not ready for approval/);
+});

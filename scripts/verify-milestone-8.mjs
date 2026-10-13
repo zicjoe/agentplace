@@ -28,5 +28,5 @@ for(const token of ["'transactions'","label: 'Transactions'","cat.includes('tran
 const workerWorkspace=readFileSync('apps/web/src/components/WorkerWorkspace.tsx','utf8');
 for(const token of ["item.workerDefinitionId ?? item.id.replace('ds-', 'w-')","SET_ACTIVE_DISCOVER_ITEM","Add from Discover"]) if(!workerWorkspace.includes(token)) throw new Error(`M8 contextual Worker Discover deep-link missing ${token}`);
 const actionReview=readFileSync('apps/web/src/components/ActionReview.tsx','utf8');
-for(const token of ['M8 does not sign or submit transactions','mark ready for signature','max-h-[92vh]','overflow-y-auto']) if(!actionReview.includes(token)) throw new Error(`M8 Action Review missing ${token}`);
+for(const token of ['M8 does not sign or submit transactions','mark ready for signature','max-h-[92vh]','overflow-y-auto',"serverAction.status === 'APPROVAL_REQUIRED'",'Approval is not available yet']) if(!actionReview.includes(token)) throw new Error(`M8 Action Review missing ${token}`);
 console.log('PASS: M8 Action Preparation + Action Review has durable exact-action preparation, quote/preflight/risk evidence, deterministic authority binding, exact-action approval, service-cost separation, and no signing/submission.');
