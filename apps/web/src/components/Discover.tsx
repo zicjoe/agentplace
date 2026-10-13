@@ -12,7 +12,8 @@ type WorkerFilter =
   | 'portfolio'
   | 'defi'
   | 'research'
-  | 'prediction';
+  | 'prediction'
+  | 'transactions';
 
 const WORKER_FILTERS: Array<{ id: WorkerFilter; label: string }> = [
   { id: 'all', label: 'All' },
@@ -23,6 +24,7 @@ const WORKER_FILTERS: Array<{ id: WorkerFilter; label: string }> = [
   { id: 'defi', label: 'DeFi' },
   { id: 'research', label: 'Research' },
   { id: 'prediction', label: 'Prediction Markets' },
+  { id: 'transactions', label: 'Transactions' },
 ];
 
 function workerMatchesFilter(w: DiscoverSupplyItem, f: WorkerFilter): boolean {
@@ -36,6 +38,7 @@ function workerMatchesFilter(w: DiscoverSupplyItem, f: WorkerFilter): boolean {
   if (f === 'defi') return cat.includes('defi') || cat.includes('yield');
   if (f === 'research') return cat.includes('research');
   if (f === 'prediction') return name.includes('prediction');
+  if (f === 'transactions') return cat.includes('transaction') || name.includes('execution');
   return true;
 }
 

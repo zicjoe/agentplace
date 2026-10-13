@@ -222,8 +222,12 @@ function ContextualWorkerWorkspace({
   catalog: WorkerCatalogItem;
   jobs: Job[];
 }) {
+  const state = useAppState();
   const dispatch = useDispatch();
   const primaryJob = jobs[0];
+  const discoverItem = (state.discoverSupply ?? []).find(
+    (item) => item.type === 'worker' && item.id.replace('ds-', 'w-') === worker.id
+  );
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
@@ -270,7 +274,10 @@ function ContextualWorkerWorkspace({
               )}
               <button
                 type="button"
-                onClick={() => dispatch({ type: 'SET_VIEW', view: 'discover' })}
+                onClick={() => {
+                  dispatch({ type: 'SET_VIEW', view: 'discover' });
+                  if (discoverItem) dispatch({ type: 'SET_ACTIVE_DISCOVER_ITEM', id: discoverItem.id });
+                }}
                 className="px-3 py-1.5 text-xs bg-primary text-white rounded font-medium hover:bg-primary-hover transition-colors"
               >
                 Add from Discover

@@ -1,5 +1,7 @@
 # Changelog
+- Fixed a syntax error in the M8 Execution Operator Discover fixture caused by an unescaped apostrophe in the listing description.
 - Fixed M8 production action preparation JSONB persistence so PostgreSQL receives explicit JSON for authority reasons, prepared payloads, risk checks, quote evidence, and simulation evidence.
+- Fixed the M8 authority-test handoff by publishing Execution Operator in Discover and deep-linking contextual specialist views to the matching installable Worker listing.
 
 - M8 production Manager bridge handoff now creates/prepares the durable action and exposes Action Review instead of falling through to the legacy read-only Router response.
 
