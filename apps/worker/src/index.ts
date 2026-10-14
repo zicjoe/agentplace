@@ -618,6 +618,13 @@ function authorityEnvironmentForNetwork(networkId: string): 'mainnet' | 'testnet
   return /(sepolia|holesky|testnet|devnet)/.test(networkId) ? 'testnet' : 'mainnet';
 }
 
+type RequestedWalletMode = 'watch-only' | 'connected';
+
+function requestedWalletMode(user: string): RequestedWalletMode {
+  if (/\bwatch(?:[-\s]+)only\b/i.test(user)) return 'watch-only';
+  return 'connected';
+}
+
 async function tryPrepareBridgeRequest(task: IntelligenceTask, context: IntelligenceContextValue): Promise<boolean> {
   if (context.scope !== 'manager') return false;
   const user = lastUserMessage(context).trim();
@@ -633,16 +640,22 @@ async function tryPrepareBridgeRequest(task: IntelligenceTask, context: Intellig
     return true;
   }
 
-  const walletResult = await getDatabasePool().query<{ id: string; address: string }>(
-    `SELECT id,address FROM wallet_resource WHERE owner_user_id=$1 AND mode='connected' AND namespace='eip155' AND status='active' AND removed_at IS NULL AND address IS NOT NULL ORDER BY updated_at DESC`,
-    [task.ownerUserId],
+  const walletMode = requestedWalletMode(user);
+  const walletResult = await getDatabasePool().query<{ id: string; address: string; mode: RequestedWalletMode }>(
+    `SELECT id,address,mode FROM wallet_resource WHERE owner_user_id=$1 AND mode=$2 AND namespace='eip155' AND status='active' AND removed_at IS NULL AND address IS NOT NULL ORDER BY updated_at DESC`,
+    [task.ownerUserId, walletMode],
   );
   if (walletResult.rows.length === 0) {
-    await addAssistantMessage(task.ownerUserId, context.conversationId, 'Connect an EVM wallet before preparing this bridge. Connecting still grants no spending authority.', undefined, undefined, undefined, 'connect-wallet-cta');
+    if (walletMode === 'watch-only') {
+      await addAssistantMessage(task.ownerUserId, context.conversationId, 'Add an EVM watch-only address before preparing this bridge preview. Watch-only wallets can be used for preview and quote context, but they cannot sign or execute financial actions. Nothing was submitted.');
+    } else {
+      await addAssistantMessage(task.ownerUserId, context.conversationId, 'Connect an EVM wallet before preparing this bridge. Connecting still grants no spending authority.', undefined, undefined, undefined, 'connect-wallet-cta');
+    }
     return true;
   }
   if (walletResult.rows.length > 1) {
-    await addAssistantMessage(task.ownerUserId, context.conversationId, 'You have more than one connected EVM wallet. Choose the account you want to use before I prepare an exact bridge action. Nothing was submitted.');
+    const label = walletMode === 'watch-only' ? 'watch-only EVM wallet' : 'connected EVM wallet';
+    await addAssistantMessage(task.ownerUserId, context.conversationId, `You have more than one ${label}. Choose the account you want to use before I prepare an exact bridge action. Nothing was submitted.`);
     return true;
   }
 
@@ -672,11 +685,13 @@ async function tryPrepareBridgeRequest(task: IntelligenceTask, context: Intellig
   const prepared = await prepareFinancialAction(task.ownerUserId, created.id, {
     mainnetAutonomyEnabled: environmentContract.mainnetAutonomyEnabled,
   });
-  const authorityText = prepared.prepared?.authorityDecision.decision === 'DENIED'
-    ? 'The deterministic authority rules blocked it.'
-    : prepared.prepared?.authorityDecision.decision === 'APPROVAL_REQUIRED'
-      ? 'It needs your approval.'
-      : 'It is within current authority and is ready for future execution infrastructure.';
+  const authorityText = wallet.mode === 'watch-only'
+    ? 'This is a watch-only preview. The selected account cannot sign or execute financial actions.'
+    : prepared.prepared?.authorityDecision.decision === 'DENIED'
+      ? 'The deterministic authority rules blocked it.'
+      : prepared.prepared?.authorityDecision.decision === 'APPROVAL_REQUIRED'
+        ? 'It needs your approval.'
+        : 'It is within current authority and is ready for future execution infrastructure.';
   const quoteText = prepared.prepared?.quote
     ? ` Quote: ${prepared.prepared.quote.provider} ${prepared.prepared.quote.status}.`
     : ' No executable quote was available.';

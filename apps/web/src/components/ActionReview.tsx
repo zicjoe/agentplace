@@ -86,6 +86,8 @@ export function ActionReview() {
 
   const durablePrepared=serverAction?.prepared;
   const durableDecision=durablePrepared?.authorityDecision.decision;
+  const durableWallet=serverAction ? (state.wallets ?? []).find((wallet)=>wallet.id===serverAction.accountId) : undefined;
+  const durableWalletMode=durableWallet?.mode;
   const durablePseudo = serverAction ? {
     id: serverAction.id,
     title: serverAction.title,
@@ -97,11 +99,15 @@ export function ActionReview() {
       : `${serverAction.amountDisplay} ${serverAction.asset} will be prepared for the explicit destination.`,
     rationale: serverAction.rationale,
     authorityDecision: durableDecision === 'ALLOWED' ? 'within-mandate' as const : durableDecision === 'DENIED' ? 'blocked' as const : 'needs-approval' as const,
-    authorityReason: durablePrepared?.authorityDecision.reasons.map((r)=>r.message).join(' · ') || 'Preparing deterministic authority decision.',
+    authorityReason: [
+      ...(durableWalletMode === 'watch-only' ? ['Watch-only accounts are preview-only and cannot sign or execute financial actions.'] : []),
+      ...(durablePrepared?.authorityDecision.reasons.map((r)=>r.message) ?? []),
+    ].join(' · ') || 'Preparing deterministic authority decision.',
     risks: durablePrepared?.risk.checks.filter((c)=>c.status!=='PASS').map((c)=>`${c.label}: ${c.message}`) ?? [],
     technicalDetails: {
       'Capability': serverAction.capabilityId,
       'Account': serverAction.accountId,
+      'Account mode': durableWalletMode === 'watch-only' ? 'Watch-only · preview only' : durableWalletMode === 'connected' ? 'Connected Wallet · user signing required' : durableWalletMode === 'agent-account' ? 'Agent Account' : 'Unknown',
       'Network': `${serverAction.network.family}:${serverAction.network.networkId}`,
       ...(serverAction.destinationNetwork ? {'Destination network':`${serverAction.destinationNetwork.family}:${serverAction.destinationNetwork.networkId}`} : {}),
       'Asset': serverAction.asset,

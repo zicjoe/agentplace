@@ -26,3 +26,15 @@ test('M8 bridge preparation uses the same canonical EVM network family as mandat
   assert.match(worker, /destinationNetwork:\s*\{\s*family:\s*'eip155',\s*networkId:\s*destinationNetwork\s*\}/);
   assert.doesNotMatch(worker, /network:\s*\{\s*family:\s*'evm',\s*networkId:\s*sourceNetwork\s*\}/);
 });
+
+test('M8 Manager honors an explicit watch-only wallet request instead of silently substituting a connected wallet', () => {
+  const worker = readFileSync('apps/worker/src/index.ts', 'utf8');
+  const review = readFileSync('apps/web/src/components/ActionReview.tsx', 'utf8');
+  assert.match(worker, /requestedWalletMode/);
+  assert.match(worker, /watch\(\?:\[-\\s\]\+\)only/);
+  assert.match(worker, /mode=\$2/);
+  assert.match(worker, /watch-only preview/);
+  assert.doesNotMatch(worker, /mode='connected' AND namespace='eip155'/);
+  assert.match(review, /Watch-only · preview only/);
+  assert.match(review, /Watch-only accounts are preview-only and cannot sign or execute financial actions/);
+});
