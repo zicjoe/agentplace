@@ -7,6 +7,7 @@ AgentPlace v0.11.0 makes the missing middle between intent/authority and future 
 - Immutable prepared-action revisions with SHA-256 action digests.
 - Canonical provider-neutral capabilities (`asset.transfer.execute`, `swap.execute`, `bridge.execute`).
 - LI.FI quote adapter for eligible EVM swap/bridge requests. LI.FI is optional; lack of a live route is represented truthfully and never replaced by a fabricated quote.
+- Quote preparation normalizes supported token symbols/addresses and known atomic amounts at the adapter boundary, and surfaces a concrete unavailable/failure reason in Action Review instead of an opaque status.
 - RPC preflight via `eth_estimateGas` only when an unsigned provider payload and configured chain RPC are both available.
 - Structured risk assessment separate from M7 deterministic authority.
 - Every prepared action is evaluated against the M7 Authority Engine.

@@ -109,6 +109,7 @@ export function ActionReview() {
       'Preparation revision': String(serverAction.currentRevision),
       'Action digest': durablePrepared?.actionDigest ?? 'Not prepared',
       'Quote': durablePrepared?.quote ? `${durablePrepared.quote.provider} · ${durablePrepared.quote.status}` : 'Not required / unavailable',
+      ...(durablePrepared?.quote?.routeSummary ? {'Quote detail': durablePrepared.quote.routeSummary} : {}),
       'Simulation': durablePrepared?.simulation.status ?? 'Not available',
       'Risk': durablePrepared?.risk.status ?? 'Not assessed',
       'Execution': 'Not enabled in M8',

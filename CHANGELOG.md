@@ -1,4 +1,5 @@
 # Changelog
+- Hardened the M8 LI.FI adapter so supported quotes can fall back to LI.FI token symbols, deterministically derive USDC/USDT atomic amounts, accept legacy EVM namespace aliases, and expose the exact quote-unavailable/provider-failure reason in Action Review.
 - Fixed M8 exact-action approval gating so a quote/preflight-incomplete action cannot expose Approve once; approval conflicts now return a clear refresh/readiness message instead of a generic internal error.
 - Fixed M8 EVM network-family normalization so bridge actions use canonical `eip155` network refs matching mandate policy, eliminating false `NETWORK_NOT_ALLOWED` denials for Arbitrum/Base mandates.
 - Fixed Execution Operator Discover installation to use the durable backend worker definition `w-execution`, so Add Worker persists in the production workforce instead of being reverted after a failed install.

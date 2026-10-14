@@ -32,6 +32,20 @@ test('LI.FI quote requests use canonical eip155 chain resolution and the actual 
  const src=readFileSync('packages/execution/src/index.ts','utf8');
  assert.match(src,/family!==['\"]eip155['\"]&&family!==['\"]evm['\"]/);
  assert.match(src,/SELECT address,namespace FROM wallet_resource/);
- assert.match(src,/fromAmount:action\.amountAtomic,fromAddress/);
+ assert.match(src,/fromToken,toToken,fromAmount,fromAddress/);
  assert.match(src,/fetchLifiQuote\(base,fromAddress\)/);
+});
+
+
+test('LI.FI quote preparation normalizes missing token-address and atomic-amount inputs instead of returning opaque NOT_AVAILABLE',()=>{
+ const src=readFileSync('packages/execution/src/index.ts','utf8');
+ assert.match(src,/const fromToken=action\.assetAddress\?\.trim\(\)\|\|action\.asset/);
+ assert.match(src,/const toToken=action\.outputAssetAddress\?\.trim\(\)\|\|outputAsset/);
+ assert.match(src,/function atomicAmountForQuote/);
+ assert.match(src,/ATOMIC_AMOUNT_UNRESOLVED/);
+ assert.match(src,/SOURCE_ADDRESS_UNAVAILABLE/);
+ assert.match(src,/CHAIN_ID_UNRESOLVED/);
+ const ui=readFileSync('apps/web/src/components/ActionReview.tsx','utf8');
+ assert.match(ui,/Quote detail/);
+ assert.match(ui,/routeSummary/);
 });
