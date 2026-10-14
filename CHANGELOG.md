@@ -294,3 +294,9 @@
 - Added trace/request ID and structured log contracts.
 - Added CI, CodeQL, dependency review, Dependabot and repository secret guards.
 - Added public architecture/security/environment documentation while keeping the internal master specification outside the repository.
+
+### M9 transfer capability alignment
+
+- Added the missing canonical `asset.transfer` capability so it appears in Mandate/Authority editing.
+- Aligned M9 direct-transfer preparation with the Execution Operator worker contract, which already uses `asset.transfer`.
+- Added migration `0014_transfer_capability_alignment.sql`; no custody/signing behavior changed.

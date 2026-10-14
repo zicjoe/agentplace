@@ -17,7 +17,7 @@ M9 can move real funds when Mainnet execution is deliberately enabled. Use a **t
 A direct transfer is the cleanest first execution because it does not depend on a bridge allowance or DEX route.
 
 1. Use a Connected Wallet with a tiny native balance on a supported Mainnet network.
-2. Give Execution Operator a narrow **PREPARE** mandate for that exact Connected Wallet, network and `asset.transfer.execute`, with `Always ask me` approval policy.
+2. Give Execution Operator a narrow **PREPARE** mandate for that exact Connected Wallet, network and `asset.transfer`, with `Always ask me` approval policy.
 3. In Manager, use a destination address you control, for example:
 
    `Send 0.000001 ETH on Arbitrum to 0xYOUR_OTHER_ADDRESS`

@@ -131,3 +131,14 @@ test('M9 keeps the production Mainnet execution gate fail-closed by default', ()
   assert.match(mainnet, /MAINNET_EXECUTION_ENABLED=false/);
   assert.match(mainnet, /MAINNET_AUTONOMY_ENABLED=false/);
 });
+
+
+test('M9 exposes the canonical direct-transfer capability through the mandate capability registry', () => {
+  const transferMigration = readFileSync('packages/db/migrations/0014_transfer_capability_alignment.sql', 'utf8');
+  const workerSeed = readFileSync('packages/db/migrations/0003_workers_jobs.sql', 'utf8');
+  assert.match(transferMigration, /'asset\.transfer'/);
+  assert.match(transferMigration, /'economic-write'/);
+  assert.match(workerSeed, /\[\"asset\.transfer\",\"swap\.execute\",\"bridge\.execute\"\]/);
+  assert.match(execution, /kind==='transfer'\?'asset\.transfer'/);
+  assert.doesNotMatch(execution, /asset\.transfer\.execute/);
+});
