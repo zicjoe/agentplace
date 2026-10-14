@@ -1,5 +1,20 @@
 # Changelog
-- Fixed M8 Action Review responsive technical details so long unbroken identifiers such as action digests, wallet IDs, and network refs wrap within the modal instead of forcing horizontal scrolling.
+
+## 0.12.0 — M9 Connected Wallet Execution + Transaction Observation
+
+- Fixed M9 observer TypeScript control-flow narrowing in UNKNOWN-state transitions without changing runtime safety behavior.
+- Added durable idempotent `transaction_attempt` records bound to the exact prepared revision, action digest, one-time approval, account and network.
+- Added exact pre-sign revalidation of preparation freshness, quote/safety state, current deterministic authority, account mode, environment gate and server-side RPC gas estimation.
+- Added browser-only EIP-1193 `eth_sendTransaction`; user private keys/seed phrases never enter AgentPlace API, Worker or LLM context.
+- Added deterministic Railway transaction observation with primary/secondary RPC fallback and zero LLM calls for polling.
+- Added independent transaction-by-hash payload comparison before confirmation is accepted; definite mismatches become `MISMATCH`.
+- Added fail-closed `UNKNOWN` handling and duplicate-signature/submission protection; AgentPlace never automatically resubmits an uncertain financial action.
+- Added direct EVM transfer preparation in Manager for supported native assets and explicitly configured token contracts.
+- Wired Action Review to durable signing/submission/observation progress while keeping transaction confirmation separate from `AgentPlace Verified` economic completion.
+- Mainnet user-signed execution is supported only behind `MAINNET_EXECUTION_ENABLED`; the safe production default remains false and Mainnet autonomy remains disabled.
+- Testnet remains available as an environment but is no longer the M9 milestone prerequisite.
+
+ Fixed M8 Action Review responsive technical details so long unbroken identifiers such as action digests, wallet IDs, and network refs wrap within the modal instead of forcing horizontal scrolling.
 - Added M8 Agent Account disambiguation and setup management: Agent Account setups can be named, renamed, and removed; Manager can select an exact setup by name and fails closed on duplicate/unknown names without substituting another wallet.
 - Fixed M8 Manager account-mode selection for explicit Agent Account requests: undeployed Agent Account setups now fail closed with truthful deployment/signer messaging and can never silently fall back to a Connected Wallet.
 - Fixed M8 Manager account selection so an explicit watch-only wallet request uses the user’s watch-only EVM resource instead of silently substituting a connected wallet; Action Review now labels watch-only accounts as preview-only and never presents them as signable/executable.

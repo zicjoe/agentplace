@@ -30,9 +30,9 @@ AgentPlace turns that goal into durable work owned by specialist **Workers**, ma
 
 ### What is a crypto Worker?
 
-A crypto Worker is a persistent AI specialist designed to own a specific crypto job. A Worker has a defined responsibility, operating context, capabilities and boundaries. Workers can research and coordinate work today; future execution capabilities remain subject to explicit deterministic authority and safety controls.
+A crypto Worker is a persistent AI specialist designed to own a specific crypto job. A Worker has a defined responsibility, operating context, capabilities and boundaries. Workers can research and coordinate work, and the current M9 candidate adds a narrowly gated user-signed Connected Wallet execution path. Financial execution remains subject to exact deterministic authority, one-time approval, wallet signing and independent transaction observation.
 
-AgentPlace also has a supply-side model: experts can turn methods into Workers or Workflows, while developers and protocols can expose software as reusable Capabilities. The production creator/publishing system is still on the roadmap; the current build extends the orchestration, Router and intelligence foundation with durable wallet/account state while keeping financial authority and execution out of scope.
+AgentPlace also has a supply-side model: experts can turn methods into Workers or Workflows, while developers and protocols can expose software as reusable Capabilities. The production creator/publishing system is still on the roadmap; the current build extends the orchestration, Router, authority and action-preparation foundation with a narrowly scoped Connected Wallet execution path while keeping Agent Account autonomy and verified economic completion out of scope.
 
 ---
 
@@ -40,7 +40,7 @@ AgentPlace also has a supply-side model: experts can turn methods into Workers o
 
 | Build metadata | Value |
 |---|---|
-| Version | `v0.11.0` Milestone 7 Mandates + Authority Engine candidate |
+| Version | `v0.12.0` Milestone 9 Connected Wallet Execution + Transaction Observation candidate |
 | Production app | https://www.agentplace.tech |
 | Frontend | Vercel |
 | API + background Worker | Railway |
@@ -61,11 +61,11 @@ AgentPlace also has a supply-side model: experts can turn methods into Workers o
 | Telegraph discovery, mapping and Router integration | Implemented — experimental/testnet |
 | Telegraph live paid testnet acceptance | Acceptance tooling ready; controlled paid pass deliberately deferred |
 | Robinhood Chain receipt registry | Deployed on testnet |
-| Connected-wallet financial execution | Not enabled in the current build |
-| Agent Account financial authority | Not enabled in the current build |
+| Connected-wallet financial execution | M9 candidate — exact user-approved EVM actions; Mainnet gate disabled by default |
+| Agent Account financial authority | Mandates exist; Agent Account signing/deployment remains out of M9 scope |
 | Autonomous capital movement | Not enabled in the current build |
 
-The current build adds durable Wallet Foundation state while intentionally stopping before Mandates, financial action preparation, signing and execution rather than presenting unfinished authority as complete.
+The current build has durable Wallets, Mandates/Authority, exact Action Preparation/Review and an M9 Connected Wallet execution candidate. User signing stays inside the browser wallet; durable observation is deterministic; Mainnet execution remains disabled by default; transaction confirmation is never presented as a verified economic outcome.
 
 ---
 
@@ -133,7 +133,7 @@ Provider names do not become AgentPlace's canonical domain model. For example, `
 | **Router** | Deterministic eligibility, ordering and fallback across implementations |
 | **IntelligenceEvidence** | Durable provider-attributed structured evidence used for synthesis |
 | **Conversation** | Persistent discussion/history; never financial authority |
-| **Authority** | Future deterministic permission boundary for financial execution |
+| **Authority** | Deterministic structured permission boundary for financial execution |
 
 ---
 
@@ -148,10 +148,10 @@ The repository defines first-party Worker roles including:
 - **DeFi Manager** — lending, staking and DeFi position intelligence/operation.
 - **Perps Operator** — perpetual-market and position workflows.
 - **Crypto Researcher** — source-grounded token, protocol, project and catalyst research.
-- **Execution Operator** — future controlled onchain execution responsibility.
+- **Execution Operator** — controlled onchain preparation and the M9 user-signed Connected Wallet execution path.
 - **Agent Builder** — turns described jobs or expertise into Worker definitions.
 
-Not every role has financial execution enabled in the current build. M5B remains deliberately read-only, and M6 wallet state does not create authority.
+Not every role has financial execution enabled. M5B remains deliberately read-only; adding/connecting a wallet still creates no authority; M9 execution requires an exact current preparation, mandate decision, one-time approval and user wallet signature.
 
 ---
 
@@ -445,14 +445,14 @@ M5B.1 Core crypto intelligence fabric
 M5B.2 Telegraph integration through M5B.2.3; M5B.2.4 paid live acceptance deliberately deferred
 M6    Wallet Foundation — v0.9.1 frozen (viewport/layout hardened)
 M7    Mandates + Authority Engine — v0.10.0 frozen
-M8    Action Preparation + Action Review — v0.11.0 candidate
+M8    Action Preparation + Action Review — v0.11.0 frozen
+M9    Connected Wallet Execution + Transaction Observation — v0.12.0 candidate
 ```
 
 Next major platform layers include:
 
 ```text
-M8    Action Preparation + Action Review
-M9    Testnet Execution + Observation
+M9    Connected Wallet Execution + Transaction Observation
 M10   Settlement + Verification + Receipts
 M11   Routines + Background Work
 M12   Discover + Creator System

@@ -48,6 +48,10 @@ import {
   prepareFinancialAction,
   createServiceCostReview,
   decideServiceCostReview,
+  startConnectedWalletExecution,
+  reportConnectedWalletResult,
+  getLatestTransactionAttemptForAction,
+  getTransactionAttempt,
   type CreateFinancialActionInput,
   type FinancialActionKind,
 } from '@agent-place/execution';
@@ -765,6 +769,36 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     const action=await createFinancialAction(identity.appUserId,parseFinancialActionInput(body.action));
     writeJson(res,201,{action}); return;
   }
+  const actionExecutionStartMatch=url.pathname.match(/^\/api\/v1\/actions\/([^/]+)\/execution\/start$/);
+  if(actionExecutionStartMatch&&req.method==='POST'){
+    const identity=await requireIdentity(req);
+    const intent=await startConnectedWalletExecution(identity.appUserId,decodeURIComponent(actionExecutionStartMatch[1]??''),{
+      mainnetExecutionEnabled:environment.mainnetExecutionEnabled,
+      testnetExecutionEnabled:environment.testnetExecutionEnabled,
+      mainnetAutonomyEnabled:environment.mainnetAutonomyEnabled,
+    });
+    writeJson(res,200,{execution:intent}); return;
+  }
+  const actionExecutionMatch=url.pathname.match(/^\/api\/v1\/actions\/([^/]+)\/execution$/);
+  if(actionExecutionMatch&&req.method==='GET'){
+    const identity=await requireIdentity(req); const attempt=await getLatestTransactionAttemptForAction(identity.appUserId,decodeURIComponent(actionExecutionMatch[1]??''));
+    writeJson(res,200,{attempt}); return;
+  }
+  const executionReportMatch=url.pathname.match(/^\/api\/v1\/executions\/([^/]+)\/report$/);
+  if(executionReportMatch&&req.method==='POST'){
+    const identity=await requireIdentity(req); const body=asRecord(await readJson(req));
+    if(body.outcome!=='SUBMITTED'&&body.outcome!=='USER_REJECTED'&&body.outcome!=='PRE_SUBMISSION_FAILED'&&body.outcome!=='UNKNOWN') throw new Error('INVALID_EXECUTION_OUTCOME');
+    const promptToken=requiredString(body.promptToken,'INVALID_EXECUTION_PROMPT_TOKEN',128);
+    const input:{promptToken:string;outcome:'SUBMITTED'|'USER_REJECTED'|'PRE_SUBMISSION_FAILED'|'UNKNOWN';transactionHash?:string;message?:string}={promptToken,outcome:body.outcome};
+    if(body.transactionHash!==undefined)input.transactionHash=requiredString(body.transactionHash,'INVALID_EXECUTION_TRANSACTION_HASH',100);
+    if(body.message!==undefined)input.message=requiredString(body.message,'INVALID_EXECUTION_MESSAGE',500);
+    writeJson(res,200,{attempt:await reportConnectedWalletResult(identity.appUserId,decodeURIComponent(executionReportMatch[1]??''),input)}); return;
+  }
+  const executionMatch=url.pathname.match(/^\/api\/v1\/executions\/([^/]+)$/);
+  if(executionMatch&&req.method==='GET'){
+    const identity=await requireIdentity(req); const attempt=await getTransactionAttempt(identity.appUserId,decodeURIComponent(executionMatch[1]??''));
+    if(!attempt)return writeJson(res,404,{error:'not_found',message:'Transaction attempt not found.',requestId}); writeJson(res,200,{attempt}); return;
+  }
   const actionPrepareMatch=url.pathname.match(/^\/api\/v1\/actions\/([^/]+)\/prepare$/);
   if(actionPrepareMatch&&req.method==='POST'){
     const identity=await requireIdentity(req); const action=await prepareFinancialAction(identity.appUserId,decodeURIComponent(actionPrepareMatch[1]??''),{mainnetAutonomyEnabled:environment.mainnetAutonomyEnabled});
@@ -968,12 +1002,39 @@ const server = createServer((req, res) => {
       ACTION_PREPARATION_EXPIRED: 'This action preparation expired. Refresh it before approving.',
       ACTION_APPROVAL_NOT_REQUIRED: 'This action does not require one-time approval.',
       ACTION_NOT_APPROVABLE: 'This action is not ready for approval. Refresh its quote or preflight first.',
+      ACTION_EXECUTION_LOCKED: 'This financial action already has a live, submitted, uncertain or completed execution attempt. AgentPlace will not re-prepare it into a duplicate execution path.',
     };
     if (actionApprovalConflicts[code]) {
       writeJson(res, 409, { error: 'action_not_approvable', message: actionApprovalConflicts[code], requestId });
       return;
     }
-    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE','INVALID_WORKER_DEFINITION','INVALID_WORKER_STATUS','INVALID_JOB','INVALID_STRING','INVALID_MODEL_SELECTION','MODEL_PROVIDER_NOT_CONFIGURED','JOB_LEAD_REQUIRED','JOB_WORKER_NOT_AVAILABLE','WORKER_DEFINITION_NOT_FOUND','INVALID_WALLET_INPUT','INVALID_WALLET_NAMESPACE','INVALID_WALLET_NETWORK','INVALID_WALLET_NAME','INVALID_EVM_ADDRESS','INVALID_SOLANA_ADDRESS','INVALID_NATIVE_BALANCE','WALLET_ADDRESS_MISMATCH','INVALID_WALLET_STATUS','INVALID_AGENT_ACCOUNT_INPUT','CONNECTED_OWNER_WALLET_REQUIRED','AGENT_ACCOUNT_EVM_OWNER_REQUIRED','AGENT_ACCOUNT_NETWORK_REQUIRED','UNSUPPORTED_CONNECTED_WALLET_NAMESPACE','INVALID_MANDATE_WORKER','INVALID_MANDATE_ACCOUNT','INVALID_MANDATE_ENVIRONMENT','INVALID_MANDATE_STATUS','INVALID_MANDATE_REVISION','INVALID_MANDATE_TITLE','INVALID_MANDATE_PURPOSE','INVALID_AUTHORITY_LEVEL','INVALID_MANDATE_SCOPE','INVALID_MANDATE_POLICY','INVALID_MANDATE_CAPABILITIES','MANDATE_CAPABILITY_REQUIRED','INVALID_MANDATE_NETWORKS','INVALID_MANDATE_ASSETS','INVALID_MANDATE_PROTOCOLS','INVALID_MANDATE_DESTINATIONS','ACT_MANDATE_ASSET_ALLOWLIST_REQUIRED','ACT_MANDATE_REQUIRES_AGENT_ACCOUNT','INVALID_CAPITAL_LIMIT','INVALID_PER_ACTION_LIMIT','INVALID_PERIOD_BUDGET','INVALID_SERVICE_BUDGET','ACT_MANDATE_HARD_LIMITS_REQUIRED','INVALID_APPROVAL_POLICY','INVALID_APPROVAL_THRESHOLD','INVALID_MANDATE_VALIDITY','ACT_MANDATE_EXPIRY_REQUIRED','INVALID_MANDATE_CHANGE_SUMMARY','MANDATE_WORKER_NOT_OWNED','MANDATE_ACCOUNT_NOT_OWNED','MANDATE_ACCOUNT_NOT_AVAILABLE','UNKNOWN_MANDATE_CAPABILITY','INVALID_AUTHORITY_ENVELOPE','INVALID_AUTHORITY_VALUE','INVALID_AUTHORITY_LEVERAGE','INVALID_AUTHORITY_CONTROL','INVALID_MANDATE_INTENT'].includes(code)) {
+    const executionConflicts: Record<string,string> = {
+      EXECUTION_ACTION_NOT_PREPARED: 'Prepare this action before execution.',
+      EXECUTION_ACTION_NOT_READY: 'This action is not ready for execution. Review and approve the current preparation first.',
+      EXECUTION_PREPARATION_EXPIRED: 'This preparation expired. Refresh the action and approve the new exact preparation.',
+      EXECUTION_SAFETY_CHECK_FAILED: 'A current safety check blocks execution. Refresh the action before trying again.',
+      EXECUTION_QUOTE_UNAVAILABLE: 'This action does not have a current executable quote.',
+      EXECUTION_QUOTE_EXPIRED: 'The executable quote expired. Refresh the action before signing.',
+      MAINNET_EXECUTION_DISABLED: 'Mainnet execution is disabled by the AgentPlace production gate.',
+      TESTNET_EXECUTION_DISABLED: 'Testnet execution is disabled by the AgentPlace environment gate.',
+      EXECUTION_ENVIRONMENT_NETWORK_MISMATCH: 'The action environment does not match the selected network.',
+      EXECUTION_CONNECTED_WALLET_REQUIRED: 'This execution path requires the exact Connected Wallet selected in Action Review.',
+      EXECUTION_EXACT_APPROVAL_REQUIRED: 'Approve this exact prepared action before asking the wallet to sign.',
+      EXECUTION_AUTHORITY_REVOKED: 'Current authority no longer permits this action. Nothing was submitted.',
+      EXECUTION_RPC_REQUIRED: 'A server-side RPC is required for pre-sign execution inspection.',
+      EXECUTION_PREFLIGHT_FAILED: 'Pre-sign transaction inspection failed. Nothing was submitted.',
+      EXECUTION_SIGNATURE_ALREADY_REQUESTED: 'A wallet signature was already requested for this exact action. AgentPlace will not request a duplicate signature automatically.',
+      EXECUTION_ALREADY_SUBMITTED_OR_UNCERTAIN: 'This exact action is already submitted or its submission state is uncertain. AgentPlace will not resubmit it automatically.',
+      EXECUTION_ATTEMPT_TERMINAL: 'This exact execution attempt cannot be submitted again.',
+      EXECUTION_ATTEMPT_CONFLICT: 'Another request already created this exact execution attempt. AgentPlace will not create a duplicate.',
+      EXECUTION_REPORT_NOT_ACCEPTED: 'This wallet result no longer matches the active execution attempt.',
+      EXECUTION_PROMPT_TOKEN_INVALID: 'The wallet result does not match the active signing request.',
+    };
+    if (executionConflicts[code] || code.startsWith('EXECUTION_RPC_UNAVAILABLE:')) {
+      writeJson(res, 409, { error: 'execution_conflict', message: executionConflicts[code] ?? 'AgentPlace could not safely verify the execution RPC. Nothing was resubmitted.', requestId });
+      return;
+    }
+    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE','INVALID_WORKER_DEFINITION','INVALID_WORKER_STATUS','INVALID_JOB','INVALID_STRING','INVALID_MODEL_SELECTION','MODEL_PROVIDER_NOT_CONFIGURED','JOB_LEAD_REQUIRED','JOB_WORKER_NOT_AVAILABLE','WORKER_DEFINITION_NOT_FOUND','INVALID_WALLET_INPUT','INVALID_WALLET_NAMESPACE','INVALID_WALLET_NETWORK','INVALID_WALLET_NAME','INVALID_EVM_ADDRESS','INVALID_SOLANA_ADDRESS','INVALID_NATIVE_BALANCE','WALLET_ADDRESS_MISMATCH','INVALID_WALLET_STATUS','INVALID_AGENT_ACCOUNT_INPUT','CONNECTED_OWNER_WALLET_REQUIRED','AGENT_ACCOUNT_EVM_OWNER_REQUIRED','AGENT_ACCOUNT_NETWORK_REQUIRED','UNSUPPORTED_CONNECTED_WALLET_NAMESPACE','INVALID_MANDATE_WORKER','INVALID_MANDATE_ACCOUNT','INVALID_MANDATE_ENVIRONMENT','INVALID_MANDATE_STATUS','INVALID_MANDATE_REVISION','INVALID_MANDATE_TITLE','INVALID_MANDATE_PURPOSE','INVALID_AUTHORITY_LEVEL','INVALID_MANDATE_SCOPE','INVALID_MANDATE_POLICY','INVALID_MANDATE_CAPABILITIES','MANDATE_CAPABILITY_REQUIRED','INVALID_MANDATE_NETWORKS','INVALID_MANDATE_ASSETS','INVALID_MANDATE_PROTOCOLS','INVALID_MANDATE_DESTINATIONS','ACT_MANDATE_ASSET_ALLOWLIST_REQUIRED','ACT_MANDATE_REQUIRES_AGENT_ACCOUNT','INVALID_CAPITAL_LIMIT','INVALID_PER_ACTION_LIMIT','INVALID_PERIOD_BUDGET','INVALID_SERVICE_BUDGET','ACT_MANDATE_HARD_LIMITS_REQUIRED','INVALID_APPROVAL_POLICY','INVALID_APPROVAL_THRESHOLD','INVALID_MANDATE_VALIDITY','ACT_MANDATE_EXPIRY_REQUIRED','INVALID_MANDATE_CHANGE_SUMMARY','MANDATE_WORKER_NOT_OWNED','MANDATE_ACCOUNT_NOT_OWNED','MANDATE_ACCOUNT_NOT_AVAILABLE','UNKNOWN_MANDATE_CAPABILITY','INVALID_AUTHORITY_ENVELOPE','INVALID_AUTHORITY_VALUE','INVALID_AUTHORITY_LEVERAGE','INVALID_AUTHORITY_CONTROL','INVALID_MANDATE_INTENT','INVALID_EXECUTION_OUTCOME','INVALID_EXECUTION_PROMPT_TOKEN','INVALID_EXECUTION_TRANSACTION_HASH','INVALID_EXECUTION_MESSAGE','EXECUTION_TRANSACTION_HASH_INVALID','EXECUTION_PROVIDER_PAYLOAD_INVALID','EXECUTION_PROVIDER_CHAIN_MISMATCH','EXECUTION_DESTINATION_INVALID','EXECUTION_AMOUNT_ATOMIC_REQUIRED','EXECUTION_ASSET_ADDRESS_INVALID','EXECUTION_CHAIN_UNSUPPORTED','EXECUTION_EVM_WALLET_REQUIRED','EXECUTION_WALLET_ADDRESS_INVALID','EXECUTION_INVALID_QUANTITY'].includes(code)) {
       writeJson(res, 400, { error: 'invalid_request', message: code, requestId });
       return;
     }

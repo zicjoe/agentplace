@@ -13,7 +13,8 @@ test('Execution Operator is installable from Discover for M8 authority testing',
   assert.match(fixture, /workerDefinitionId: 'w-execution'/);
   assert.match(fixture, /name: 'Execution Operator'/);
   assert.match(fixture, /category: 'Transactions'/);
-  assert.match(fixture, /Signing and transaction submission remain separate and are not enabled in M8/);
+  assert.match(fixture, /exact user-approved Connected Wallet actions/);
+  assert.match(fixture, /Agent Account autonomy remains separate/);
 });
 
 test('contextual Worker Add from Discover opens the matching Worker listing when available', () => {

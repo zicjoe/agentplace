@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { listCanonicalCapabilities } from '@agent-place/capabilities';
 import { addMessage, createConversation, getIntelligenceContext } from '@agent-place/context';
 import { closeDatabasePool, getDatabasePool } from '@agent-place/db';
-import { createFinancialAction, prepareFinancialAction } from '@agent-place/execution';
+import { createFinancialAction, observePendingTransactionAttempts, prepareFinancialAction } from '@agent-place/execution';
 import {
   addJobEvidence,
   appendJobEvent,
@@ -47,8 +47,8 @@ import {
 export const service = defineService({
   name: 'agent-place-worker',
   runtimeClass: 'worker',
-  version: '0.8.2',
-  milestone: 5,
+  version: '0.12.0',
+  milestone: 9,
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -249,7 +249,7 @@ async function decide(task: IntelligenceTask, context: IntelligenceContextValue)
   const available = capabilities.filter((capability) => capability.lifecycleStatus !== 'planned').map((capability) => capability.id);
   const knownCapabilityIds = new Set(capabilities.map((capability) => capability.id));
   const capabilityCatalog = capabilities.map((capability) => `${capability.id} [${capability.lifecycleStatus}] — ${capability.purpose}`).join('\n');
-  const system = `You are AgentPlace Manager, the orchestration intelligence for a crypto Worker operating system. Convert the user's request into a bounded structured proposal for the deterministic AgentPlace Router. Use a Job for requests needing current research, comparison, multiple steps, evidence, or specialist work. Use direct only for simple conversational guidance that does not require current external facts. Never claim wallet authority, signing, submission, settlement, live onchain facts, or capabilities that are not available. Router v1 remains read-only for research Jobs. M8 can prepare supported financial actions before this planner runs, but it still cannot sign or submit transactions; if an unsupported financial request reaches this planner, explain the exact limitation rather than claiming execution. Choose the smallest competent Worker team. For research Jobs, researchRequirements must enumerate every material dimension the user asked to have answered, including any dimension that may be unavailable. Do not collapse distinct requested checks into one vague item. intentDomain should be a short stable domain label such as research, token-intelligence, wallet-intelligence, portfolio, defi, stablecoins, perps, transactions, or create. requestedNetworks should contain only networks explicitly relevant to the request; otherwise use an empty array. Always use canonical network IDs exactly: ethereum, base, arbitrum, bnb, solana, or the explicit testnet IDs allowed by the schema. Never put display labels such as \"Arbitrum One (42161)\" into requestedNetworks. requiredCapabilities must include every known canonical capability ID materially required by the request even when its lifecycle is planned; this is planning metadata and does not make it available. optionalCapabilities are useful but non-essential capabilities. capabilityGraph must describe the proposed dependency order using only capability IDs from requiredCapabilities or optionalCapabilities. intelligenceSubjects must identify the concrete assets/addresses/protocols needed by routed intelligence capabilities. Use kind token for tokens, wallet for wallet addresses, protocol for DeFi protocols, and stablecoin for stablecoins. query should be a concise symbol/name/address. Include network/address when the user supplies them or they are unambiguous; otherwise leave those strings empty so the intelligence fabric can resolve safely. Do not invent contract addresses. The deterministic Router will validate Workers, capability lifecycle, environment, provider configuration, health, networks and read/write boundaries after your proposal. Never invent capability IDs outside the catalog.
+  const system = `You are AgentPlace Manager, the orchestration intelligence for a crypto Worker operating system. Convert the user's request into a bounded structured proposal for the deterministic AgentPlace Router. Use a Job for requests needing current research, comparison, multiple steps, evidence, or specialist work. Use direct only for simple conversational guidance that does not require current external facts. Never claim wallet authority, signing, submission, settlement, live onchain facts, or capabilities that are not available. Router v1 remains read-only for research Jobs. M9 can prepare and execute only supported exact user-approved Connected Wallet financial actions before this planner runs; wallet signing stays in the user's browser wallet and transaction observation is deterministic. If an unsupported financial request reaches this planner, explain the exact limitation rather than claiming execution. Choose the smallest competent Worker team. For research Jobs, researchRequirements must enumerate every material dimension the user asked to have answered, including any dimension that may be unavailable. Do not collapse distinct requested checks into one vague item. intentDomain should be a short stable domain label such as research, token-intelligence, wallet-intelligence, portfolio, defi, stablecoins, perps, transactions, or create. requestedNetworks should contain only networks explicitly relevant to the request; otherwise use an empty array. Always use canonical network IDs exactly: ethereum, base, arbitrum, bnb, solana, or the explicit testnet IDs allowed by the schema. Never put display labels such as \"Arbitrum One (42161)\" into requestedNetworks. requiredCapabilities must include every known canonical capability ID materially required by the request even when its lifecycle is planned; this is planning metadata and does not make it available. optionalCapabilities are useful but non-essential capabilities. capabilityGraph must describe the proposed dependency order using only capability IDs from requiredCapabilities or optionalCapabilities. intelligenceSubjects must identify the concrete assets/addresses/protocols needed by routed intelligence capabilities. Use kind token for tokens, wallet for wallet addresses, protocol for DeFi protocols, and stablecoin for stablecoins. query should be a concise symbol/name/address. Include network/address when the user supplies them or they are unambiguous; otherwise leave those strings empty so the intelligence fabric can resolve safely. Do not invent contract addresses. The deterministic Router will validate Workers, capability lifecycle, environment, provider configuration, health, networks and read/write boundaries after your proposal. Never invent capability IDs outside the catalog.
 
 Workers:
 ${catalog.map((worker) => `${worker.id}: ${worker.name} — ${worker.responsibility}`).join('\n')}
@@ -626,6 +626,13 @@ function requestedWalletMode(user: string): RequestedWalletMode {
   return 'connected';
 }
 
+function requestedWalletSelector(user: string): string | undefined {
+  const walletId = user.match(/\b(wlt_[0-9a-f-]{20,})\b/i)?.[1]?.trim();
+  if (walletId) return walletId;
+  const named = user.match(/\b(?:connected\s+|watch(?:[-\s]+)only\s+)?wallet\s+(?:named|called)\s+["“]?([^"”.,!?]+)["”]?/i)?.[1]?.trim();
+  return named || undefined;
+}
+
 function requestedAgentAccountSelector(user: string): string | undefined {
   const walletId = user.match(/\b(wlt_[0-9a-f-]{20,})\b/i)?.[1]?.trim();
   if (walletId) return walletId;
@@ -635,6 +642,87 @@ function requestedAgentAccountSelector(user: string): string | undefined {
   return quoted || undefined;
 }
 
+
+
+async function tryPrepareTransferRequest(task: IntelligenceTask, context: IntelligenceContextValue): Promise<boolean> {
+  if (context.scope !== 'manager') return false;
+  const user = lastUserMessage(context).trim();
+  const match = user.match(/\b(?:send|transfer)\s+(\d+(?:\.\d+)?)\s+([A-Za-z0-9._-]+)\s+(?:on|from)\s+(.+?)\s+to\s+(0x[a-fA-F0-9]{40})\b/i);
+  if (!match) return false;
+  const amount = match[1] ?? '';
+  const asset = (match[2] ?? '').toUpperCase();
+  const networkId = canonicalEvmNetwork(match[3] ?? '');
+  const destination = match[4] ?? '';
+  if (!networkId) {
+    await addAssistantMessage(task.ownerUserId, context.conversationId, 'I can prepare this transfer, but I need a supported EVM network before creating the exact action. Nothing was submitted.');
+    return true;
+  }
+  const nativeAsset = networkId === 'bnb' || networkId === 'bnb-testnet' ? 'BNB' : 'ETH';
+  const tokenAddress = knownAssetAddress(networkId, asset);
+  if (asset !== nativeAsset && !tokenAddress) {
+    await addAssistantMessage(task.ownerUserId, context.conversationId, `Direct ${asset} transfer preparation is not configured on ${networkId}. I will not guess a token contract address. Nothing was submitted.`);
+    return true;
+  }
+  const decimals = asset === 'USDC' || asset === 'USDT' ? 6 : 18;
+  const amountAtomic = decimalToAtomic(amount, decimals);
+  if (!amountAtomic || BigInt(amountAtomic) <= 0n) {
+    await addAssistantMessage(task.ownerUserId, context.conversationId, 'The transfer amount could not be represented safely in atomic units. Nothing was submitted.');
+    return true;
+  }
+  const walletMode = requestedWalletMode(user);
+  if (walletMode === 'agent-account') {
+    await addAssistantMessage(task.ownerUserId, context.conversationId, 'M9 execution is Connected Wallet only. AgentPlace will not substitute a Connected Wallet when you explicitly request an Agent Account. Nothing was submitted.');
+    return true;
+  }
+  const wallets = await getDatabasePool().query<{id:string;name:string;address:string;mode:'watch-only'|'connected'}>(
+    `SELECT id,name,address,mode FROM wallet_resource WHERE owner_user_id=$1 AND mode=$2 AND namespace='eip155' AND status='active' AND removed_at IS NULL AND address IS NOT NULL ORDER BY updated_at DESC`,
+    [task.ownerUserId,walletMode],
+  );
+  if (wallets.rows.length === 0) {
+    await addAssistantMessage(task.ownerUserId, context.conversationId, walletMode === 'watch-only'
+      ? 'Add an EVM watch-only address before preparing this transfer preview. Watch-only wallets can never sign or execute. Nothing was submitted.'
+      : 'Connect an EVM wallet before preparing this transfer. Connecting grants no spending authority.', undefined, undefined, undefined, walletMode === 'connected' ? 'connect-wallet-cta' : undefined);
+    return true;
+  }
+  const walletSelector = requestedWalletSelector(user);
+  let walletCandidates = wallets.rows;
+  if (walletSelector) {
+    const normalized = walletSelector.toLowerCase();
+    walletCandidates = wallets.rows.filter((row) => row.id.toLowerCase() === normalized || row.name.toLowerCase() === normalized);
+    if (walletCandidates.length === 0) {
+      await addAssistantMessage(task.ownerUserId, context.conversationId, `I could not find that ${walletMode === 'watch-only' ? 'watch-only' : 'connected'} wallet. Available names: ${wallets.rows.map((row) => row.name).join(', ')}. Nothing was submitted.`);
+      return true;
+    }
+  }
+  if (walletCandidates.length > 1) {
+    await addAssistantMessage(task.ownerUserId, context.conversationId, `You have more than one matching ${walletMode === 'watch-only' ? 'watch-only' : 'connected'} EVM wallet. Choose one by saying "using wallet named <name>". Available names: ${walletCandidates.map((row) => row.name).join(', ')}. Nothing was submitted.`);
+    return true;
+  }
+  const wallet = walletCandidates[0]!;
+  const created = await createFinancialAction(task.ownerUserId, {
+    accountId: wallet.id,
+    environment: authorityEnvironmentForNetwork(networkId),
+    actionType: 'transfer',
+    title: `Send ${amount} ${asset} on ${networkId}`,
+    rationale: user,
+    network: { family: 'eip155', networkId },
+    asset,
+    amountDisplay: `${amount} ${asset}`,
+    amountAtomic,
+    destination,
+    ...(tokenAddress ? { assetAddress: tokenAddress } : {}),
+  });
+  const prepared = await prepareFinancialAction(task.ownerUserId, created.id, { mainnetAutonomyEnabled: environmentContract.mainnetAutonomyEnabled });
+  const authorityText = wallet.mode === 'watch-only'
+    ? 'This is a watch-only preview. The selected account cannot sign or execute financial actions.'
+    : prepared.prepared?.authorityDecision.decision === 'DENIED'
+      ? 'The deterministic authority rules blocked it.'
+      : prepared.prepared?.authorityDecision.decision === 'APPROVAL_REQUIRED'
+        ? 'It needs your approval.'
+        : 'It is within current authority.';
+  await addAssistantMessage(task.ownerUserId, context.conversationId, `I prepared the exact transfer action. ${authorityText} Nothing has been signed or submitted.`, undefined, undefined, `msg_transfer_prepared_${task.id}`, `action-review:${prepared.id}`);
+  return true;
+}
 
 async function tryPrepareBridgeRequest(task: IntelligenceTask, context: IntelligenceContextValue): Promise<boolean> {
   if (context.scope !== 'manager') return false;
@@ -697,15 +785,15 @@ async function tryPrepareBridgeRequest(task: IntelligenceTask, context: Intellig
     }
     const agentAccount = selectedRows[0]!;
     if (agentAccount.deployment_status !== 'deployed' || !agentAccount.account_address) {
-      await addAssistantMessage(task.ownerUserId, context.conversationId, 'Your Agent Account setup is not deployed and has no onchain address or signer. M8 cannot prepare a signable or executable bridge from it, and AgentPlace will not substitute your Connected Wallet. Nothing was signed or submitted.');
+      await addAssistantMessage(task.ownerUserId, context.conversationId, 'Your Agent Account setup is not deployed and has no onchain address or signer. M9 Connected Wallet execution cannot execute from it, and AgentPlace will not substitute your Connected Wallet. Nothing was signed or submitted.');
       return true;
     }
-    await addAssistantMessage(task.ownerUserId, context.conversationId, 'This Agent Account has deployment metadata, but Agent Account signing and transaction submission are not enabled in M8. AgentPlace will not silently substitute a Connected Wallet. Nothing was signed or submitted.');
+    await addAssistantMessage(task.ownerUserId, context.conversationId, 'This Agent Account has deployment metadata, but Agent Account signing is not enabled in M9. AgentPlace will not silently substitute a Connected Wallet. Nothing was signed or submitted.');
     return true;
   }
 
-  const walletResult = await getDatabasePool().query<{ id: string; address: string; mode: Exclude<RequestedWalletMode, 'agent-account'> }>(
-    `SELECT id,address,mode FROM wallet_resource WHERE owner_user_id=$1 AND mode=$2 AND namespace='eip155' AND status='active' AND removed_at IS NULL AND address IS NOT NULL ORDER BY updated_at DESC`,
+  const walletResult = await getDatabasePool().query<{ id: string; name: string; address: string; mode: Exclude<RequestedWalletMode, 'agent-account'> }>(
+    `SELECT id,name,address,mode FROM wallet_resource WHERE owner_user_id=$1 AND mode=$2 AND namespace='eip155' AND status='active' AND removed_at IS NULL AND address IS NOT NULL ORDER BY updated_at DESC`,
     [task.ownerUserId, walletMode],
   );
   if (walletResult.rows.length === 0) {
@@ -716,13 +804,23 @@ async function tryPrepareBridgeRequest(task: IntelligenceTask, context: Intellig
     }
     return true;
   }
-  if (walletResult.rows.length > 1) {
+  const walletSelector = requestedWalletSelector(user);
+  let walletCandidates = walletResult.rows;
+  if (walletSelector) {
+    const normalized = walletSelector.toLowerCase();
+    walletCandidates = walletResult.rows.filter((row) => row.id.toLowerCase() === normalized || row.name.toLowerCase() === normalized);
+    if (walletCandidates.length === 0) {
+      await addAssistantMessage(task.ownerUserId, context.conversationId, `I could not find that ${walletMode === 'watch-only' ? 'watch-only' : 'connected'} EVM wallet. Available names: ${walletResult.rows.map((row) => row.name).join(', ')}. Nothing was submitted.`);
+      return true;
+    }
+  }
+  if (walletCandidates.length > 1) {
     const label = walletMode === 'watch-only' ? 'watch-only EVM wallet' : 'connected EVM wallet';
-    await addAssistantMessage(task.ownerUserId, context.conversationId, `You have more than one ${label}. Choose the account you want to use before I prepare an exact bridge action. Nothing was submitted.`);
+    await addAssistantMessage(task.ownerUserId, context.conversationId, `You have more than one matching ${label}. Choose one by saying "using wallet named <name>". Available names: ${walletCandidates.map((row) => row.name).join(', ')}. Nothing was submitted.`);
     return true;
   }
 
-  const wallet = walletResult.rows[0]!;
+  const wallet = walletCandidates[0]!;
   const amountAtomic = asset === 'USDC' || asset === 'USDT' ? decimalToAtomic(amount, 6) : undefined;
   const sourceAssetAddress = knownAssetAddress(sourceNetwork, asset);
   const destinationAssetAddress = knownAssetAddress(destinationNetwork, asset);
@@ -754,7 +852,7 @@ async function tryPrepareBridgeRequest(task: IntelligenceTask, context: Intellig
       ? 'The deterministic authority rules blocked it.'
       : prepared.prepared?.authorityDecision.decision === 'APPROVAL_REQUIRED'
         ? 'It needs your approval.'
-        : 'It is within current authority and is ready for future execution infrastructure.';
+        : 'It is within current authority and is ready for the approved execution path.';
   const quoteText = prepared.prepared?.quote
     ? ` Quote: ${prepared.prepared.quote.provider} ${prepared.prepared.quote.status}.`
     : ' No executable quote was available.';
@@ -773,7 +871,7 @@ async function tryPrepareBridgeRequest(task: IntelligenceTask, context: Intellig
 async function processTask(task: IntelligenceTask): Promise<void> {
   const context = await getIntelligenceContext(task.ownerUserId, task.conversationId);
   if (!context) throw new Error('INTELLIGENCE_CONTEXT_NOT_FOUND');
-  if (await tryPrepareBridgeRequest(task, context)) {
+  if (await tryPrepareTransferRequest(task, context) || await tryPrepareBridgeRequest(task, context)) {
     await completeIntelligenceTask(task.id);
     return;
   }
@@ -814,8 +912,23 @@ async function processTask(task: IntelligenceTask): Promise<void> {
   await completeIntelligenceTask(task.id);
 }
 
+async function transactionObservationLoop(): Promise<void> {
+  const observationPollMs = Math.max(1500, Number.parseInt(process.env.EXECUTION_OBSERVER_POLL_MS ?? '4000', 10) || 4000);
+  while (!stopping) {
+    try {
+      const result = await observePendingTransactionAttempts(25);
+      if (result.confirmed || result.reverted || result.unknown) {
+        process.stdout.write(`${JSON.stringify({ level: 'info', service: service.name, message: 'Transaction observation pass', ...result })}\n`);
+      }
+    } catch (error) {
+      process.stderr.write(`${JSON.stringify({ level: 'error', service: service.name, message: 'Transaction observation failed', error: error instanceof Error ? error.message : String(error) })}\n`);
+    }
+    await sleep(observationPollMs);
+  }
+}
+
 async function loop(): Promise<void> {
-  process.stdout.write(`${JSON.stringify({ level: 'info', service: service.name, message: 'AgentPlace intelligence worker started', version: service.version })}\n`);
+  process.stdout.write(`${JSON.stringify({ level: 'info', service: service.name, message: 'AgentPlace worker started', version: service.version })}\n`);
   while (!stopping) {
     const task = await claimNextIntelligenceTask().catch((error: unknown) => {
       process.stderr.write(`${JSON.stringify({ level: 'error', service: service.name, message: 'Task claim failed', error: error instanceof Error ? error.message : String(error) })}\n`);
@@ -844,5 +957,5 @@ async function loop(): Promise<void> {
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { stopping = true; });
 
 if (process.env.NODE_ENV !== 'test') {
-  void loop().finally(async () => { await closeDatabasePool(); });
+  void Promise.all([loop(), transactionObservationLoop()]).finally(async () => { await closeDatabasePool(); });
 }

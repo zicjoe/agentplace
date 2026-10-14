@@ -47,7 +47,7 @@ test('M8 Manager treats explicit Agent Account requests as a separate fail-close
   assert.match(worker, /wr\.mode='agent-account'/);
   assert.match(worker, /not deployed and has no onchain address or signer/);
   assert.match(worker, /will not substitute your Connected Wallet/);
-  assert.match(worker, /Agent Account signing and transaction submission are not enabled in M8/);
+  assert.match(worker, /Agent Account signing is not enabled/);
 });
 
 test('M8 Manager can disambiguate multiple Agent Account setups by exact name', () => {

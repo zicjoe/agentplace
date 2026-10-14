@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useAppState, useDispatch, uid, triggerBridgeExecution } from '../state/AppContext';
 import { decideAction, fetchAction, prepareAction, type ApiFinancialAction } from '../platform/actionApi';
+import { fetchActionExecution, fetchExecutionAttempt, reportExecutionAttempt, startActionExecution, submitConnectedWalletRequest, walletErrorClassification, type ApiTransactionAttempt } from '../platform/executionApi';
+import { useRuntime } from '../platform/RuntimeProvider';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 
 const PERPS_ACTION_ID = '__perps-demo__';
@@ -65,6 +67,7 @@ function DecisionBadge({ decision }: { decision: string }) {
 export function ActionReview() {
   const state = useAppState();
   const dispatch = useDispatch();
+  const { connection } = useRuntime();
   const [showTechnical, setShowTechnical] = useState(false);
   const [approved, setApproved] = useState(false);
   const [rejected, setRejected] = useState(false);
@@ -73,16 +76,29 @@ export function ActionReview() {
   const [serverAction, setServerAction] = useState<ApiFinancialAction | null>(null);
   const [serverBusy, setServerBusy] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [executionAttempt, setExecutionAttempt] = useState<ApiTransactionAttempt | null>(null);
+  const [executionBusy, setExecutionBusy] = useState(false);
 
   const actionId = state.activeActionId;
   const isPerpsDemo = actionId === PERPS_ACTION_ID;
 
   useEffect(() => {
+    setApproved(false); setRejected(false); setExecutionAttempt(null);
     if (!actionId?.startsWith('fa_') || WEB_RUNTIME_SETTINGS.dataMode !== 'api') { setServerAction(null); setServerError(null); return; }
     let live=true; setServerBusy(true); setServerError(null);
-    void fetchAction(actionId).then((value)=>{if(live)setServerAction(value);}).catch((error)=>{if(live)setServerError(error instanceof Error?error.message:'Unable to load action.');}).finally(()=>{if(live)setServerBusy(false);});
+    void Promise.all([fetchAction(actionId), fetchActionExecution(actionId)])
+      .then(([value, attempt])=>{if(live){setServerAction(value);setExecutionAttempt(attempt);setApproved(value.status==='READY_FOR_EXECUTION' && value.prepared?.authorityDecision.decision==='APPROVAL_REQUIRED');setRejected(value.status==='REJECTED');}})
+      .catch((error)=>{if(live)setServerError(error instanceof Error?error.message:'Unable to load action.');})
+      .finally(()=>{if(live)setServerBusy(false);});
     return ()=>{live=false;};
   }, [actionId]);
+
+  useEffect(() => {
+    if (!executionAttempt || !['WALLET_PROMPTED','SUBMITTED','CONFIRMING','UNKNOWN'].includes(executionAttempt.status)) return;
+    let live=true;
+    const timer=window.setInterval(()=>{void fetchExecutionAttempt(executionAttempt.id).then((value)=>{if(live)setExecutionAttempt(value);}).catch(()=>undefined);},3500);
+    return ()=>{live=false;window.clearInterval(timer);};
+  }, [executionAttempt?.id, executionAttempt?.status]);
 
   const durablePrepared=serverAction?.prepared;
   const durableDecision=durablePrepared?.authorityDecision.decision;
@@ -118,7 +134,7 @@ export function ActionReview() {
       ...(durablePrepared?.quote?.routeSummary ? {'Quote detail': durablePrepared.quote.routeSummary} : {}),
       'Simulation': durablePrepared?.simulation.status ?? 'Not available',
       'Risk': durablePrepared?.risk.status ?? 'Not assessed',
-      'Execution': 'Not enabled in M8',
+      'Execution': executionAttempt ? executionAttempt.status : serverAction.status === 'READY_FOR_EXECUTION' ? 'Ready for connected-wallet signature' : 'Not submitted',
     },
     workerId: serverAction.workerId,
     workerName: undefined,
@@ -202,6 +218,30 @@ export function ActionReview() {
     setApproved(true);
   }
 
+
+  async function handleSignAndSubmit() {
+    if (!serverAction || executionBusy) return;
+    setExecutionBusy(true); setServerError(null);
+    try {
+      const intent=await startActionExecution(serverAction.id);
+      setExecutionAttempt(intent.attempt);
+      try {
+        const sent=await submitConnectedWalletRequest(intent.walletRequest);
+        const reported=await reportExecutionAttempt(intent.attempt.id,{promptToken:intent.promptToken,outcome:'SUBMITTED',transactionHash:sent.transactionHash});
+        setExecutionAttempt(reported);
+      } catch (walletError) {
+        const classified=walletErrorClassification(walletError);
+        const reported=await reportExecutionAttempt(intent.attempt.id,{promptToken:intent.promptToken,outcome:classified.outcome,message:classified.message});
+        setExecutionAttempt(reported);
+        if(classified.outcome!=='USER_REJECTED')setServerError(classified.message);
+      }
+    } catch (error) {
+      setServerError(error instanceof Error?error.message:'AgentPlace could not safely start execution.');
+    } finally {
+      setExecutionBusy(false);
+    }
+  }
+
   function handleReject() {
     if (serverAction) {
       setServerBusy(true); setServerError(null);
@@ -242,6 +282,21 @@ export function ActionReview() {
   const isWalletDisconnected = action.walletId && (state.wallets ?? []).find((w) => w.id === action.walletId)?.disconnected && !approved && !rejected && !isBlocked;
   const isUnsafe = isQuoteExpired || isMaterialChange || isStaleData || isWalletDisconnected;
   const fa = action as import('../state/types').FinancialAction;
+  const executionGateEnabled = serverAction?.environment === 'mainnet'
+    ? Boolean(connection.publicConfig?.execution.mainnetEnabled)
+    : Boolean(connection.publicConfig?.execution.testnetEnabled);
+  const canConnectedWalletExecute = Boolean(serverAction && durableWalletMode === 'connected' && serverAction.status === 'READY_FOR_EXECUTION' && executionGateEnabled);
+  const executionStatusCopy: Record<string,string> = {
+    WALLET_PROMPTED: 'Wallet signature requested. Nothing is confirmed submitted yet.',
+    USER_REJECTED: 'Signature rejected. Nothing was submitted.',
+    PRE_SUBMISSION_FAILED: 'The wallet did not submit this transaction. Correct the issue before trying again.',
+    SUBMITTED: 'Submitted. AgentPlace is observing the transaction.',
+    CONFIRMING: 'Submitted · Confirming onchain.',
+    CONFIRMED: 'Transaction confirmed · Verifying outcome. Confirmation is not AgentPlace Verified completion.',
+    REVERTED: 'Transaction reverted onchain. AgentPlace will not claim the requested outcome completed.',
+    MISMATCH: 'Submitted transaction does not match the exact approved action. AgentPlace will not treat it as authorized completion.',
+    UNKNOWN: 'Confirming transaction status. Do not resubmit. AgentPlace is protecting against duplicate execution.',
+  };
 
   const grant = action.grantId
     ? (state.authorityGrants ?? []).find((g) => g.id === action.grantId)
@@ -257,7 +312,7 @@ export function ActionReview() {
               <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim mb-1">Action Review</p>
               <h2 className="text-sm font-semibold text-text">{action.title}</h2>
               <p className="text-xs text-text-muted font-mono mt-0.5">
-                {state.environment === 'mainnet' ? 'Mainnet' : 'Testnet'} · {new Date(action.createdAt).toLocaleDateString()}
+                {(serverAction?.environment ?? state.environment) === 'mainnet' ? 'Mainnet' : 'Testnet'} · {new Date(action.createdAt).toLocaleDateString()}
               </p>
             </div>
             <button onClick={handleClose} className="text-text-muted hover:text-text p-1 rounded transition-colors shrink-0">
@@ -277,7 +332,24 @@ export function ActionReview() {
               </svg>
               <p className="text-sm font-medium text-text mb-1">Approved once.</p>
               <p className="text-xs text-text-sub">This approval applies only to this exact action. No future authority was created.</p>
-              <p className="text-xs text-text-muted mt-2">Ready for signature/execution infrastructure. M8 does not sign or submit transactions.</p>
+              {executionAttempt ? (
+                <div className="mt-3 border border-border rounded bg-panel-raised px-3 py-3 text-left">
+                  <p className="text-xs font-medium text-text">{executionStatusCopy[executionAttempt.status] ?? executionAttempt.status}</p>
+                  {executionAttempt.transactionHash && <p className="mt-1 text-[10px] font-mono text-text-dim break-all">{executionAttempt.transactionHash}</p>}
+                  {executionAttempt.observationError && <p className="mt-1 text-[10px] text-text-muted">{executionAttempt.observationError}</p>}
+                </div>
+              ) : (
+                <p className="text-xs text-text-muted mt-2">Ready for the exact Connected Wallet to sign. AgentPlace never receives the wallet private key.</p>
+              )}
+              {!executionAttempt && serverAction && durableWalletMode === 'connected' && !executionGateEnabled && (
+                <p className="mt-3 text-xs text-warn">{serverAction.environment === 'mainnet' ? 'Mainnet execution is disabled by the production gate.' : 'Execution is disabled by the environment gate.'}</p>
+              )}
+              {serverAction && durableWalletMode === 'connected' && (!executionAttempt || executionAttempt.status==='USER_REJECTED' || executionAttempt.status==='PRE_SUBMISSION_FAILED') && (
+                <button disabled={!canConnectedWalletExecute || executionBusy} onClick={()=>{void handleSignAndSubmit();}} className="mt-3 w-full py-2.5 text-sm font-medium bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                  {executionBusy ? 'Preparing exact wallet request…' : executionAttempt ? 'Try signing again' : 'Sign and submit in wallet'}
+                </button>
+              )}
+              {executionAttempt?.status==='UNKNOWN' && <p className="mt-3 text-[10px] text-warn">Do not create a new preparation merely to retry this uncertain submission. Resolve transaction status first.</p>}
               <button onClick={handleClose} className="mt-3 text-xs text-primary border border-primary/30 rounded px-3 py-1.5 hover:bg-primary-dim/20 transition-colors">
                 Return to work
               </button>

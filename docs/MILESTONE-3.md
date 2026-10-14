@@ -33,5 +33,5 @@ The reconciled production roadmap now continues with:
 3. M6 — Wallet Foundation
 4. M7 — Mandates + Authority
 5. M8 — Action Preparation + Review
-6. M9 — Testnet Execution + Observation
+6. M9 — Connected Wallet Execution + Transaction Observation (later approved roadmap update from the original testnet-only wording)
 7. M10 — Settlement + Verification + Receipts

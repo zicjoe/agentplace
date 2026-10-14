@@ -26,3 +26,12 @@ If private reporting is temporarily unavailable, contact the repository owner th
 - Telegraph x402 payments are hard-pinned to Base Sepolia test USDC and bounded by per-call, per-Job and call-count limits. Environment settings may tighten but cannot raise the code-level caps.
 - A Telegraph payment authorizes only the exact external intelligence request. It grants no capability, policy, wallet or financial execution authority.
 - Paid requests are not automatically replayed when settlement/outcome is unknown.
+
+## M9 Connected Wallet execution boundary
+
+- AgentPlace API/Worker never accepts or stores the user's private key or seed phrase. Connected Wallet signing occurs only inside the user's EIP-1193 wallet.
+- A signing request must be bound to the exact current prepared revision, action digest, one-time approval, account, network and current deterministic authority decision.
+- `MAINNET_EXECUTION_ENABLED` gates user-signed Mainnet execution and remains `false` by default. `MAINNET_AUTONOMY_ENABLED` is separate and remains disabled in M9.
+- A wallet-returned transaction hash is independently read from configured RPCs and compared with the exact approved `from`, `to`, calldata and value before confirmation is trusted.
+- An ambiguous submission/observation state never triggers automatic resubmission. `UNKNOWN` means resolve the original transaction state first.
+- Transaction confirmation is not an independently verified economic outcome and must not be labeled `Completed · AgentPlace Verified` in M9.

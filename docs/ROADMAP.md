@@ -14,8 +14,8 @@ The repository follows the approved production sequence while preserving the Mas
   - **Milestone 5B.2 — Telegraph Intelligence Network Adapter** — M5B.2.1 discovery, M5B.2.2 capability mapping/evidence normalization and M5B.2.3 Router integration/bounded x402 fallback are implemented. v0.8.5 adds the M5B.2.4 fail-closed live acceptance planner/runner. The paid live acceptance is deliberately deferred rather than used as a blocker for subsequent product milestones; Telegraph remains experimental/testnet/no-authority and is not represented as fully live-accepted.
 - **Milestone 6 — Wallet Foundation** — v0.9.1 frozen (viewport/layout hardened); durable Watch-only resources, real browser-observed Connected EVM Wallet state, undeployed Agent Account setup, and owner-scoped account/network state. No financial authority or execution.
 - **Milestone 7 — Mandates + Authority Engine** — v0.10.0 frozen; durable immutable-revision mandates, deterministic fail-closed authority decisions, separated service/capital/transaction/period budgets, approval policy, Worker/account/Security authority UX, pause/revoke/expiry and durable audit evidence. No signer or transaction execution added.
-- **Milestone 8 — Action Preparation + Action Review** — v0.11.0 candidate; durable exact-action preparation, live/truthful quote interface, preflight/risk evidence, M7 authority binding and exact-action approval. No signing/submission.
-- **Milestone 9 — Testnet Execution + Observation**
+- **Milestone 8 — Action Preparation + Action Review** — v0.11.0 frozen; durable exact-action preparation, live/truthful quote interface, preflight/risk evidence, M7 authority binding and exact-action approval. No signing/submission.
+- **Milestone 9 — Connected Wallet Execution + Transaction Observation** — v0.12.0 candidate; approved product-boundary update replaces the older testnet-only wording. Exact user-approved Connected Wallet actions may execute on Mainnet only when the explicit production gate is enabled; signing remains in the user's wallet, transaction attempts are idempotent/durable, and deterministic RPC observation never automatically resubmits an uncertain action. Confirmation is not verified completion.
 - **Milestone 10 — Settlement + Verification + Receipts**
 - **Milestone 11 — Routines + Background Work**
 - **Milestone 12 — Discover + Creator System**
@@ -28,4 +28,5 @@ Milestone boundaries may be refined only through the project discussion gate whe
 ## Current frozen/active sequence
 
 - v0.10.0 — M7 Mandates + Authority Engine: frozen.
-- v0.11.0 — M8 Action Preparation + Action Review: implementation candidate; preparation only, no signing/submission.
+- v0.11.0 — M8 Action Preparation + Action Review: frozen; preparation and exact-action approval only, no signing/submission.
+- v0.12.0 — M9 Connected Wallet Execution + Transaction Observation: implementation candidate; user-signed execution and durable observation, with Mainnet disabled by default and autonomy still disabled.

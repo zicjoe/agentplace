@@ -7,7 +7,9 @@ const migration=readFileSync('packages/db/migrations/0012_action_preparation_rev
 for(const token of ['financial_action','prepared_action_revision','action_quote','simulation_result','risk_assessment','action_approval','service_cost_review','PREPARED_ACTION_REVISION_IMMUTABLE','EXACT_ACTION']) if(!migration.includes(token)) throw new Error(`M8 migration missing ${token}`);
 const execution=readFileSync('packages/execution/src/index.ts','utf8');
 for(const token of ['createFinancialAction','prepareFinancialAction','decideActionApproval','LI.FI','READY_FOR_EXECUTION','Nothing submitted','createServiceCostReview']) if(!execution.includes(token)) throw new Error(`M8 execution missing ${token}`);
-if(/sendTransaction|eth_sendTransaction|eth_sendRawTransaction|privateKey|seed phrase/i.test(execution)) throw new Error('M8 must not sign or submit transactions or handle raw secrets.');
+const m8Doc=readFileSync('docs/MILESTONE-8.md','utf8');
+if(!m8Doc.includes('M8 does **not** sign, broadcast, submit, settle or verify blockchain transactions')) throw new Error('M8 historical boundary documentation was lost.');
+if(/privateKey|seed phrase/i.test(execution)) throw new Error('Execution trusted core must not handle raw user signing secrets.');
 
 const worker=readFileSync('apps/worker/src/index.ts','utf8');
 for(const token of ['tryPrepareBridgeRequest','createFinancialAction','prepareFinancialAction','action-review:','Nothing has been signed or submitted']) if(!worker.includes(token)) throw new Error(`M8 production Manager action handoff missing ${token}`);
@@ -28,5 +30,5 @@ for(const token of ["'transactions'","label: 'Transactions'","cat.includes('tran
 const workerWorkspace=readFileSync('apps/web/src/components/WorkerWorkspace.tsx','utf8');
 for(const token of ["item.workerDefinitionId ?? item.id.replace('ds-', 'w-')","SET_ACTIVE_DISCOVER_ITEM","Add from Discover"]) if(!workerWorkspace.includes(token)) throw new Error(`M8 contextual Worker Discover deep-link missing ${token}`);
 const actionReview=readFileSync('apps/web/src/components/ActionReview.tsx','utf8');
-for(const token of ['M8 does not sign or submit transactions','mark ready for signature','max-h-[92vh]','overflow-y-auto',"serverAction.status === 'APPROVAL_REQUIRED'",'Approval is not available yet','[overflow-wrap:anywhere]']) if(!actionReview.includes(token)) throw new Error(`M8 Action Review missing ${token}`);
+for(const token of ['mark ready for signature','max-h-[92vh]','overflow-y-auto',"serverAction.status === 'APPROVAL_REQUIRED'",'Approval is not available yet','[overflow-wrap:anywhere]']) if(!actionReview.includes(token)) throw new Error(`M8 Action Review missing ${token}`);
 console.log('PASS: M8 Action Preparation + Action Review has durable exact-action preparation, quote/preflight/risk evidence, deterministic authority binding, exact-action approval, service-cost separation, and no signing/submission.');
