@@ -69,6 +69,7 @@ function AddWalletModal({ onClose, initialStep }: { onClose: () => void; initial
   const [error, setError] = useState<string | null>(null);
   const connectedOwners = (state.wallets ?? []).filter((wallet) => wallet.mode === 'connected' && !wallet.disconnected && wallet.namespace !== 'solana');
   const [ownerWalletId, setOwnerWalletId] = useState(() => connectedOwners[0]?.id ?? '');
+  const [agentAccountName, setAgentAccountName] = useState('My Agent Account');
   const [preferredNetworkIds, setPreferredNetworkIds] = useState<string[]>([]);
 
   async function refreshWalletState() {
@@ -140,7 +141,7 @@ function AddWalletModal({ onClose, initialStep }: { onClose: () => void; initial
       const ownerWallet = connectedOwners.find((wallet) => wallet.id === ownerWalletId);
       if (!ownerWallet) throw new Error('Choose an active connected EVM owner wallet.');
       await refreshDurableEvmWallet(ownerWallet);
-      await createDurableAgentAccount({ name: 'My Agent Account', ownerWalletId, preferredNetworkIds });
+      await createDurableAgentAccount({ name: agentAccountName.trim() || 'My Agent Account', ownerWalletId, preferredNetworkIds });
       await refreshWalletState();
       setStep('agent-done');
     } catch (caught) {
@@ -315,6 +316,11 @@ function AddWalletModal({ onClose, initialStep }: { onClose: () => void; initial
                 <p className="text-xs font-medium text-text">Why use an Agent Account?</p>
                 <p className="text-xs text-text-sub mt-1 leading-relaxed">It is the future execution home for Workers that may operate under rules you define. The account starts with no Worker authority. M7 can attach a structured mandate, but no smart account is fabricated or deployed and M7 does not add signing or execution infrastructure.</p>
               </div>
+              <div>
+                <label className="text-xs text-text-muted font-medium block mb-1.5">Account name</label>
+                <input value={agentAccountName} onChange={(event) => setAgentAccountName(event.target.value)} maxLength={80} placeholder="e.g. Treasury Agent Account" className="w-full bg-panel-raised border border-border rounded px-3 py-2.5 text-sm text-text outline-none focus:border-primary/50" />
+                <p className="text-[10px] text-text-dim mt-1.5">Use a unique name if you plan to create more than one Agent Account setup.</p>
+              </div>
               {connectedOwners.length === 0 ? (
                 <p className="text-xs text-warning bg-warning/10 border border-warning/20 rounded px-3 py-2">Connect an EVM owner wallet first. AgentPlace will not create an ownerless Agent Account record.</p>
               ) : (
@@ -351,7 +357,7 @@ function AddWalletModal({ onClose, initialStep }: { onClose: () => void; initial
               {error && <p className="text-xs text-danger bg-danger/10 border border-danger/20 rounded px-3 py-2">{error}</p>}
               <div className="flex gap-2">
                 <button onClick={() => setStep('choose')} disabled={busy} className="flex-1 py-2 text-sm text-text-muted border border-border rounded hover:bg-panel transition-colors disabled:opacity-40">Back</button>
-                <button onClick={() => void handleCreateAgentAccount()} disabled={!ownerWalletId || preferredNetworkIds.length === 0 || busy} className="flex-1 py-2 text-sm bg-primary text-white rounded font-medium hover:bg-primary-hover transition-colors disabled:opacity-40">
+                <button onClick={() => void handleCreateAgentAccount()} disabled={!agentAccountName.trim() || !ownerWalletId || preferredNetworkIds.length === 0 || busy} className="flex-1 py-2 text-sm bg-primary text-white rounded font-medium hover:bg-primary-hover transition-colors disabled:opacity-40">
                   {busy ? 'Creating…' : 'Create setup'}
                 </button>
               </div>
@@ -445,8 +451,42 @@ function AccountAuthorityPanel({ wallet }: { wallet: WalletResource }) {
 function AgentAccountDetail({ wallet }: { wallet: WalletResource }) {
   const state = useAppState();
   const dispatch = useDispatch();
+  const [editingName, setEditingName] = useState(false);
+  const [name, setName] = useState(wallet.name);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const account = (state.agentAccounts ?? []).find((item) => item.id === wallet.agentAccountId);
   const ownerWallet = account?.ownerWalletId ? (state.wallets ?? []).find((item) => item.id === account.ownerWalletId) : null;
+
+  async function reload() {
+    const walletState = await fetchWalletState();
+    dispatch({ type: 'SET_WALLETS', wallets: walletState.wallets });
+    dispatch({ type: 'SET_AGENT_ACCOUNTS', agentAccounts: walletState.agentAccounts });
+  }
+
+  async function rename() {
+    if (busy || !name.trim() || name.trim() === wallet.name) { setEditingName(false); return; }
+    setBusy(true); setError(null);
+    try {
+      await updateDurableWallet(wallet.id, { name: name.trim() });
+      await reload();
+      setEditingName(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not rename this Agent Account setup.');
+    } finally { setBusy(false); }
+  }
+
+  async function remove() {
+    if (busy || !window.confirm(`Remove ${wallet.name} setup from AgentPlace? This only removes the undeployed setup record and does not move funds or affect the owner wallet.`)) return;
+    setBusy(true); setError(null);
+    try {
+      await removeDurableWallet(wallet.id);
+      await reload();
+      dispatch({ type: 'SET_ACTIVE_WALLET', id: null });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not remove this Agent Account setup.');
+    } finally { setBusy(false); }
+  }
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
@@ -456,7 +496,18 @@ function AgentAccountDetail({ wallet }: { wallet: WalletResource }) {
         </button>
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-sm font-semibold text-text">{wallet.name}</h1>
+            {editingName ? (
+              <div className="flex items-center gap-2">
+                <input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} autoFocus className="w-56 rounded border border-border bg-bg px-2 py-1 text-sm text-text outline-none focus:border-primary/50" />
+                <button disabled={busy || !name.trim()} onClick={() => void rename()} className="text-[11px] text-primary hover:underline disabled:opacity-40">Save</button>
+                <button disabled={busy} onClick={() => { setName(wallet.name); setEditingName(false); }} className="text-[11px] text-text-muted hover:text-text disabled:opacity-40">Cancel</button>
+              </div>
+            ) : (
+              <>
+                <h1 className="text-sm font-semibold text-text">{wallet.name}</h1>
+                <button onClick={() => { setName(wallet.name); setEditingName(true); }} className="text-[11px] text-text-muted hover:text-text">Rename</button>
+              </>
+            )}
             <span className="text-[10px] font-mono text-accent border border-accent/30 rounded px-1.5 py-0.5">Agent Account setup</span>
           </div>
           <p className="text-xs text-text-muted">{account?.deploymentStatus === 'deployed' && account.accountAddress ? account.accountAddress : 'No onchain address yet'}</p>
@@ -493,6 +544,15 @@ function AgentAccountDetail({ wallet }: { wallet: WalletResource }) {
           </div>
 
           <AccountAuthorityPanel wallet={wallet} />
+
+          <div className="border border-border rounded-lg bg-panel px-4 py-3">
+            <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim mb-2">Manager selection</p>
+            <p className="text-xs text-text-sub leading-relaxed">If you have more than one Agent Account setup, refer to this one by its exact name, for example: <span className="font-mono text-text">using Agent Account named {wallet.name}</span>.</p>
+          </div>
+
+          {error && <p className="text-xs text-danger bg-danger/10 border border-danger/20 rounded px-3 py-2">{error}</p>}
+
+          <button onClick={() => void remove()} disabled={busy} className="text-xs text-danger border border-danger/20 rounded px-3 py-1.5 hover:bg-danger/10 transition-colors disabled:opacity-40">Remove Agent Account setup</button>
 
           <div className="border border-border-dim rounded-lg bg-panel-raised px-4 py-3">
             <p className="text-xs font-medium text-text mb-1">Authority is not execution</p>

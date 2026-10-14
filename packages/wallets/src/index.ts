@@ -322,9 +322,11 @@ export async function updateWallet(ownerUserId: string, walletId: string, patch:
   if (!existing) return null;
   const name = patch.name === undefined ? existing.name : requireName(patch.name);
   const status = patch.status ?? existing.status;
-  if (status === 'setup') throw new Error('INVALID_WALLET_STATUS');
   await getDatabasePool().query(`UPDATE wallet_resource SET name=$3,status=$4,removed_at=CASE WHEN $4='removed' THEN now() ELSE NULL END,updated_at=now()
     WHERE owner_user_id=$1 AND id=$2`, [ownerUserId, walletId, name, status]);
+  if (existing.mode === 'agent-account' && patch.name !== undefined) {
+    await getDatabasePool().query(`UPDATE agent_account SET name=$3,updated_at=now() WHERE owner_user_id=$1 AND wallet_id=$2`, [ownerUserId, walletId, name]);
+  }
   if (status === 'disconnected') {
     await getDatabasePool().query(`UPDATE wallet_network_state SET connection_state='disconnected',updated_at=now() WHERE owner_user_id=$1 AND wallet_id=$2 AND connection_state='connected'`, [ownerUserId, walletId]);
   }

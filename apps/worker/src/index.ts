@@ -626,6 +626,15 @@ function requestedWalletMode(user: string): RequestedWalletMode {
   return 'connected';
 }
 
+function requestedAgentAccountSelector(user: string): string | undefined {
+  const walletId = user.match(/\b(wlt_[0-9a-f-]{20,})\b/i)?.[1]?.trim();
+  if (walletId) return walletId;
+  const named = user.match(/\bagent(?:[-\s]+)account\s+(?:named|called)\s+["“]?([^"”.,!?]+)["”]?/i)?.[1]?.trim();
+  if (named) return named;
+  const quoted = user.match(/\bagent(?:[-\s]+)account\s+["“]([^"”]+)["”]/i)?.[1]?.trim();
+  return quoted || undefined;
+}
+
 
 async function tryPrepareBridgeRequest(task: IntelligenceTask, context: IntelligenceContextValue): Promise<boolean> {
   if (context.scope !== 'manager') return false;
@@ -647,10 +656,11 @@ async function tryPrepareBridgeRequest(task: IntelligenceTask, context: Intellig
   if (walletMode === 'agent-account') {
     const accountResult = await getDatabasePool().query<{
       wallet_id: string;
+      wallet_name: string;
       deployment_status: string;
       account_address: string | null;
     }>(
-      `SELECT wr.id AS wallet_id,aa.deployment_status,aa.account_address
+      `SELECT wr.id AS wallet_id,wr.name AS wallet_name,aa.deployment_status,aa.account_address
        FROM wallet_resource wr
        JOIN agent_account aa ON aa.owner_user_id=wr.owner_user_id AND aa.wallet_id=wr.id
        WHERE wr.owner_user_id=$1 AND wr.mode='agent-account' AND wr.namespace='eip155' AND wr.removed_at IS NULL
@@ -661,11 +671,31 @@ async function tryPrepareBridgeRequest(task: IntelligenceTask, context: Intellig
       await addAssistantMessage(task.ownerUserId, context.conversationId, 'Create an Agent Account setup first. Agent Account setup is durable metadata only in the current wallet foundation; it does not deploy a smart account, create a signer, or grant Worker authority. Nothing was submitted.', undefined, undefined, undefined, 'create-agent-account-cta');
       return true;
     }
-    if (accountResult.rows.length > 1) {
-      await addAssistantMessage(task.ownerUserId, context.conversationId, 'You have more than one Agent Account setup. Choose the account you mean before preparing a financial action. Nothing was submitted.');
+
+    const selector = requestedAgentAccountSelector(user);
+    let selectedRows = accountResult.rows;
+    if (selector) {
+      const normalizedSelector = selector.toLowerCase();
+      selectedRows = accountResult.rows.filter((row) => row.wallet_id.toLowerCase() === normalizedSelector || row.wallet_name.toLowerCase() === normalizedSelector);
+      if (selectedRows.length === 0) {
+        const names = [...new Set(accountResult.rows.map((row) => row.wallet_name))].join(', ');
+        await addAssistantMessage(task.ownerUserId, context.conversationId, `I could not find an Agent Account setup named ${selector}. Available setup names: ${names}. Nothing was submitted.`);
+        return true;
+      }
+      if (selectedRows.length > 1) {
+        await addAssistantMessage(task.ownerUserId, context.conversationId, `More than one Agent Account setup is named ${selector}. Rename the setups in Wallets so each has a unique name, then try again. Nothing was submitted.`);
+        return true;
+      }
+    } else if (accountResult.rows.length > 1) {
+      const names = [...new Set(accountResult.rows.map((row) => row.wallet_name))];
+      const namesText = names.join(', ');
+      const duplicateNames = names.length !== accountResult.rows.length;
+      await addAssistantMessage(task.ownerUserId, context.conversationId, duplicateNames
+        ? `You have more than one Agent Account setup and some use the same name. Rename or remove unused setups in Wallets, then say "using Agent Account named <name>". Current names: ${namesText}. Nothing was submitted.`
+        : `You have more than one Agent Account setup. Choose one by saying "using Agent Account named <name>". Available setups: ${namesText}. Nothing was submitted.`);
       return true;
     }
-    const agentAccount = accountResult.rows[0]!;
+    const agentAccount = selectedRows[0]!;
     if (agentAccount.deployment_status !== 'deployed' || !agentAccount.account_address) {
       await addAssistantMessage(task.ownerUserId, context.conversationId, 'Your Agent Account setup is not deployed and has no onchain address or signer. M8 cannot prepare a signable or executable bridge from it, and AgentPlace will not substitute your Connected Wallet. Nothing was signed or submitted.');
       return true;

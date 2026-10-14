@@ -49,3 +49,18 @@ test('M8 Manager treats explicit Agent Account requests as a separate fail-close
   assert.match(worker, /will not substitute your Connected Wallet/);
   assert.match(worker, /Agent Account signing and transaction submission are not enabled in M8/);
 });
+
+test('M8 Manager can disambiguate multiple Agent Account setups by exact name', () => {
+  const worker = readFileSync('apps/worker/src/index.ts', 'utf8');
+  const wallets = readFileSync('apps/web/src/components/WalletsView.tsx', 'utf8');
+  const walletCore = readFileSync('packages/wallets/src/index.ts', 'utf8');
+  assert.match(worker, /requestedAgentAccountSelector/);
+  assert.match(worker, /using Agent Account named <name>/);
+  assert.match(worker, /wr\.name AS wallet_name/);
+  assert.match(wallets, /Account name/);
+  assert.match(wallets, /Rename/);
+  assert.match(wallets, /Remove Agent Account setup/);
+  assert.match(wallets, /using Agent Account named \{wallet\.name\}/);
+  assert.match(walletCore, /UPDATE agent_account SET name=\$3/);
+});
+
