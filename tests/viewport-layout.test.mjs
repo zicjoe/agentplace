@@ -67,3 +67,9 @@ test('high-use dialogs remain reachable on short viewports', async () => {
     assert.match(source, /overflow-y-auto/, `${name} must let oversized dialog content scroll`);
   }
 });
+
+test('Action Review technical details wrap long identifiers instead of creating horizontal scroll', async () => {
+  const actionReview = await read('apps/web/src/components/ActionReview.tsx');
+  assert.match(actionReview, /className="flex min-w-0 items-start justify-between gap-3"/);
+  assert.match(actionReview, /min-w-0 break-words text-right text-text-sub \[overflow-wrap:anywhere\]/);
+});

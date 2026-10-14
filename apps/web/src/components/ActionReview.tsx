@@ -376,9 +376,9 @@ export function ActionReview() {
                   {showTechnical && (
                     <div className="mt-2 border border-border-dim rounded bg-panel-raised px-3 py-2.5 space-y-1 text-xs font-mono">
                       {Object.entries(action.technicalDetails ?? {}).map(([k, v]) => (
-                        <div key={k} className="flex justify-between gap-3">
-                          <span className="text-text-muted">{k}</span>
-                          <span className="text-text-sub text-right">{v}</span>
+                        <div key={k} className="flex min-w-0 items-start justify-between gap-3">
+                          <span className="shrink-0 text-text-muted">{k}</span>
+                          <span className="min-w-0 break-words text-right text-text-sub [overflow-wrap:anywhere]">{v}</span>
                         </div>
                       ))}
                     </div>

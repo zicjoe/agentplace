@@ -1,4 +1,5 @@
 # Changelog
+- Fixed M8 Action Review responsive technical details so long unbroken identifiers such as action digests, wallet IDs, and network refs wrap within the modal instead of forcing horizontal scrolling.
 - Added M8 Agent Account disambiguation and setup management: Agent Account setups can be named, renamed, and removed; Manager can select an exact setup by name and fails closed on duplicate/unknown names without substituting another wallet.
 - Fixed M8 Manager account-mode selection for explicit Agent Account requests: undeployed Agent Account setups now fail closed with truthful deployment/signer messaging and can never silently fall back to a Connected Wallet.
 - Fixed M8 Manager account selection so an explicit watch-only wallet request uses the user’s watch-only EVM resource instead of silently substituting a connected wallet; Action Review now labels watch-only accounts as preview-only and never presents them as signable/executable.
