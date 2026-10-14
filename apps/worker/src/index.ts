@@ -618,12 +618,14 @@ function authorityEnvironmentForNetwork(networkId: string): 'mainnet' | 'testnet
   return /(sepolia|holesky|testnet|devnet)/.test(networkId) ? 'testnet' : 'mainnet';
 }
 
-type RequestedWalletMode = 'watch-only' | 'connected';
+type RequestedWalletMode = 'watch-only' | 'connected' | 'agent-account';
 
 function requestedWalletMode(user: string): RequestedWalletMode {
+  if (/\bagent(?:[-\s]+)account\b/i.test(user)) return 'agent-account';
   if (/\bwatch(?:[-\s]+)only\b/i.test(user)) return 'watch-only';
   return 'connected';
 }
+
 
 async function tryPrepareBridgeRequest(task: IntelligenceTask, context: IntelligenceContextValue): Promise<boolean> {
   if (context.scope !== 'manager') return false;
@@ -641,7 +643,38 @@ async function tryPrepareBridgeRequest(task: IntelligenceTask, context: Intellig
   }
 
   const walletMode = requestedWalletMode(user);
-  const walletResult = await getDatabasePool().query<{ id: string; address: string; mode: RequestedWalletMode }>(
+
+  if (walletMode === 'agent-account') {
+    const accountResult = await getDatabasePool().query<{
+      wallet_id: string;
+      deployment_status: string;
+      account_address: string | null;
+    }>(
+      `SELECT wr.id AS wallet_id,aa.deployment_status,aa.account_address
+       FROM wallet_resource wr
+       JOIN agent_account aa ON aa.owner_user_id=wr.owner_user_id AND aa.wallet_id=wr.id
+       WHERE wr.owner_user_id=$1 AND wr.mode='agent-account' AND wr.namespace='eip155' AND wr.removed_at IS NULL
+       ORDER BY wr.updated_at DESC`,
+      [task.ownerUserId],
+    );
+    if (accountResult.rows.length === 0) {
+      await addAssistantMessage(task.ownerUserId, context.conversationId, 'Create an Agent Account setup first. Agent Account setup is durable metadata only in the current wallet foundation; it does not deploy a smart account, create a signer, or grant Worker authority. Nothing was submitted.', undefined, undefined, undefined, 'create-agent-account-cta');
+      return true;
+    }
+    if (accountResult.rows.length > 1) {
+      await addAssistantMessage(task.ownerUserId, context.conversationId, 'You have more than one Agent Account setup. Choose the account you mean before preparing a financial action. Nothing was submitted.');
+      return true;
+    }
+    const agentAccount = accountResult.rows[0]!;
+    if (agentAccount.deployment_status !== 'deployed' || !agentAccount.account_address) {
+      await addAssistantMessage(task.ownerUserId, context.conversationId, 'Your Agent Account setup is not deployed and has no onchain address or signer. M8 cannot prepare a signable or executable bridge from it, and AgentPlace will not substitute your Connected Wallet. Nothing was signed or submitted.');
+      return true;
+    }
+    await addAssistantMessage(task.ownerUserId, context.conversationId, 'This Agent Account has deployment metadata, but Agent Account signing and transaction submission are not enabled in M8. AgentPlace will not silently substitute a Connected Wallet. Nothing was signed or submitted.');
+    return true;
+  }
+
+  const walletResult = await getDatabasePool().query<{ id: string; address: string; mode: Exclude<RequestedWalletMode, 'agent-account'> }>(
     `SELECT id,address,mode FROM wallet_resource WHERE owner_user_id=$1 AND mode=$2 AND namespace='eip155' AND status='active' AND removed_at IS NULL AND address IS NOT NULL ORDER BY updated_at DESC`,
     [task.ownerUserId, walletMode],
   );

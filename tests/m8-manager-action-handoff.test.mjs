@@ -38,3 +38,14 @@ test('M8 Manager honors an explicit watch-only wallet request instead of silentl
   assert.match(review, /Watch-only · preview only/);
   assert.match(review, /Watch-only accounts are preview-only and cannot sign or execute financial actions/);
 });
+
+
+test('M8 Manager treats explicit Agent Account requests as a separate fail-closed account mode', () => {
+  const worker = readFileSync('apps/worker/src/index.ts', 'utf8');
+  assert.match(worker, /'watch-only' \| 'connected' \| 'agent-account'/);
+  assert.match(worker, /agent\(\?:\[-\\s\]\+\)account/);
+  assert.match(worker, /wr\.mode='agent-account'/);
+  assert.match(worker, /not deployed and has no onchain address or signer/);
+  assert.match(worker, /will not substitute your Connected Wallet/);
+  assert.match(worker, /Agent Account signing and transaction submission are not enabled in M8/);
+});

@@ -1,4 +1,5 @@
 # Changelog
+- Fixed M8 Manager account-mode selection for explicit Agent Account requests: undeployed Agent Account setups now fail closed with truthful deployment/signer messaging and can never silently fall back to a Connected Wallet.
 - Fixed M8 Manager account selection so an explicit watch-only wallet request uses the user’s watch-only EVM resource instead of silently substituting a connected wallet; Action Review now labels watch-only accounts as preview-only and never presents them as signable/executable.
 - Hardened the M8 LI.FI adapter so supported quotes can fall back to LI.FI token symbols, deterministically derive USDC/USDT atomic amounts, accept legacy EVM namespace aliases, and expose the exact quote-unavailable/provider-failure reason in Action Review.
 - Fixed M8 exact-action approval gating so a quote/preflight-incomplete action cannot expose Approve once; approval conflicts now return a clear refresh/readiness message instead of a generic internal error.
