@@ -142,3 +142,16 @@ test('M9 exposes the canonical direct-transfer capability through the mandate ca
   assert.match(execution, /kind==='transfer'\?'asset\.transfer'/);
   assert.doesNotMatch(execution, /asset\.transfer\.execute/);
 });
+
+
+test('M9 resolves deterministic USD value-at-risk for direct transfers before authority evaluation', () => {
+  assert.match(execution, /resolveDeterministicValueUsd/);
+  assert.match(execution, /CHAINLINK_USD_FEEDS/);
+  assert.match(execution, /0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612/i);
+  assert.match(execution, /stablecoin-nominal-usd/);
+  assert.match(execution, /eth_call/);
+  assert.match(execution, /0xfeaf968c/);
+  assert.match(execution, /UPDATE financial_action SET value_usd=/);
+  assert.match(execution, /valueUsdSource/);
+  assert.match(review, /Value at risk/);
+});

@@ -2,6 +2,8 @@
 
 ## 0.12.0 — M9 Connected Wallet Execution + Transaction Observation
 
+- Fixed M9 direct-transfer preparation to derive and persist deterministic USD value-at-risk before authority evaluation (nominal USD for USDC/USDT; Chainlink onchain feeds for supported native assets), so `asset.transfer` can reach approval without weakening M7 limits.
+
 - Fixed M9 observer TypeScript control-flow narrowing in UNKNOWN-state transitions without changing runtime safety behavior.
 - Added durable idempotent `transaction_attempt` records bound to the exact prepared revision, action digest, one-time approval, account and network.
 - Added exact pre-sign revalidation of preparation freshness, quote/safety state, current deterministic authority, account mode, environment gate and server-side RPC gas estimation.

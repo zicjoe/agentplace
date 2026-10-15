@@ -128,6 +128,7 @@ export function ActionReview() {
       ...(serverAction.destinationNetwork ? {'Destination network':`${serverAction.destinationNetwork.family}:${serverAction.destinationNetwork.networkId}`} : {}),
       'Asset': serverAction.asset,
       'Amount': serverAction.amountDisplay,
+      ...(serverAction.valueUsd ? {'Value at risk': `$${serverAction.valueUsd} USD`} : {}),
       'Preparation revision': String(serverAction.currentRevision),
       'Action digest': durablePrepared?.actionDigest ?? 'Not prepared',
       'Quote': durablePrepared?.quote ? `${durablePrepared.quote.provider} · ${durablePrepared.quote.status}` : 'Not required / unavailable',
