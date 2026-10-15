@@ -155,3 +155,13 @@ test('M9 resolves deterministic USD value-at-risk for direct transfers before au
   assert.match(execution, /valueUsdSource/);
   assert.match(review, /Value at risk/);
 });
+
+
+test('M9 distinguishes RPC transport failure from transaction preflight rejection', () => {
+  assert.match(execution, /estimateExecutionGas/);
+  assert.match(execution, /EXECUTION_PREFLIGHT_FAILED:/);
+  assert.match(execution, /EXECUTION_RPC_UNAVAILABLE:/);
+  assert.match(execution, /insufficient funds/i);
+  assert.match(api, /Pre-sign transaction inspection failed:/);
+  assert.match(api, /could not reach a usable execution RPC/);
+});

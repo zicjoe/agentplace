@@ -2,6 +2,7 @@
 
 ## 0.12.0 — M9 Connected Wallet Execution + Transaction Observation
 
+- Fixed M9 pre-sign RPC diagnostics so a reachable RPC that rejects `eth_estimateGas` (for example insufficient gas funds or a revert) is reported as a transaction preflight failure instead of being misreported as an RPC outage; transport/provider outages remain fail-closed and distinct.
 - Fixed M9 direct-transfer preparation to derive and persist deterministic USD value-at-risk before authority evaluation (nominal USD for USDC/USDT; Chainlink onchain feeds for supported native assets), so `asset.transfer` can reach approval without weakening M7 limits.
 
 - Fixed M9 observer TypeScript control-flow narrowing in UNKNOWN-state transitions without changing runtime safety behavior.
