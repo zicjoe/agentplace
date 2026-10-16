@@ -20,6 +20,12 @@ importers:
       '@agent-place/verification':
         specifier: workspace:*
         version: link:../../packages/verification
+      '@agent-place/notifications':
+        specifier: workspace:*
+        version: link:../../packages/notifications
+      '@agent-place/routines':
+        specifier: workspace:*
+        version: link:../../packages/routines
       '@agent-place/capabilities':
         specifier: workspace:*
         version: link:../../packages/capabilities
@@ -65,6 +71,12 @@ importers:
 
   apps/scheduler:
     dependencies:
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@agent-place/routines':
+        specifier: workspace:*
+        version: link:../../packages/routines
       '@agent-place/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -231,7 +243,29 @@ importers:
 
   packages/models: {}
 
-  packages/notifications: {}
+  packages/notifications:
+    dependencies:
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
+
+  packages/routines:
+    dependencies:
+      '@agent-place/context':
+        specifier: workspace:*
+        version: link:../context
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
+      '@agent-place/intelligence':
+        specifier: workspace:*
+        version: link:../intelligence
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../jobs
+      '@agent-place/notifications':
+        specifier: workspace:*
+        version: link:../notifications
 
   packages/observability:
     dependencies:

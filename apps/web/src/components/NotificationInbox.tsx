@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useAppState, useDispatch } from '../state/AppContext';
 import type { Notification, NotificationLevel } from '../state/types';
+import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { markAllNotificationsReadApi, markNotificationReadApi, updateNotificationPreferencesApi } from '../platform/routineApi';
 
 function timeAgo(date: Date): string {
   const diff = Date.now() - date.getTime();
@@ -39,6 +41,7 @@ function NotifRow({ notif }: { notif: Notification }) {
 
   function handleClick() {
     dispatch({ type: 'MARK_NOTIFICATION_READ', id: notif.id });
+    if (WEB_RUNTIME_SETTINGS.dataMode === 'api') void markNotificationReadApi(notif.id).catch((error) => console.error('Notification read update failed', error));
     dispatch({ type: 'SET_NOTIFICATION_INBOX_OPEN', open: false });
 
     if (!notif.target) return;
@@ -92,6 +95,16 @@ function PreferencesPanel({ onClose }: { onClose: () => void }) {
   const dispatch = useDispatch();
   const prefs = state.notificationPreferences;
 
+  function applyPreference(updates: Partial<typeof prefs>) {
+    if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+      void updateNotificationPreferencesApi(updates).then((preferences) => {
+        dispatch({ type: 'SET_NOTIFICATION_PREFERENCES', preferences });
+      }).catch((error) => console.error('Notification preference update failed', error));
+      return;
+    }
+    dispatch({ type: 'UPDATE_NOTIFICATION_PREFERENCES', updates });
+  }
+
   return (
     <div className="border-t border-border-dim pt-4 mt-2">
       <div className="flex items-center justify-between mb-4">
@@ -107,12 +120,7 @@ function PreferencesPanel({ onClose }: { onClose: () => void }) {
             </p>
           </div>
           <button
-            onClick={() =>
-              dispatch({
-                type: 'UPDATE_NOTIFICATION_PREFERENCES',
-                updates: { quietHoursEnabled: !prefs.quietHoursEnabled },
-              })
-            }
+            onClick={() => applyPreference({ quietHoursEnabled: !prefs.quietHoursEnabled })}
             className={`w-10 h-5 rounded-full transition-colors relative ${
               prefs.quietHoursEnabled ? 'bg-primary' : 'bg-border'
             }`}
@@ -131,12 +139,7 @@ function PreferencesPanel({ onClose }: { onClose: () => void }) {
               <p className="text-[10px] text-text-muted">Allow Critical notifications through</p>
             </div>
             <button
-              onClick={() =>
-                dispatch({
-                  type: 'UPDATE_NOTIFICATION_PREFERENCES',
-                  updates: { criticalBypassQuietHours: !prefs.criticalBypassQuietHours },
-                })
-              }
+              onClick={() => applyPreference({ criticalBypassQuietHours: !prefs.criticalBypassQuietHours })}
               className={`w-10 h-5 rounded-full transition-colors relative ${
                 prefs.criticalBypassQuietHours ? 'bg-primary' : 'bg-border'
               }`}
@@ -157,12 +160,7 @@ function PreferencesPanel({ onClose }: { onClose: () => void }) {
                 <input
                   type="radio"
                   checked={prefs.lockScreenDetail === opt}
-                  onChange={() =>
-                    dispatch({
-                      type: 'UPDATE_NOTIFICATION_PREFERENCES',
-                      updates: { lockScreenDetail: opt },
-                    })
-                  }
+                  onChange={() => applyPreference({ lockScreenDetail: opt })}
                 />
                 <span className="text-xs text-text-sub capitalize">
                   {opt === 'hide-amounts' ? 'Hide amounts' : opt === 'private' ? 'Private previews' : 'Full details'}
@@ -216,7 +214,7 @@ export function NotificationInbox() {
           <div className="flex items-center gap-2">
             {unreadCount > 0 && (
               <button
-                onClick={() => dispatch({ type: 'MARK_ALL_NOTIFICATIONS_READ' })}
+                onClick={() => { dispatch({ type: 'MARK_ALL_NOTIFICATIONS_READ' }); if (WEB_RUNTIME_SETTINGS.dataMode === 'api') void markAllNotificationsReadApi().catch((error) => console.error('Mark-all notification update failed', error)); }}
                 className="text-xs text-text-muted hover:text-text transition-colors"
               >
                 Mark all read

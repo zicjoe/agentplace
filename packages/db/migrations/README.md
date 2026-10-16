@@ -29,3 +29,5 @@ Adds M9 durable exact-action `transaction_attempt` state for user-signed Connect
 ## 0015_settlement_verification_receipts.sql
 
 Adds M10 deterministic post-confirmation verification: versioned Verification Contracts, durable Settlement Observations, immutable Verified Outcomes, immutable Verified Receipts, exact receipt-gas accounting, and a privacy-preserving asynchronous Arbitrum proof queue. M10 queues commitments only; it does not introduce an anchoring signer or backend private key.
+
+- `0016_routines_background_work.sql` — M11 durable Routines, immutable revisions, exactly-once RoutineRuns, notification inbox/preferences, Routine→Job provenance, and background intelligence-task provenance without fabricated user messages.

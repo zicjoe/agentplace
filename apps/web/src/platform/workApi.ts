@@ -42,10 +42,10 @@ interface ApiJob {
   status: 'PLANNED'|'RUNNING'|'PREPARING'|'AWAITING_APPROVAL'|'AUTHORIZED'|'SUBMITTED'|'CONFIRMING'|'SETTLING'|'VERIFYING'|'COMPLETED'|'RECOVERING'|'PAUSED'|'BLOCKED'|'FAILED_RECOVERABLE'|'FAILED_FINAL'|'REQUIRES_USER';
   environment: 'mainnet'|'testnet'; kind: 'research'|'operational'|'financial'; originType: 'user'|'worker'|'routine'|'agentplace';
   leadWorkerId: string; leadWorkerName: string; supportingWorkerIds: string[]; supportingWorkerNames: string[];
-  originWorkerId?: string; originConversationId?: string; jobConversationId?: string; currentStage: string; stages: ApiJobStage[];
+  originWorkerId?: string; originConversationId?: string; jobConversationId?: string; originRoutineId?: string; routineRunId?: string; currentStage: string; stages: ApiJobStage[];
   createdAt: string; updatedAt: string;
 }
-interface ApiActivity { id:string; eventType:ActivityEvent['eventType']; title:string; summary:string; effect?:string; workerName?:string; workerId?:string; jobId?:string; actionId?:string; receiptId?:string; timestamp:string; status:string; }
+interface ApiActivity { id:string; eventType:ActivityEvent['eventType']; title:string; summary:string; effect?:string; workerName?:string; workerId?:string; jobId?:string; actionId?:string; receiptId?:string; routineId?:string; timestamp:string; status:string; }
 
 function endpoint(path: string): string { return `${WEB_RUNTIME_SETTINGS.apiBaseUrl}${path}`; }
 async function request<T>(path:string, init?:RequestInit):Promise<T> {
@@ -84,6 +84,7 @@ function fromJob(value:ApiJob):Job {
     createdAt:new Date(value.createdAt),updatedAt:new Date(value.updatedAt) };
   if (value.originWorkerId) out.originWorkerId=value.originWorkerId;
   if (value.originConversationId) out.originConversationId=value.originConversationId;
+  if (value.originRoutineId) out.routineId=value.originRoutineId;
   return out;
 }
 

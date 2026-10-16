@@ -16,8 +16,8 @@ The repository follows the approved production sequence while preserving the Mas
 - **Milestone 7 — Mandates + Authority Engine** — v0.10.0 frozen; durable immutable-revision mandates, deterministic fail-closed authority decisions, separated service/capital/transaction/period budgets, approval policy, Worker/account/Security authority UX, pause/revoke/expiry and durable audit evidence. No signer or transaction execution added.
 - **Milestone 8 — Action Preparation + Action Review** — v0.11.0 frozen; durable exact-action preparation, live/truthful quote interface, preflight/risk evidence, M7 authority binding and exact-action approval. No signing/submission.
 - **Milestone 9 — Connected Wallet Execution + Transaction Observation** — v0.12.0 frozen; approved product-boundary update replaces the older testnet-only wording. Exact user-approved Connected Wallet actions may execute on Mainnet only when the explicit production gate is enabled; signing remains in the user's wallet, transaction attempts are idempotent/durable, and deterministic RPC observation never automatically resubmits an uncertain action. Confirmation is not verified completion.
-- **Milestone 10 — Settlement Verification + Verified Outcomes + Verified Receipts** — v0.13.0 candidate; deterministic direct EVM transfer outcome verification, immutable receipts, exact gas accounting, historical M9 backfill and a durable pending Arbitrum proof queue with no production anchor signer.
-- **Milestone 11 — Routines + Background Work**
+- **Milestone 10 — Settlement Verification + Verified Outcomes + Verified Receipts** — v0.13.0 frozen; deterministic direct EVM transfer outcome verification, immutable receipts, exact gas accounting, historical M9 backfill and a durable pending Arbitrum proof queue with no production anchor signer.
+- **Milestone 11 — Routines + Background Work** — v0.14.0 candidate; durable scheduled/condition/event triggers, exactly-once RoutineRuns, Routine → Job orchestration, service budgets, Limited/Needs-you and in-app notifications. No autonomous signing.
 - **Milestone 12 — Discover + Creator System**
 - **Milestone 13 — Billing + Security Completion**
 - **Milestone 14 — Production Reconciliation + Launch Readiness**
@@ -30,4 +30,5 @@ Milestone boundaries may be refined only through the project discussion gate whe
 - v0.10.0 — M7 Mandates + Authority Engine: frozen.
 - v0.11.0 — M8 Action Preparation + Action Review: frozen; preparation and exact-action approval only, no signing/submission.
 - v0.12.0 — M9 Connected Wallet Execution + Transaction Observation: frozen; user-signed execution and durable observation, with Mainnet disabled by default and autonomy still disabled.
-- v0.13.0 — M10 Settlement Verification + Verified Outcomes + Verified Receipts: implementation candidate; direct EVM transfer verification and receipts, with proof anchoring queued asynchronously and no signer introduced.
+- v0.13.0 — M10 Settlement Verification + Verified Outcomes + Verified Receipts: frozen after real Arbitrum Mainnet historical-transfer backfill and Verified Receipt acceptance.
+- v0.14.0 — M11 Routines + Background Work: implementation candidate; no autonomous signing or Mainnet autonomy.

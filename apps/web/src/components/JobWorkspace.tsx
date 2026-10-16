@@ -12,6 +12,7 @@ import { ResearchResultCard } from './ResearchResultCard';
 import { ResearchReport } from './ResearchReport';
 import { scrollConversationToEnd } from '../platform/scroll';
 import { AgentPlaceMark } from './AgentPlaceBrand';
+import { makeJobRecurring } from '../platform/routineApi';
 
 type JobWorkspaceTab = 'conversation' | 'team' | 'result' | 'activity';
 
@@ -933,6 +934,17 @@ export function JobWorkspace() {
                   <p className="text-xs text-text-muted mb-2">This type of research could run on a schedule.</p>
                   <button
                     onClick={() => {
+                      if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+                        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+                        void makeJobRecurring(job.id, timeZone)
+                          .then((routine) => {
+                            dispatch({ type: 'ADD_ROUTINE', routine });
+                            dispatch({ type: 'SET_ACTIVE_JOB', id: null });
+                            dispatch({ type: 'SET_ACTIVE_ROUTINE', id: routine.id });
+                          })
+                          .catch((error) => console.error('Make this recurring failed', error));
+                        return;
+                      }
                       dispatch({ type: 'SET_ACTIVE_JOB', id: null });
                       dispatch({ type: 'SET_ACTIVE_WORKER', id: job.leadWorkerId });
                     }}

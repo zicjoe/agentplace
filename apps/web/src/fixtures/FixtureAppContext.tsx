@@ -56,6 +56,7 @@ import { fetchAuthorityState } from '../platform/authorityApi';
 import { isJobConversation } from '../platform/conversationNavigation';
 import { createAction, prepareAction } from '../platform/actionApi';
 import { fetchVerificationState } from '../platform/verificationApi';
+import { fetchNotificationState, fetchRoutineState } from '../platform/routineApi';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1013,10 +1014,14 @@ export type Action =
   | { type: 'ADD_VERIFIED_OUTCOME'; outcome: VerifiedOutcome }
   | { type: 'ADD_VERIFIED_RECEIPT'; receipt: VerifiedReceipt }
   | { type: 'SET_ACTIVE_RECEIPT'; id: string | null }
+  | { type: 'SET_ROUTINES'; routines: Routine[] }
+  | { type: 'SET_ROUTINE_RUNS'; runs: RoutineRun[] }
   | { type: 'ADD_ROUTINE'; routine: Routine }
   | { type: 'UPDATE_ROUTINE'; routineId: string; updates: Partial<Routine> }
   | { type: 'SET_ACTIVE_ROUTINE'; id: string | null }
   | { type: 'ADD_ROUTINE_RUN'; run: RoutineRun }
+  | { type: 'SET_NOTIFICATIONS'; notifications: Notification[] }
+  | { type: 'SET_NOTIFICATION_PREFERENCES'; preferences: NotificationPreferences }
   | { type: 'ADD_NOTIFICATION'; notification: Notification }
   | { type: 'MARK_NOTIFICATION_READ'; id: string }
   | { type: 'MARK_ALL_NOTIFICATIONS_READ' }
@@ -1472,8 +1477,14 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_ACTIVE_RECEIPT':
       return { ...state, activeReceiptId: action.id };
 
+    case 'SET_ROUTINES':
+      return { ...state, routines: action.routines };
+
+    case 'SET_ROUTINE_RUNS':
+      return { ...state, routineRuns: action.runs };
+
     case 'ADD_ROUTINE':
-      return { ...state, routines: [action.routine, ...(state.routines ?? [])] };
+      return { ...state, routines: [action.routine, ...(state.routines ?? []).filter((item) => item.id !== action.routine.id)] };
 
     case 'UPDATE_ROUTINE':
       return {
@@ -1489,8 +1500,14 @@ function reducer(state: AppState, action: Action): AppState {
     case 'ADD_ROUTINE_RUN':
       return { ...state, routineRuns: [action.run, ...(state.routineRuns ?? [])] };
 
+    case 'SET_NOTIFICATIONS':
+      return { ...state, notifications: action.notifications };
+
+    case 'SET_NOTIFICATION_PREFERENCES':
+      return { ...state, notificationPreferences: action.preferences };
+
     case 'ADD_NOTIFICATION':
-      return { ...state, notifications: [action.notification, ...(state.notifications ?? [])] };
+      return { ...state, notifications: [action.notification, ...(state.notifications ?? []).filter((item) => item.id !== action.notification.id)] };
 
     case 'MARK_NOTIFICATION_READ':
       return {
@@ -1703,6 +1720,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rawDispatch({ type: 'SET_VERIFIED_RECEIPTS', receipts: verification.receipts });
   }, []);
 
+  const refreshDurableRoutines = useCallback(async () => {
+    if (WEB_RUNTIME_SETTINGS.dataMode !== 'api') return;
+    const ownerUserId = stateRef.current.user?.id;
+    if (!ownerUserId) return;
+    const [routineState, notificationState] = await Promise.all([fetchRoutineState(), fetchNotificationState()]);
+    if (stateRef.current.user?.id !== ownerUserId) return;
+    rawDispatch({ type: 'SET_ROUTINES', routines: routineState.routines });
+    rawDispatch({ type: 'SET_ROUTINE_RUNS', runs: routineState.runs });
+    rawDispatch({ type: 'SET_NOTIFICATIONS', notifications: notificationState.notifications });
+    rawDispatch({ type: 'SET_NOTIFICATION_PREFERENCES', preferences: notificationState.preferences });
+  }, []);
+
+
   const syncWorkAction = useCallback((action: Action, before: AppState) => {
     if (WEB_RUNTIME_SETTINGS.dataMode !== 'api' || !before.user) return;
     let task: Promise<unknown> | null = null;
@@ -1822,7 +1852,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? stateRef.current.conversations.find((c) => c.id === marker.conversationId)
           : undefined;
         if (guestConversation) await importGuestConversations([guestConversation]);
-        const [conversations, identity, work, walletState, authorityState, verificationState] = await Promise.all([fetchConversations(), getAgentPlaceIdentity(), fetchWorkState(), fetchWalletState(), fetchAuthorityState(), fetchVerificationState()]);
+        const [conversations, identity, work, walletState, authorityState, verificationState, routineState, notificationState] = await Promise.all([fetchConversations(), getAgentPlaceIdentity(), fetchWorkState(), fetchWalletState(), fetchAuthorityState(), fetchVerificationState(), fetchRoutineState(), fetchNotificationState()]);
         const user = userFromAuth(identity);
         let next = reducer(stateRef.current, { type: 'SET_USER', user });
         next = reducer(next, { type: 'SET_CONVERSATIONS', conversations });
@@ -1837,6 +1867,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         next = reducer(next, { type: 'SET_AUTHORITY_CONTROLS', controls: authorityState.controls });
         next = reducer(next, { type: 'SET_VERIFIED_OUTCOMES', outcomes: verificationState.outcomes });
         next = reducer(next, { type: 'SET_VERIFIED_RECEIPTS', receipts: verificationState.receipts });
+        next = reducer(next, { type: 'SET_ROUTINES', routines: routineState.routines });
+        next = reducer(next, { type: 'SET_ROUTINE_RUNS', runs: routineState.runs });
+        next = reducer(next, { type: 'SET_NOTIFICATIONS', notifications: notificationState.notifications });
+        next = reducer(next, { type: 'SET_NOTIFICATION_PREFERENCES', preferences: notificationState.preferences });
         stateRef.current = next;
         rawDispatch({ type: 'SET_USER', user });
         rawDispatch({ type: 'SET_CONVERSATIONS', conversations });
@@ -1851,6 +1885,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         rawDispatch({ type: 'SET_AUTHORITY_CONTROLS', controls: authorityState.controls });
         rawDispatch({ type: 'SET_VERIFIED_OUTCOMES', outcomes: verificationState.outcomes });
         rawDispatch({ type: 'SET_VERIFIED_RECEIPTS', receipts: verificationState.receipts });
+        rawDispatch({ type: 'SET_ROUTINES', routines: routineState.routines });
+        rawDispatch({ type: 'SET_ROUTINE_RUNS', runs: routineState.runs });
+        rawDispatch({ type: 'SET_NOTIFICATIONS', notifications: notificationState.notifications });
+        rawDispatch({ type: 'SET_NOTIFICATION_PREFERENCES', preferences: notificationState.preferences });
         clearFixtureState();
         clearIdentityResume();
       } catch (error) {
@@ -1866,14 +1904,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (running || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return;
       running = true;
       try {
-        await Promise.all([refreshDurableConversations(), refreshDurableWork(), refreshDurableAuthority(), refreshDurableVerification()]);
+        await Promise.all([refreshDurableConversations(), refreshDurableWork(), refreshDurableAuthority(), refreshDurableVerification(), refreshDurableRoutines()]);
       } finally {
         running = false;
       }
     };
     const timer = window.setInterval(() => { void refresh(); }, 4000);
     return () => window.clearInterval(timer);
-  }, [state.user?.id, refreshDurableConversations, refreshDurableWork, refreshDurableAuthority, refreshDurableVerification]);
+  }, [state.user?.id, refreshDurableConversations, refreshDurableWork, refreshDurableAuthority, refreshDurableVerification, refreshDurableRoutines]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;

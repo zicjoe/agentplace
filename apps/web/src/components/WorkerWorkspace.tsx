@@ -10,6 +10,7 @@ import { ResearchMarkdown } from './ResearchMarkdown';
 import { scrollConversationToEnd } from '../platform/scroll';
 import { applyAuthorityState, fetchAuthorityState, setDurableMandateStatus } from '../platform/authorityApi';
 import { MandateEditor } from './MandateEditor';
+import { createRoutineFromText } from '../platform/routineApi';
 
 interface LocalMessage {
   id: string;
@@ -670,7 +671,7 @@ export function WorkerWorkspace() {
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
   function detectRoutineIntent(text: string): boolean {
-    return /every\s+(weekday|week|day|morning|evening|hour|monday|daily)|recurring|routine|check\s+every|monitor\s+(daily|weekly|regularly)|set\s+up\s+(a\s+)?routine/i.test(text);
+    return /every\s+(weekday|week|day|morning|evening|hour|monday|daily)|recurring|routine|check\s+every|monitor\s+(daily|weekly|regularly)|set\s+up\s+(a\s+)?routine|\bwhen\s+.{0,80}(price|liquidity|volume|market\s*cap|fdv|job|outcome|action|wallet|authority)/i.test(text);
   }
 
   function buildRoutinePreview(text: string, workerId: string, workerName: string): Routine {
@@ -720,6 +721,29 @@ export function WorkerWorkspace() {
     if (productionConversation && durableConversation) {
       const userMessage = { id: uid(), role: 'user' as const, content: text, timestamp: new Date() };
       dispatch({ type: 'ADD_MSG', convId: durableConversation.id, msg: userMessage });
+      if (isRoutineRequest) {
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        void createRoutineFromText({ workerId: worker.id, instruction: text, environment: state.environment, timeZone })
+          .then((routine) => {
+            dispatch({ type: 'ADD_ROUTINE', routine });
+            dispatch({
+              type: 'ADD_MSG',
+              convId: durableConversation.id,
+              msg: {
+                id: uid(),
+                role: 'manager',
+                content: `I created a Routine draft for **${routine.title}**. It is not active yet. Review the trigger, environment, notifications and service budget, then activate it deliberately. Background Routines do not gain signing authority.`,
+                timestamp: new Date(),
+              },
+            });
+            dispatch({ type: 'SET_ACTIVE_WORKER', id: null });
+            dispatch({ type: 'SET_ACTIVE_ROUTINE', id: routine.id });
+          })
+          .catch((error) => {
+            dispatch({ type: 'ADD_MSG', convId: durableConversation.id, msg: { id: uid(), role: 'manager', content: error instanceof Error ? error.message : 'AgentPlace could not create the Routine draft.', timestamp: new Date() } });
+          });
+        return;
+      }
       void submitIntelligence(durableConversation.id, userMessage, modelSelection).catch((error) => {
         dispatch({ type: 'ADD_MSG', convId: durableConversation.id, msg: { id: uid(), role: 'manager', content: error instanceof Error ? error.message : 'AgentPlace intelligence request failed.', timestamp: new Date() } });
       });

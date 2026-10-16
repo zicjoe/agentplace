@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14.0 — M11 Routines + Background Work (candidate)
+
+- Added durable owner-scoped Routines, immutable Routine revisions, exactly-once RoutineRuns, service budgets and durable in-app Notifications.
+- Activated `apps/scheduler` as a dedicated Railway background scheduler using PostgreSQL leases and `FOR UPDATE SKIP LOCKED`; browser timers are not part of the production Routine path.
+- Added scheduled, deterministic market-condition and AgentPlace-domain event triggers with cooldown/deduplication. False conditions create no Job and require no LLM call.
+- Added Routine → Job orchestration with explicit `ROUTINE` intelligence provenance so background work never fabricates a user-authored message.
+- Added Run now, Pause, Resume, Stop, retry-once, Limited/Needs-you handling, durable Routine history and notification preference/read persistence.
+- Added production `Make this recurring` handoff from a suitable Job to a prefilled Routine Draft; activation remains explicit.
+- Kept financial authority unchanged: M11 rejects autonomous Routine execution, does not add a signer, and keeps Mainnet execution/autonomy disabled by default.
+
 ## 0.13.0 — M10 Settlement Verification + Verified Outcomes + Verified Receipts
 
 - Added durable `VerificationContract`, `SettlementObservation`, immutable `VerifiedOutcome`, immutable `VerifiedReceipt`, and asynchronous `ProofAnchorQueue` persistence.

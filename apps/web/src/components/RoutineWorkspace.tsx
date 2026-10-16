@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { useAppState, useDispatch, runRoutineNow, uid } from '../state/AppContext';
+import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { activateRoutineApi, pauseRoutineApi, resumeRoutineApi, runRoutineApi, stopRoutineApi, updateRoutineApi } from '../platform/routineApi';
+import { fetchWorkState } from '../platform/workApi';
 import type { RoutineStatus, RoutineRun } from '../state/types';
 
 function timeAgo(date: Date | undefined): string {
@@ -72,7 +75,17 @@ function EditRoutineForm({ routineId, onClose }: { routineId: string; onClose: (
   const hasGrant = !!routine.authorityGrantId ||
     (state.authorityGrants ?? []).some((g) => g.workerId === routine.workerId && g.status === 'active');
 
-  function save() {
+  async function save() {
+    if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+      try {
+        const updated = await updateRoutineApi(routineId, { instruction, notificationRule: notifRule });
+        dispatch({ type: 'UPDATE_ROUTINE', routineId, updates: updated });
+        onClose();
+      } catch (error) {
+        console.error('Routine update failed', error);
+      }
+      return;
+    }
     dispatch({
       type: 'UPDATE_ROUTINE',
       routineId,
@@ -138,16 +151,18 @@ function EditRoutineForm({ routineId, onClose }: { routineId: string; onClose: (
                   checked={execBehavior === 'act-within-authority'}
                   onChange={() => setExecBehavior('act-within-authority')}
                   className="mt-0.5"
-                  disabled={!hasGrant}
+                  disabled={WEB_RUNTIME_SETTINGS.dataMode === 'api' || !hasGrant}
                 />
                 <div>
                   <p className={`text-sm ${hasGrant ? 'text-text' : 'text-text-muted'}`}>
                     May act within existing authority
                   </p>
                   <p className="text-xs text-text-muted">
-                    {hasGrant
-                      ? "This does not change the Worker's financial authority. It only allows this Routine to use authority that already exists."
-                      : 'No active authority grant for this Worker. Keep recommend-only or review authority first.'}
+                    {WEB_RUNTIME_SETTINGS.dataMode === 'api'
+                      ? 'Background Routines cannot sign in v0.14.0. Connected Wallet actions still require you; Agent Account execution remains unavailable.'
+                      : hasGrant
+                        ? "This does not change the Worker's financial authority. It only allows this Routine to use authority that already exists."
+                        : 'No active authority grant for this Worker. Keep recommend-only or review authority first.'}
                   </p>
                   {!hasGrant && execBehavior === 'act-within-authority' && (
                     <p className="text-xs text-warn mt-1">
@@ -181,20 +196,30 @@ function EditRoutineForm({ routineId, onClose }: { routineId: string; onClose: (
 function RemoveConfirm({ routineId, onClose }: { routineId: string; onClose: () => void }) {
   const dispatch = useDispatch();
 
-  function confirm() {
-    dispatch({ type: 'UPDATE_ROUTINE', routineId, updates: { status: 'stopped' } });
-    dispatch({
-      type: 'ADD_ACTIVITY_EVENT',
-      event: {
-        id: uid(),
-        eventType: 'routine',
-        title: 'Routine stopped',
-        summary: 'Future runs stopped · Historical Jobs and outcomes remain',
-        routineId,
-        timestamp: new Date(),
-        status: 'complete',
-      },
-    });
+  async function confirm() {
+    if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+      try {
+        const updated = await stopRoutineApi(routineId);
+        dispatch({ type: 'UPDATE_ROUTINE', routineId, updates: updated });
+      } catch (error) {
+        console.error('Routine stop failed', error);
+        return;
+      }
+    } else {
+      dispatch({ type: 'UPDATE_ROUTINE', routineId, updates: { status: 'stopped' } });
+      dispatch({
+        type: 'ADD_ACTIVITY_EVENT',
+        event: {
+          id: uid(),
+          eventType: 'routine',
+          title: 'Routine stopped',
+          summary: 'Future runs stopped · Historical Jobs and outcomes remain',
+          routineId,
+          timestamp: new Date(),
+          status: 'complete',
+        },
+      });
+    }
     dispatch({ type: 'SET_ACTIVE_ROUTINE', id: null });
     onClose();
   }
@@ -231,6 +256,7 @@ export function RoutineWorkspace() {
   const dispatch = useDispatch();
   const [showEdit, setShowEdit] = useState(false);
   const [showRemove, setShowRemove] = useState(false);
+  const [operationError, setOperationError] = useState<string | null>(null);
 
   const routine = (state.routines ?? []).find((r) => r.id === state.activeRoutineId);
 
@@ -238,28 +264,72 @@ export function RoutineWorkspace() {
   const grant = routine ? (state.authorityGrants ?? []).find(
     (g) => g.workerId === routine.workerId && g.status === 'active'
   ) : undefined;
+  const isDraft = routine?.status === 'draft';
   const isLimited = routine?.status === 'limited';
   const isPaused = routine?.status === 'paused';
   const isStopped = routine?.status === 'stopped';
-  const canRunNow = !isStopped && !isLimited;
+  const canRunNow = !isDraft && !isStopped && !isLimited && routine?.status !== 'expired' && routine?.status !== 'needs-you';
 
-  function handlePause() {
+  async function handleActivate() {
     if (!routine) return;
+    setOperationError(null);
+    if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+      try {
+        const updated = await activateRoutineApi(routine.id);
+        dispatch({ type: 'UPDATE_ROUTINE', routineId: routine.id, updates: updated });
+      } catch (error) {
+        setOperationError(error instanceof Error ? error.message : 'Routine activation failed.');
+      }
+      return;
+    }
+    const nextStatus = routine.trigger.type === 'scheduled' ? 'active' : routine.trigger.type === 'condition' ? 'watching' : 'waiting-for-event';
+    dispatch({ type: 'UPDATE_ROUTINE', routineId: routine.id, updates: { status: nextStatus as RoutineStatus } });
+  }
+
+  async function handlePause() {
+    if (!routine) return;
+    setOperationError(null);
+    if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+      try { const updated = await pauseRoutineApi(routine.id); dispatch({ type: 'UPDATE_ROUTINE', routineId: routine.id, updates: updated }); }
+      catch (error) { setOperationError(error instanceof Error ? error.message : 'Routine pause failed.'); }
+      return;
+    }
     dispatch({ type: 'UPDATE_ROUTINE', routineId: routine.id, updates: { status: 'paused' } });
   }
 
-  function handleResume() {
+  async function handleResume() {
     if (!routine) return;
-    const nextStatus =
-      routine.trigger.type === 'scheduled' ? 'active'
-      : routine.trigger.type === 'condition' ? 'watching'
-      : 'waiting-for-event';
-    dispatch({ type: 'UPDATE_ROUTINE', routineId: routine.id, updates: { status: nextStatus as any, limitedReason: undefined } });
+    setOperationError(null);
+    if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+      try { const updated = await resumeRoutineApi(routine.id); dispatch({ type: 'UPDATE_ROUTINE', routineId: routine.id, updates: updated }); }
+      catch (error) { setOperationError(error instanceof Error ? error.message : 'Routine resume failed.'); }
+      return;
+    }
+    const nextStatus = routine.trigger.type === 'scheduled' ? 'active' : routine.trigger.type === 'condition' ? 'watching' : 'waiting-for-event';
+    dispatch({ type: 'UPDATE_ROUTINE', routineId: routine.id, updates: { status: nextStatus as RoutineStatus, limitedReason: undefined } });
   }
 
-  function handleRunNow() {
+  async function handleRunNow(retry = false) {
     if (!routine) return;
-    runRoutineNow(dispatch, routine.id);
+    setOperationError(null);
+    if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
+      try {
+        const run = await runRoutineApi(routine.id, retry);
+        dispatch({ type: 'ADD_ROUTINE_RUN', run });
+        if (run.jobId) {
+          const work = await fetchWorkState();
+          dispatch({ type: 'SET_WORKERS', workers: work.workers });
+          dispatch({ type: 'SET_JOBS', jobs: work.jobs });
+          dispatch({ type: 'SET_ACTIVITY_EVENTS', events: work.activity });
+          openJob(run.jobId);
+        }
+      } catch (error) {
+        setOperationError(error instanceof Error ? error.message : 'Routine run failed.');
+      }
+      return;
+    }
+    const jobId = runRoutineNow(dispatch, routine.id);
+    if (jobId) openJob(jobId);
   }
 
   function openJob(jobId: string) {
@@ -338,23 +408,19 @@ export function RoutineWorkspace() {
                 </div>
                 <div className="flex gap-2 flex-wrap pt-1">
                   <button
-                    onClick={() => {
-                      const jobId = runRoutineNow(dispatch, routine.id);
-                      dispatch({ type: 'UPDATE_ROUTINE', routineId: routine.id, updates: { status: 'active', limitedReason: undefined } });
-                      dispatch({ type: 'SET_ACTIVE_JOB', id: jobId });
-                    }}
+                    onClick={() => { void handleRunNow(true); }}
                     className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded hover:bg-primary-hover transition-colors"
                   >
                     Retry this check once
                   </button>
                   <button
-                    onClick={handleResume}
+                    onClick={() => { void handleResume(); }}
                     className="px-3 py-1.5 text-xs border border-border text-text-sub rounded hover:bg-panel hover:text-text transition-colors"
                   >
                     Resume future checks
                   </button>
                   <button
-                    onClick={handlePause}
+                    onClick={() => { void handlePause(); }}
                     className="px-3 py-1.5 text-xs border border-border text-text-sub rounded hover:bg-panel hover:text-text transition-colors"
                   >
                     Pause
@@ -367,6 +433,12 @@ export function RoutineWorkspace() {
                   </button>
                 </div>
                 <p className="text-[10px] text-text-dim">Retry once ≠ Resume. Retry runs one check now. Resume restores scheduled triggering.</p>
+              </div>
+            )}
+
+            {operationError && (
+              <div className="border border-danger/30 bg-danger/5 rounded-lg px-4 py-3 text-xs text-danger">
+                {operationError}
               </div>
             )}
 
@@ -436,7 +508,7 @@ export function RoutineWorkspace() {
                     <div className="h-1.5 bg-panel-raised rounded-full overflow-hidden">
                       <div
                         className="h-full bg-primary rounded-full transition-all"
-                        style={{ width: `${Math.min(100, (routine.serviceBudgetStructured.spentUsd / routine.serviceBudgetStructured.limitUsd) * 100)}%` }}
+                        style={{ width: `${routine.serviceBudgetStructured.limitUsd > 0 ? Math.min(100, (routine.serviceBudgetStructured.spentUsd / routine.serviceBudgetStructured.limitUsd) * 100) : 0}%` }}
                       />
                     </div>
                     <p className="text-[10px] text-text-dim">${(routine.serviceBudgetStructured.limitUsd - routine.serviceBudgetStructured.spentUsd).toFixed(2)} remaining · {routine.serviceBudgetStructured.periodDays}d period</p>
@@ -497,9 +569,17 @@ export function RoutineWorkspace() {
             <div>
               <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim mb-2">Controls</p>
               <div className="flex flex-wrap gap-2">
+                {isDraft && (
+                  <button
+                    onClick={() => { void handleActivate(); }}
+                    className="px-3 py-2 text-xs bg-primary text-white rounded font-medium hover:bg-primary-hover transition-colors"
+                  >
+                    Activate Routine
+                  </button>
+                )}
                 {canRunNow && (
                   <button
-                    onClick={handleRunNow}
+                    onClick={() => { void handleRunNow(); }}
                     className="px-3 py-2 text-xs bg-primary text-white rounded font-medium hover:bg-primary-hover transition-colors"
                   >
                     Run now
@@ -507,7 +587,7 @@ export function RoutineWorkspace() {
                 )}
                 {!isStopped && !isPaused && !isLimited && (
                   <button
-                    onClick={handlePause}
+                    onClick={() => { void handlePause(); }}
                     className="px-3 py-2 text-xs border border-border text-text-sub rounded hover:text-text transition-colors"
                   >
                     Pause
@@ -515,7 +595,7 @@ export function RoutineWorkspace() {
                 )}
                 {(isPaused || isLimited) && (
                   <button
-                    onClick={handleResume}
+                    onClick={() => { void handleResume(); }}
                     className="px-3 py-2 text-xs border border-border text-text-sub rounded hover:text-text transition-colors"
                   >
                     Resume
@@ -532,7 +612,7 @@ export function RoutineWorkspace() {
                     onClick={() => setShowRemove(true)}
                     className="px-3 py-2 text-xs border border-border text-danger/70 rounded hover:text-danger transition-colors"
                   >
-                    Remove
+                    Stop
                   </button>
                 )}
               </div>

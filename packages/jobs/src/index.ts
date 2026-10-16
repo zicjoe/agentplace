@@ -11,13 +11,13 @@ export interface DurableJobStage { id: string; label: string; status: 'done'|'ac
 export interface DurableJob {
   id: string; title: string; goal: string; status: JobStatus; environment: JobEnvironment; kind: JobKind; originType: JobOriginType;
   leadWorkerId: string; leadWorkerName: string; supportingWorkerIds: string[]; supportingWorkerNames: string[];
-  originWorkerId?: string; originConversationId?: string; jobConversationId?: string; currentStage: string; stages: DurableJobStage[];
+  originWorkerId?: string; originConversationId?: string; jobConversationId?: string; originRoutineId?: string; routineRunId?: string; currentStage: string; stages: DurableJobStage[];
   createdAt: string; updatedAt: string;
 }
 export interface JobDraft extends Omit<DurableJob,'leadWorkerName'|'supportingWorkerNames'|'createdAt'|'updatedAt'> { createdAt?: string; updatedAt?: string; }
-export interface ActivityProjection { id:string; eventType:'job'|'worker-added'|'system'|'authority'|'wallet'|'routine'|'security'|'financial'; title:string; summary:string; effect?:string; workerName?:string; workerId?:string; jobId?:string; actionId?:string; receiptId?:string; timestamp:string; status:string; }
+export interface ActivityProjection { id:string; eventType:'job'|'worker-added'|'system'|'authority'|'wallet'|'routine'|'security'|'financial'; title:string; summary:string; effect?:string; workerName?:string; workerId?:string; jobId?:string; actionId?:string; receiptId?:string; routineId?:string; timestamp:string; status:string; }
 
-type JobRow = { id:string; title:string; goal:string; status:JobStatus; environment:JobEnvironment; kind:JobKind; origin_type:JobOriginType; origin_worker_id:string|null; origin_conversation_id:string|null; job_conversation_id:string|null; current_stage:string; created_at:Date; updated_at:Date; };
+type JobRow = { id:string; title:string; goal:string; status:JobStatus; environment:JobEnvironment; kind:JobKind; origin_type:JobOriginType; origin_worker_id:string|null; origin_conversation_id:string|null; job_conversation_id:string|null; origin_routine_id:string|null; routine_run_id:string|null; current_stage:string; created_at:Date; updated_at:Date; };
 type AssignmentRow = { job_id:string; worker_id:string; role:'lead'|'supporting'; name:string; };
 type StageRow = { job_id:string; id:string; label:string; ordinal:number; status:'done'|'active'|'pending'; };
 
@@ -31,12 +31,12 @@ async function hydrate(ownerUserId:string, rows:JobRow[]):Promise<DurableJob[]> 
   return rows.map(row=>{
     const team=assignments.rows.filter(a=>a.job_id===row.id); const lead=team.find(a=>a.role==='lead'); const support=team.filter(a=>a.role==='supporting');
     const out:DurableJob={id:row.id,title:row.title,goal:row.goal,status:row.status,environment:row.environment,kind:row.kind,originType:row.origin_type,leadWorkerId:lead?.worker_id ?? '',leadWorkerName:lead?.name ?? 'Unassigned',supportingWorkerIds:support.map(s=>s.worker_id),supportingWorkerNames:support.map(s=>s.name),currentStage:row.current_stage,stages:stages.rows.filter(s=>s.job_id===row.id),createdAt:row.created_at.toISOString(),updatedAt:row.updated_at.toISOString()};
-    if(row.origin_worker_id) out.originWorkerId=row.origin_worker_id; if(row.origin_conversation_id) out.originConversationId=row.origin_conversation_id; if(row.job_conversation_id) out.jobConversationId=row.job_conversation_id; return out;
+    if(row.origin_worker_id) out.originWorkerId=row.origin_worker_id; if(row.origin_conversation_id) out.originConversationId=row.origin_conversation_id; if(row.job_conversation_id) out.jobConversationId=row.job_conversation_id; if(row.origin_routine_id) out.originRoutineId=row.origin_routine_id; if(row.routine_run_id) out.routineRunId=row.routine_run_id; return out;
   });
 }
 
-export async function listJobs(ownerUserId:string):Promise<DurableJob[]> { const r=await getDatabasePool().query<JobRow>(`SELECT id,title,goal,status,environment,kind,origin_type,origin_worker_id,origin_conversation_id,job_conversation_id,current_stage,created_at,updated_at FROM job WHERE owner_user_id=$1 ORDER BY updated_at DESC`,[ownerUserId]); return hydrate(ownerUserId,r.rows); }
-export async function getJob(ownerUserId:string,id:string):Promise<DurableJob|null> { const r=await getDatabasePool().query<JobRow>(`SELECT id,title,goal,status,environment,kind,origin_type,origin_worker_id,origin_conversation_id,job_conversation_id,current_stage,created_at,updated_at FROM job WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,id]); const values=await hydrate(ownerUserId,r.rows); return values[0]??null; }
+export async function listJobs(ownerUserId:string):Promise<DurableJob[]> { const r=await getDatabasePool().query<JobRow>(`SELECT id,title,goal,status,environment,kind,origin_type,origin_worker_id,origin_conversation_id,job_conversation_id,origin_routine_id,routine_run_id,current_stage,created_at,updated_at FROM job WHERE owner_user_id=$1 ORDER BY updated_at DESC`,[ownerUserId]); return hydrate(ownerUserId,r.rows); }
+export async function getJob(ownerUserId:string,id:string):Promise<DurableJob|null> { const r=await getDatabasePool().query<JobRow>(`SELECT id,title,goal,status,environment,kind,origin_type,origin_worker_id,origin_conversation_id,job_conversation_id,origin_routine_id,routine_run_id,current_stage,created_at,updated_at FROM job WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,id]); const values=await hydrate(ownerUserId,r.rows); return values[0]??null; }
 
 export async function createJob(ownerUserId:string,draft:JobDraft):Promise<DurableJob> {
   if(!draft.leadWorkerId) throw new Error('JOB_LEAD_REQUIRED');
@@ -44,9 +44,9 @@ export async function createJob(ownerUserId:string,draft:JobDraft):Promise<Durab
   const workerCheck=await getDatabasePool().query<{id:string}>(`SELECT id FROM worker_definition WHERE id=ANY($1::text[]) AND publication_status='published' AND trust_status<>'quarantined'`,[team]);
   if(new Set(workerCheck.rows.map(r=>r.id)).size!==new Set(team).size) throw new Error('JOB_WORKER_NOT_AVAILABLE');
   await withTransaction(async db=>{
-    await db.query(`INSERT INTO job(id,owner_user_id,title,goal,status,environment,kind,origin_type,origin_worker_id,origin_conversation_id,job_conversation_id,current_stage,created_at,updated_at)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13::timestamptz,now()),COALESCE($14::timestamptz,now()))
-      ON CONFLICT(id) DO NOTHING`,[draft.id,ownerUserId,draft.title,draft.goal,draft.status,draft.environment,draft.kind,draft.originType,draft.originWorkerId??null,draft.originConversationId??null,draft.jobConversationId??null,draft.currentStage,draft.createdAt??null,draft.updatedAt??null]);
+    await db.query(`INSERT INTO job(id,owner_user_id,title,goal,status,environment,kind,origin_type,origin_worker_id,origin_conversation_id,job_conversation_id,origin_routine_id,routine_run_id,current_stage,created_at,updated_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,COALESCE($15::timestamptz,now()),COALESCE($16::timestamptz,now()))
+      ON CONFLICT(id) DO NOTHING`,[draft.id,ownerUserId,draft.title,draft.goal,draft.status,draft.environment,draft.kind,draft.originType,draft.originWorkerId??null,draft.originConversationId??null,draft.jobConversationId??null,draft.originRoutineId??null,draft.routineRunId??null,draft.currentStage,draft.createdAt??null,draft.updatedAt??null]);
     const ownership=await db.query<{owner_user_id:string}>(`SELECT owner_user_id FROM job WHERE id=$1`,[draft.id]); if(ownership.rows[0]?.owner_user_id!==ownerUserId) throw new Error('JOB_ID_CONFLICT');
     await db.query(`INSERT INTO job_worker(job_id,owner_user_id,worker_id,role) VALUES($1,$2,$3,'lead') ON CONFLICT(job_id,worker_id) DO UPDATE SET role='lead'`,[draft.id,ownerUserId,draft.leadWorkerId]);
     for(const workerId of draft.supportingWorkerIds.filter(id=>id!==draft.leadWorkerId)) await db.query(`INSERT INTO job_worker(job_id,owner_user_id,worker_id,role) VALUES($1,$2,$3,'supporting') ON CONFLICT(job_id,worker_id) DO NOTHING`,[draft.id,ownerUserId,workerId]);
@@ -61,7 +61,7 @@ export async function createJob(ownerUserId:string,draft:JobDraft):Promise<Durab
 export async function setJobConversation(ownerUserId:string,jobId:string,conversationId:string):Promise<DurableJob|null> { await getDatabasePool().query(`UPDATE job SET job_conversation_id=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,jobId,conversationId]); return getJob(ownerUserId,jobId); }
 
 export async function listActivity(ownerUserId:string):Promise<ActivityProjection[]> {
-  const result=await getDatabasePool().query<{id:string;event_type:string;object_type:string;object_id:string;title:string;summary:string;effect:string|null;status:string;worker_id:string|null;job_id:string|null;metadata:Record<string,unknown>;occurred_at:Date;worker_name:string|null}>(`SELECT e.id,e.event_type,e.object_type,e.object_id,e.title,e.summary,e.effect,e.status,e.worker_id,e.job_id,e.metadata,e.occurred_at,d.name AS worker_name FROM domain_event e LEFT JOIN worker_definition d ON d.id=e.worker_id WHERE e.owner_user_id=$1 AND e.event_type<>'receipt.anchor_queued' ORDER BY e.occurred_at DESC LIMIT 500`,[ownerUserId]);
+  const result=await getDatabasePool().query<{id:string;event_type:string;object_type:string;object_id:string;title:string;summary:string;effect:string|null;status:string;worker_id:string|null;job_id:string|null;metadata:Record<string,unknown>;occurred_at:Date;worker_name:string|null}>(`SELECT e.id,e.event_type,e.object_type,e.object_id,e.title,e.summary,e.effect,e.status,e.worker_id,e.job_id,e.metadata,e.occurred_at,d.name AS worker_name FROM domain_event e LEFT JOIN worker_definition d ON d.id=e.worker_id WHERE e.owner_user_id=$1 AND e.event_type NOT IN ('receipt.anchor_queued','routine.draft.created') ORDER BY e.occurred_at DESC LIMIT 500`,[ownerUserId]);
   return result.rows.map(r=>{
     const financialEvent=r.event_type.startsWith('action.')||r.event_type.startsWith('execution.')||r.event_type.startsWith('transaction.')||r.event_type.startsWith('outcome.')||r.event_type.startsWith('receipt.')||r.object_type==='financial-action'||r.object_type==='transaction-attempt'||r.object_type==='verified-outcome'||r.object_type==='verified-receipt';
     const eventType:ActivityProjection['eventType']=r.event_type.startsWith('job.')?'job':financialEvent?'financial':r.event_type==='worker.added'?'worker-added':r.event_type.startsWith('mandate.')||r.event_type.startsWith('authority.')?'authority':r.event_type.startsWith('wallet.')?'wallet':r.event_type.startsWith('routine.')?'routine':r.event_type.startsWith('security.')?'security':'system';
@@ -70,7 +70,7 @@ export async function listActivity(ownerUserId:string):Promise<ActivityProjectio
     const metadata=r.metadata??{};
     const actionId=typeof metadata.actionId==='string'?metadata.actionId:r.object_type==='financial-action'?r.object_id:undefined;
     const receiptId=typeof metadata.receiptId==='string'?metadata.receiptId:r.object_type==='verified-receipt'?r.object_id:undefined;
-    if(actionId) out.actionId=actionId; if(receiptId) out.receiptId=receiptId;
+    if(actionId) out.actionId=actionId; if(receiptId) out.receiptId=receiptId; if(eventType==='routine'&&r.object_type==='routine') out.routineId=r.object_id;
     return out;
   });
 }
@@ -79,21 +79,32 @@ export const moduleManifest={name:'jobs',layer:'controlled-runtime',milestone:4,
 
 export type IntelligenceTaskStatus='queued'|'running'|'completed'|'failed';
 export interface IntelligenceTask {
-  id:string; ownerUserId:string; conversationId:string; userMessageId:string; scope:'manager'|'worker'|'job'; workerId?:string; jobId?:string;
+  id:string; ownerUserId:string; conversationId:string; userMessageId?:string; inputSource:'USER_MESSAGE'|'ROUTINE'|'SYSTEM'; inputText?:string; routineRunId?:string; scope:'manager'|'worker'|'job'; workerId?:string; jobId?:string;
   providerPreference:'auto'|'openai'|'gemini'|'anthropic'; modelPreference?:string; status:IntelligenceTaskStatus; attempts:number; maxAttempts:number; lastError?:string;
   createdAt:string; startedAt?:string; completedAt?:string;
 }
-type IntelligenceTaskRow={id:string;owner_user_id:string;conversation_id:string;user_message_id:string;scope:'manager'|'worker'|'job';worker_id:string|null;job_id:string|null;provider_preference:'auto'|'openai'|'gemini'|'anthropic';model_preference:string|null;status:IntelligenceTaskStatus;attempts:number;max_attempts:number;last_error:string|null;created_at:Date;started_at:Date|null;completed_at:Date|null};
-function mapIntelligenceTask(row:IntelligenceTaskRow):IntelligenceTask { const out:IntelligenceTask={id:row.id,ownerUserId:row.owner_user_id,conversationId:row.conversation_id,userMessageId:row.user_message_id,scope:row.scope,providerPreference:row.provider_preference,status:row.status,attempts:row.attempts,maxAttempts:row.max_attempts,createdAt:row.created_at.toISOString()}; if(row.worker_id)out.workerId=row.worker_id;if(row.job_id)out.jobId=row.job_id;if(row.model_preference)out.modelPreference=row.model_preference;if(row.last_error)out.lastError=row.last_error;if(row.started_at)out.startedAt=row.started_at.toISOString();if(row.completed_at)out.completedAt=row.completed_at.toISOString();return out; }
+type IntelligenceTaskRow={id:string;owner_user_id:string;conversation_id:string;user_message_id:string|null;input_source:'USER_MESSAGE'|'ROUTINE'|'SYSTEM';input_text:string|null;routine_run_id:string|null;scope:'manager'|'worker'|'job';worker_id:string|null;job_id:string|null;provider_preference:'auto'|'openai'|'gemini'|'anthropic';model_preference:string|null;status:IntelligenceTaskStatus;attempts:number;max_attempts:number;last_error:string|null;created_at:Date;started_at:Date|null;completed_at:Date|null};
+function mapIntelligenceTask(row:IntelligenceTaskRow):IntelligenceTask { const out:IntelligenceTask={id:row.id,ownerUserId:row.owner_user_id,conversationId:row.conversation_id,inputSource:row.input_source,scope:row.scope,providerPreference:row.provider_preference,status:row.status,attempts:row.attempts,maxAttempts:row.max_attempts,createdAt:row.created_at.toISOString()}; if(row.user_message_id)out.userMessageId=row.user_message_id;if(row.input_text)out.inputText=row.input_text;if(row.routine_run_id)out.routineRunId=row.routine_run_id;if(row.worker_id)out.workerId=row.worker_id;if(row.job_id)out.jobId=row.job_id;if(row.model_preference)out.modelPreference=row.model_preference;if(row.last_error)out.lastError=row.last_error;if(row.started_at)out.startedAt=row.started_at.toISOString();if(row.completed_at)out.completedAt=row.completed_at.toISOString();return out; }
 
-export async function enqueueIntelligenceTask(args:{ownerUserId:string;conversationId:string;userMessageId:string;scope:'manager'|'worker'|'job';workerId?:string;jobId?:string;providerPreference?:'auto'|'openai'|'gemini'|'anthropic';modelPreference?:string}):Promise<IntelligenceTask> {
+export async function enqueueIntelligenceTask(args:{ownerUserId:string;conversationId:string;userMessageId?:string;inputSource?:'USER_MESSAGE'|'ROUTINE'|'SYSTEM';inputText?:string;routineRunId?:string;scope:'manager'|'worker'|'job';workerId?:string;jobId?:string;providerPreference?:'auto'|'openai'|'gemini'|'anthropic';modelPreference?:string}):Promise<IntelligenceTask> {
+  const inputSource=args.inputSource??'USER_MESSAGE';
+  if(inputSource==='USER_MESSAGE'&&!args.userMessageId) throw new Error('INTELLIGENCE_USER_MESSAGE_REQUIRED');
+  if(inputSource!=='USER_MESSAGE'&&!args.inputText?.trim()) throw new Error('INTELLIGENCE_INPUT_TEXT_REQUIRED');
   const id=`aitask_${randomUUID()}`;
   const result=await getDatabasePool().query<IntelligenceTaskRow>(
-    `INSERT INTO intelligence_task(id,owner_user_id,conversation_id,user_message_id,scope,worker_id,job_id,provider_preference,model_preference)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
-     ON CONFLICT(owner_user_id,conversation_id,user_message_id) DO UPDATE SET updated_at=now()
-     RETURNING *`,[id,args.ownerUserId,args.conversationId,args.userMessageId,args.scope,args.workerId??null,args.jobId??null,args.providerPreference??'auto',args.modelPreference??null]);
-  const row=result.rows[0]; if(!row) throw new Error('INTELLIGENCE_TASK_ENQUEUE_FAILED'); return mapIntelligenceTask(row);
+    `INSERT INTO intelligence_task(id,owner_user_id,conversation_id,user_message_id,input_source,input_text,routine_run_id,scope,worker_id,job_id,provider_preference,model_preference)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+     ON CONFLICT DO NOTHING
+     RETURNING *`,[id,args.ownerUserId,args.conversationId,args.userMessageId??null,inputSource,args.inputText??null,args.routineRunId??null,args.scope,args.workerId??null,args.jobId??null,args.providerPreference??'auto',args.modelPreference??null]);
+  let row=result.rows[0];
+  if(!row&&args.routineRunId){
+    const existing=await getDatabasePool().query<IntelligenceTaskRow>(`SELECT * FROM intelligence_task WHERE routine_run_id=$1 LIMIT 1`,[args.routineRunId]);
+    row=existing.rows[0];
+  } else if(!row&&args.userMessageId) {
+    const existing=await getDatabasePool().query<IntelligenceTaskRow>(`SELECT * FROM intelligence_task WHERE owner_user_id=$1 AND conversation_id=$2 AND user_message_id=$3 LIMIT 1`,[args.ownerUserId,args.conversationId,args.userMessageId]);
+    row=existing.rows[0];
+  }
+  if(!row) throw new Error('INTELLIGENCE_TASK_ENQUEUE_FAILED'); return mapIntelligenceTask(row);
 }
 
 export async function getIntelligenceTask(ownerUserId:string,id:string):Promise<IntelligenceTask|null>{ const r=await getDatabasePool().query<IntelligenceTaskRow>(`SELECT * FROM intelligence_task WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,id]);return r.rows[0]?mapIntelligenceTask(r.rows[0]):null; }

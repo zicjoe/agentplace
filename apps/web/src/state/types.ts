@@ -134,6 +134,7 @@ export interface RoutineServiceBudget {
 
 export interface Routine {
   id: string;
+  environment?: Environment;
   title: string;
   workerId: string;
   workerName: string;

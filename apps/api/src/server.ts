@@ -62,6 +62,31 @@ import {
   listVerifiedOutcomes,
   listVerifiedReceipts,
 } from '@agent-place/verification';
+import {
+  activateRoutine,
+  createRoutineDraft,
+  draftRoutineFromNaturalLanguage,
+  getRoutine,
+  listRoutineRuns,
+  listRoutines,
+  pauseRoutine,
+  resumeRoutine,
+  reviseRoutine,
+  runRoutineNow,
+  stopRoutine,
+  type CreateRoutineInput,
+  type RoutineEnvironment,
+  type RoutineNotificationPolicy,
+  type RoutineTriggerConfig,
+  type RoutineTriggerType,
+} from '@agent-place/routines';
+import {
+  getNotificationPreferences,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  updateNotificationPreferences,
+} from '@agent-place/notifications';
 import { getRouteDecisionForJob } from '@agent-place/router';
 import { listJobIntelligenceEvidence } from '@agent-place/intelligence';
 import { createJob, enqueueIntelligenceTask, getIntelligenceTask, getLatestIntelligenceTask, getJob, getJobEvidence, jobStatuses, listActivity, listJobs, setJobConversation, type JobDraft } from '@agent-place/jobs';
@@ -331,12 +356,86 @@ function isJobDraft(value: unknown): value is JobDraft {
       && Number.isInteger(row.ordinal) && Number(row.ordinal) >= 0
       && (row.status === 'done' || row.status === 'active' || row.status === 'pending');
   })) return false;
-  for (const key of ['originWorkerId','originConversationId','jobConversationId','createdAt','updatedAt']) {
+  for (const key of ['originWorkerId','originConversationId','jobConversationId','originRoutineId','routineRunId','createdAt','updatedAt']) {
     if (v[key] !== undefined && v[key] !== null && typeof v[key] !== 'string') return false;
   }
   return true;
 }
 
+
+
+function parseRoutineEnvironment(value: unknown): RoutineEnvironment {
+  if (value !== 'mainnet' && value !== 'testnet') throw new Error('INVALID_ROUTINE_ENVIRONMENT');
+  return value;
+}
+
+function parseRoutineNotificationPolicy(value: unknown): RoutineNotificationPolicy {
+  if (value === undefined || value === null) return { mode: 'needs-user', humanReadable: 'Only when the Routine needs you.' };
+  const row = asRecord(value);
+  if (row.mode !== 'always' && row.mode !== 'meaningful' && row.mode !== 'needs-user') throw new Error('INVALID_ROUTINE_NOTIFICATION_POLICY');
+  return { mode: row.mode, humanReadable: requiredString(row.humanReadable, 'INVALID_ROUTINE_NOTIFICATION_POLICY', 500) };
+}
+
+function parseRoutineTrigger(type: RoutineTriggerType, value: unknown): RoutineTriggerConfig {
+  const row = asRecord(value);
+  const humanReadable = requiredString(row.humanReadable, 'INVALID_ROUTINE_TRIGGER', 300);
+  if (type === 'SCHEDULED') {
+    if (row.kind !== 'interval' && row.kind !== 'daily' && row.kind !== 'weekly') throw new Error('INVALID_ROUTINE_TRIGGER');
+    const config: Record<string, unknown> = { kind: row.kind, timeZone: requiredString(row.timeZone, 'INVALID_ROUTINE_TIME_ZONE', 100), humanReadable };
+    if (row.intervalMinutes !== undefined) config.intervalMinutes = Number(row.intervalMinutes);
+    if (row.localTime !== undefined) config.localTime = requiredString(row.localTime, 'INVALID_ROUTINE_LOCAL_TIME', 5);
+    if (row.weekdays !== undefined) config.weekdays = stringArray(row.weekdays, 'INVALID_ROUTINE_WEEKDAYS');
+    return config as unknown as RoutineTriggerConfig;
+  }
+  if (type === 'CONDITION') {
+    if (!['priceUsd','liquidityUsd','volume24hUsd','marketCapUsd','fdvUsd'].includes(String(row.metric))) throw new Error('INVALID_ROUTINE_CONDITION_METRIC');
+    if (!['GT','GTE','LT','LTE','EQ'].includes(String(row.operator))) throw new Error('INVALID_ROUTINE_CONDITION');
+    const threshold = Number(row.threshold);
+    const pollEveryMinutes = Number(row.pollEveryMinutes);
+    const cooldownMinutes = Number(row.cooldownMinutes ?? 0);
+    if (!Number.isFinite(threshold)) throw new Error('INVALID_ROUTINE_CONDITION');
+    return {
+      metric: row.metric,
+      query: requiredString(row.query, 'INVALID_ROUTINE_CONDITION_SUBJECT', 200),
+      ...(row.network === undefined ? {} : { network: requiredString(row.network, 'INVALID_ROUTINE_NETWORK', 100) }),
+      ...(row.address === undefined ? {} : { address: requiredString(row.address, 'INVALID_ROUTINE_ADDRESS', 200) }),
+      operator: row.operator,
+      threshold,
+      pollEveryMinutes,
+      cooldownMinutes,
+      humanReadable,
+    } as RoutineTriggerConfig;
+  }
+  return {
+    eventTypes: stringArray(row.eventTypes, 'INVALID_ROUTINE_EVENT_TYPES'),
+    cooldownMinutes: Number(row.cooldownMinutes ?? 0),
+    humanReadable,
+    ...(row.workerId === undefined ? {} : { workerId: requiredString(row.workerId, 'INVALID_ROUTINE_EVENT_WORKER', 128) }),
+  } as RoutineTriggerConfig;
+}
+
+function parseRoutineCreateInput(value: unknown): CreateRoutineInput {
+  const row = asRecord(value);
+  if (row.triggerType !== 'SCHEDULED' && row.triggerType !== 'CONDITION' && row.triggerType !== 'EVENT') throw new Error('INVALID_ROUTINE_TRIGGER');
+  const input: CreateRoutineInput = {
+    title: requiredString(row.title, 'INVALID_ROUTINE_TITLE', 200),
+    workerId: requiredString(row.workerId, 'INVALID_ROUTINE_WORKER', 128),
+    environment: parseRoutineEnvironment(row.environment),
+    instruction: requiredString(row.instruction, 'INVALID_ROUTINE_INSTRUCTION', 4000),
+    triggerType: row.triggerType,
+    triggerConfig: parseRoutineTrigger(row.triggerType, row.triggerConfig),
+    executionBehavior: row.executionBehavior === 'ACT_WITHIN_AUTHORITY' ? 'ACT_WITHIN_AUTHORITY' : 'RECOMMEND_ONLY',
+    notificationPolicy: parseRoutineNotificationPolicy(row.notificationPolicy),
+  };
+  if (row.authorityGrantId !== undefined) input.authorityGrantId = requiredString(row.authorityGrantId, 'INVALID_ROUTINE_AUTHORITY', 128);
+  if (row.serviceBudgetLimitUsd !== undefined) input.serviceBudgetLimitUsd = Number(row.serviceBudgetLimitUsd);
+  if (row.serviceBudgetPeriodDays !== undefined) input.serviceBudgetPeriodDays = Number(row.serviceBudgetPeriodDays);
+  if (row.maxCostPerRunUsd !== undefined) input.maxCostPerRunUsd = Number(row.maxCostPerRunUsd);
+  if (row.cooldownSeconds !== undefined) input.cooldownSeconds = Number(row.cooldownSeconds);
+  if (row.expiresAt !== undefined) input.expiresAt = requiredString(row.expiresAt, 'INVALID_ROUTINE_EXPIRY', 80);
+  if (row.gasBudget !== undefined) input.gasBudget = asRecord(row.gasBudget);
+  return input;
+}
 
 function scopedId(prefix: string, ownerUserId: string, objectId: string): string {
   const digest = createHash('sha256').update(`${ownerUserId}:${objectId}`).digest('hex').slice(0, 24);
@@ -866,6 +965,171 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     writeJson(res,200,{review:await decideServiceCostReview(identity.appUserId,decodeURIComponent(serviceReviewMatch[1]??''),body.decision)}); return;
   }
 
+
+  if (url.pathname === '/api/v1/routines' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const [routines, runs] = await Promise.all([listRoutines(identity.appUserId), listRoutineRuns(identity.appUserId, undefined, 200)]);
+    writeJson(res, 200, { routines, runs });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/routines' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const routine = await createRoutineDraft(identity.appUserId, parseRoutineCreateInput(body.routine));
+    writeJson(res, 201, { routine });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/routines/draft-from-text' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const workerId = requiredString(body.workerId, 'INVALID_ROUTINE_WORKER', 128);
+    const worker = await getUserWorker(identity.appUserId, workerId);
+    if (!worker) return writeJson(res, 404, { error:'not_found', message:'Worker not found in your workforce.', requestId });
+    const draft = draftRoutineFromNaturalLanguage({
+      workerId,
+      workerName: worker.name,
+      environment: parseRoutineEnvironment(body.environment),
+      instruction: requiredString(body.instruction, 'INVALID_ROUTINE_INSTRUCTION', 4000),
+      timeZone: requiredString(body.timeZone, 'INVALID_ROUTINE_TIME_ZONE', 100),
+    });
+    const routine = await createRoutineDraft(identity.appUserId, draft);
+    writeJson(res, 201, { routine });
+    return;
+  }
+
+  const routineRunsMatch = url.pathname.match(/^\/api\/v1\/routines\/([^/]+)\/runs$/);
+  if (routineRunsMatch && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const routineId = decodeURIComponent(routineRunsMatch[1] ?? '');
+    if (!await getRoutine(identity.appUserId, routineId)) return writeJson(res,404,{error:'not_found',message:'Routine not found.',requestId});
+    writeJson(res,200,{runs:await listRoutineRuns(identity.appUserId,routineId,200)});
+    return;
+  }
+
+  const routineActionMatch = url.pathname.match(/^\/api\/v1\/routines\/([^/]+)\/(activate|pause|resume|run|retry|stop)$/);
+  if (routineActionMatch && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const routineId = decodeURIComponent(routineActionMatch[1] ?? '');
+    const action = routineActionMatch[2] ?? '';
+    if (action === 'activate') return writeJson(res,200,{routine:await activateRoutine(identity.appUserId,routineId)});
+    if (action === 'pause') return writeJson(res,200,{routine:await pauseRoutine(identity.appUserId,routineId)});
+    if (action === 'resume') return writeJson(res,200,{routine:await resumeRoutine(identity.appUserId,routineId)});
+    if (action === 'stop') return writeJson(res,200,{routine:await stopRoutine(identity.appUserId,routineId)});
+    if (action === 'retry') return writeJson(res,201,{run:await runRoutineNow(identity.appUserId,routineId,'RETRY')});
+    return writeJson(res,201,{run:await runRoutineNow(identity.appUserId,routineId,'MANUAL')});
+  }
+
+  const routineMatch = url.pathname.match(/^\/api\/v1\/routines\/([^/]+)$/);
+  if (routineMatch) {
+    const identity = await requireIdentity(req);
+    const routineId = decodeURIComponent(routineMatch[1] ?? '');
+    if (req.method === 'GET') {
+      const routine = await getRoutine(identity.appUserId,routineId);
+      if (!routine) return writeJson(res,404,{error:'not_found',message:'Routine not found.',requestId});
+      writeJson(res,200,{routine,runs:await listRoutineRuns(identity.appUserId,routineId,200)});
+      return;
+    }
+    if (req.method === 'PATCH') {
+      const body = asRecord(await readJson(req));
+      const current = await getRoutine(identity.appUserId,routineId);
+      if (!current) return writeJson(res,404,{error:'not_found',message:'Routine not found.',requestId});
+      const patch: Parameters<typeof reviseRoutine>[2] = {};
+      if (body.title !== undefined) patch.title = requiredString(body.title,'INVALID_ROUTINE_TITLE',200);
+      if (body.instruction !== undefined) patch.instruction = requiredString(body.instruction,'INVALID_ROUTINE_INSTRUCTION',4000);
+      if (body.notificationPolicy !== undefined) patch.notificationPolicy = parseRoutineNotificationPolicy(body.notificationPolicy);
+      if (body.executionBehavior !== undefined) {
+        if (body.executionBehavior !== 'RECOMMEND_ONLY' && body.executionBehavior !== 'ACT_WITHIN_AUTHORITY') throw new Error('INVALID_ROUTINE_EXECUTION_BEHAVIOR');
+        patch.executionBehavior = body.executionBehavior;
+      }
+      if (body.triggerType !== undefined || body.triggerConfig !== undefined) {
+        const type = (body.triggerType ?? current.triggerType) as RoutineTriggerType;
+        if (type !== 'SCHEDULED' && type !== 'CONDITION' && type !== 'EVENT') throw new Error('INVALID_ROUTINE_TRIGGER');
+        patch.triggerType = type;
+        patch.triggerConfig = parseRoutineTrigger(type, body.triggerConfig ?? current.triggerConfig);
+      }
+      if (body.serviceBudgetLimitUsd !== undefined) patch.serviceBudgetLimitUsd = Number(body.serviceBudgetLimitUsd);
+      if (body.serviceBudgetPeriodDays !== undefined) patch.serviceBudgetPeriodDays = Number(body.serviceBudgetPeriodDays);
+      if (body.maxCostPerRunUsd !== undefined) patch.maxCostPerRunUsd = Number(body.maxCostPerRunUsd);
+      if (body.expiresAt !== undefined) patch.expiresAt = requiredString(body.expiresAt,'INVALID_ROUTINE_EXPIRY',80);
+      writeJson(res,200,{routine:await reviseRoutine(identity.appUserId,routineId,patch)});
+      return;
+    }
+  }
+
+  if (url.pathname === '/api/v1/notifications' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const [notifications, preferences] = await Promise.all([listNotifications(identity.appUserId,300), getNotificationPreferences(identity.appUserId)]);
+    writeJson(res,200,{notifications,preferences});
+    return;
+  }
+
+  if (url.pathname === '/api/v1/notifications/read-all' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    writeJson(res,200,{updated:await markAllNotificationsRead(identity.appUserId)});
+    return;
+  }
+
+  const notificationReadMatch = url.pathname.match(/^\/api\/v1\/notifications\/([^/]+)\/read$/);
+  if (notificationReadMatch && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const notification = await markNotificationRead(identity.appUserId,decodeURIComponent(notificationReadMatch[1]??''));
+    if(!notification)return writeJson(res,404,{error:'not_found',message:'Notification not found.',requestId});
+    writeJson(res,200,{notification});
+    return;
+  }
+
+  if (url.pathname === '/api/v1/notification-preferences' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    writeJson(res,200,{preferences:await getNotificationPreferences(identity.appUserId)});
+    return;
+  }
+
+  if (url.pathname === '/api/v1/notification-preferences' && req.method === 'PATCH') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const patch: Parameters<typeof updateNotificationPreferences>[1] = {};
+    if (body.quietHoursEnabled !== undefined) {
+      if (typeof body.quietHoursEnabled !== 'boolean') throw new Error('INVALID_NOTIFICATION_PREFERENCE');
+      patch.quietHoursEnabled = body.quietHoursEnabled;
+    }
+    if (body.quietHoursStart !== undefined) patch.quietHoursStart = requiredString(body.quietHoursStart,'INVALID_NOTIFICATION_PREFERENCE',5);
+    if (body.quietHoursEnd !== undefined) patch.quietHoursEnd = requiredString(body.quietHoursEnd,'INVALID_NOTIFICATION_PREFERENCE',5);
+    if (body.timeZone !== undefined) patch.timeZone = requiredString(body.timeZone,'INVALID_NOTIFICATION_PREFERENCE',100);
+    if (body.criticalBypassQuietHours !== undefined) {
+      if (typeof body.criticalBypassQuietHours !== 'boolean') throw new Error('INVALID_NOTIFICATION_PREFERENCE');
+      patch.criticalBypassQuietHours = body.criticalBypassQuietHours;
+    }
+    if (body.previewDetail !== undefined) {
+      if (body.previewDetail !== 'full' && body.previewDetail !== 'hide-amounts' && body.previewDetail !== 'private') throw new Error('INVALID_NOTIFICATION_PREFERENCE');
+      patch.previewDetail = body.previewDetail;
+    }
+    writeJson(res,200,{preferences:await updateNotificationPreferences(identity.appUserId,patch)});
+    return;
+  }
+
+  const makeRecurringMatch = url.pathname.match(/^\/api\/v1\/jobs\/([^/]+)\/make-recurring$/);
+  if (makeRecurringMatch && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const job = await getJob(identity.appUserId,decodeURIComponent(makeRecurringMatch[1]??''));
+    if(!job)return writeJson(res,404,{error:'not_found',message:'Job not found.',requestId});
+    if(job.originRoutineId) throw new Error('JOB_ALREADY_ROUTINE_ORIGIN');
+    const draft = draftRoutineFromNaturalLanguage({
+      workerId:job.leadWorkerId,
+      workerName:job.leadWorkerName,
+      environment:job.environment,
+      instruction:`Every day, ${job.goal}`,
+      timeZone:requiredString(body.timeZone,'INVALID_ROUTINE_TIME_ZONE',100),
+    });
+    draft.title=`${job.title} Routine`.slice(0,200);
+    draft.instruction=job.goal;
+    const routine=await createRoutineDraft(identity.appUserId,draft);
+    writeJson(res,201,{routine});
+    return;
+  }
+
   if (url.pathname === '/api/v1/jobs' && req.method === 'GET') {
     const identity = await requireIdentity(req);
     const jobs = await listJobs(identity.appUserId);
@@ -1080,7 +1344,24 @@ const server = createServer((req, res) => {
       writeJson(res, 409, { error: 'execution_conflict', message: executionConflicts[code] ?? `AgentPlace could not reach a usable execution RPC${rpcDetail ? `: ${rpcDetail}` : ''}. Nothing was submitted.`, requestId });
       return;
     }
-    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE','INVALID_WORKER_DEFINITION','INVALID_WORKER_STATUS','INVALID_JOB','INVALID_STRING','INVALID_MODEL_SELECTION','MODEL_PROVIDER_NOT_CONFIGURED','JOB_LEAD_REQUIRED','JOB_WORKER_NOT_AVAILABLE','WORKER_DEFINITION_NOT_FOUND','INVALID_WALLET_INPUT','INVALID_WALLET_NAMESPACE','INVALID_WALLET_NETWORK','INVALID_WALLET_NAME','INVALID_EVM_ADDRESS','INVALID_SOLANA_ADDRESS','INVALID_NATIVE_BALANCE','WALLET_ADDRESS_MISMATCH','INVALID_WALLET_STATUS','INVALID_AGENT_ACCOUNT_INPUT','CONNECTED_OWNER_WALLET_REQUIRED','AGENT_ACCOUNT_EVM_OWNER_REQUIRED','AGENT_ACCOUNT_NETWORK_REQUIRED','UNSUPPORTED_CONNECTED_WALLET_NAMESPACE','INVALID_MANDATE_WORKER','INVALID_MANDATE_ACCOUNT','INVALID_MANDATE_ENVIRONMENT','INVALID_MANDATE_STATUS','INVALID_MANDATE_REVISION','INVALID_MANDATE_TITLE','INVALID_MANDATE_PURPOSE','INVALID_AUTHORITY_LEVEL','INVALID_MANDATE_SCOPE','INVALID_MANDATE_POLICY','INVALID_MANDATE_CAPABILITIES','MANDATE_CAPABILITY_REQUIRED','INVALID_MANDATE_NETWORKS','INVALID_MANDATE_ASSETS','INVALID_MANDATE_PROTOCOLS','INVALID_MANDATE_DESTINATIONS','ACT_MANDATE_ASSET_ALLOWLIST_REQUIRED','ACT_MANDATE_REQUIRES_AGENT_ACCOUNT','INVALID_CAPITAL_LIMIT','INVALID_PER_ACTION_LIMIT','INVALID_PERIOD_BUDGET','INVALID_SERVICE_BUDGET','ACT_MANDATE_HARD_LIMITS_REQUIRED','INVALID_APPROVAL_POLICY','INVALID_APPROVAL_THRESHOLD','INVALID_MANDATE_VALIDITY','ACT_MANDATE_EXPIRY_REQUIRED','INVALID_MANDATE_CHANGE_SUMMARY','MANDATE_WORKER_NOT_OWNED','MANDATE_ACCOUNT_NOT_OWNED','MANDATE_ACCOUNT_NOT_AVAILABLE','UNKNOWN_MANDATE_CAPABILITY','INVALID_AUTHORITY_ENVELOPE','INVALID_AUTHORITY_VALUE','INVALID_AUTHORITY_LEVERAGE','INVALID_AUTHORITY_CONTROL','INVALID_MANDATE_INTENT','INVALID_EXECUTION_OUTCOME','INVALID_EXECUTION_PROMPT_TOKEN','INVALID_EXECUTION_TRANSACTION_HASH','INVALID_EXECUTION_MESSAGE','EXECUTION_TRANSACTION_HASH_INVALID','EXECUTION_PROVIDER_PAYLOAD_INVALID','EXECUTION_PROVIDER_CHAIN_MISMATCH','EXECUTION_DESTINATION_INVALID','EXECUTION_AMOUNT_ATOMIC_REQUIRED','EXECUTION_ASSET_ADDRESS_INVALID','EXECUTION_CHAIN_UNSUPPORTED','EXECUTION_EVM_WALLET_REQUIRED','EXECUTION_WALLET_ADDRESS_INVALID','EXECUTION_INVALID_QUANTITY'].includes(code)) {
+    const routineConflicts: Record<string,string> = {
+      M11_AUTONOMOUS_EXECUTION_UNAVAILABLE: 'Background Routines cannot sign or autonomously execute financial actions in v0.14.0. Keep the Routine recommendation-only.',
+      ROUTINE_STOPPED: 'This Routine is stopped. Historical work remains, but it cannot be edited or reactivated.',
+      ROUTINE_EXPIRED: 'This Routine has expired.',
+      ROUTINE_CANNOT_RESUME: 'This Routine cannot be resumed from its current state.',
+      ROUTINE_ALREADY_ACTIVATED: 'This Routine has already been activated. Use Pause/Resume rather than activating it again.',
+      ROUTINE_RUN_IN_PROGRESS: 'This Routine already has background work in progress. AgentPlace will not start an overlapping run.',
+      ROUTINE_CANNOT_RUN: 'This Routine cannot run from its current state.',
+      ROUTINE_NOT_ACTIVATED: 'Activate this Routine before running it. Drafts never execute background work.',
+      ROUTINE_RETRY_REQUIRED: 'This Limited Routine can only run through Retry this check once or Resume future checks.',
+      ROUTINE_RETRY_NOT_AVAILABLE: 'Retry once is only available while a Routine is Limited.',
+      JOB_ALREADY_ROUTINE_ORIGIN: 'This Job already came from a Routine and cannot be converted into another recurring Routine directly.',
+    };
+    if (routineConflicts[code]) {
+      writeJson(res, 409, { error: 'routine_conflict', message: routineConflicts[code], requestId });
+      return;
+    }
+    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE','INVALID_WORKER_DEFINITION','INVALID_WORKER_STATUS','INVALID_JOB','INVALID_STRING','INVALID_MODEL_SELECTION','MODEL_PROVIDER_NOT_CONFIGURED','JOB_LEAD_REQUIRED','JOB_WORKER_NOT_AVAILABLE','WORKER_DEFINITION_NOT_FOUND','INVALID_WALLET_INPUT','INVALID_WALLET_NAMESPACE','INVALID_WALLET_NETWORK','INVALID_WALLET_NAME','INVALID_EVM_ADDRESS','INVALID_SOLANA_ADDRESS','INVALID_NATIVE_BALANCE','WALLET_ADDRESS_MISMATCH','INVALID_WALLET_STATUS','INVALID_AGENT_ACCOUNT_INPUT','CONNECTED_OWNER_WALLET_REQUIRED','AGENT_ACCOUNT_EVM_OWNER_REQUIRED','AGENT_ACCOUNT_NETWORK_REQUIRED','UNSUPPORTED_CONNECTED_WALLET_NAMESPACE','INVALID_MANDATE_WORKER','INVALID_MANDATE_ACCOUNT','INVALID_MANDATE_ENVIRONMENT','INVALID_MANDATE_STATUS','INVALID_MANDATE_REVISION','INVALID_MANDATE_TITLE','INVALID_MANDATE_PURPOSE','INVALID_AUTHORITY_LEVEL','INVALID_MANDATE_SCOPE','INVALID_MANDATE_POLICY','INVALID_MANDATE_CAPABILITIES','MANDATE_CAPABILITY_REQUIRED','INVALID_MANDATE_NETWORKS','INVALID_MANDATE_ASSETS','INVALID_MANDATE_PROTOCOLS','INVALID_MANDATE_DESTINATIONS','ACT_MANDATE_ASSET_ALLOWLIST_REQUIRED','ACT_MANDATE_REQUIRES_AGENT_ACCOUNT','INVALID_CAPITAL_LIMIT','INVALID_PER_ACTION_LIMIT','INVALID_PERIOD_BUDGET','INVALID_SERVICE_BUDGET','ACT_MANDATE_HARD_LIMITS_REQUIRED','INVALID_APPROVAL_POLICY','INVALID_APPROVAL_THRESHOLD','INVALID_MANDATE_VALIDITY','ACT_MANDATE_EXPIRY_REQUIRED','INVALID_MANDATE_CHANGE_SUMMARY','MANDATE_WORKER_NOT_OWNED','MANDATE_ACCOUNT_NOT_OWNED','MANDATE_ACCOUNT_NOT_AVAILABLE','UNKNOWN_MANDATE_CAPABILITY','INVALID_AUTHORITY_ENVELOPE','INVALID_AUTHORITY_VALUE','INVALID_AUTHORITY_LEVERAGE','INVALID_AUTHORITY_CONTROL','INVALID_MANDATE_INTENT','INVALID_EXECUTION_OUTCOME','INVALID_EXECUTION_PROMPT_TOKEN','INVALID_EXECUTION_TRANSACTION_HASH','INVALID_EXECUTION_MESSAGE','EXECUTION_TRANSACTION_HASH_INVALID','EXECUTION_PROVIDER_PAYLOAD_INVALID','EXECUTION_PROVIDER_CHAIN_MISMATCH','EXECUTION_DESTINATION_INVALID','EXECUTION_AMOUNT_ATOMIC_REQUIRED','EXECUTION_ASSET_ADDRESS_INVALID','EXECUTION_CHAIN_UNSUPPORTED','EXECUTION_EVM_WALLET_REQUIRED','EXECUTION_WALLET_ADDRESS_INVALID','EXECUTION_INVALID_QUANTITY','INVALID_ROUTINE_ENVIRONMENT','INVALID_ROUTINE_NOTIFICATION_POLICY','INVALID_ROUTINE_TRIGGER','INVALID_ROUTINE_TIME_ZONE','INVALID_ROUTINE_LOCAL_TIME','INVALID_ROUTINE_WEEKDAYS','INVALID_ROUTINE_CONDITION_METRIC','INVALID_ROUTINE_CONDITION','INVALID_ROUTINE_CONDITION_SUBJECT','INVALID_ROUTINE_NETWORK','INVALID_ROUTINE_ADDRESS','INVALID_ROUTINE_EVENT_TYPES','INVALID_ROUTINE_EVENT_WORKER','INVALID_ROUTINE_TITLE','INVALID_ROUTINE_WORKER','INVALID_ROUTINE_INSTRUCTION','INVALID_ROUTINE_AUTHORITY','INVALID_ROUTINE_EXPIRY','INVALID_ROUTINE_INTERVAL','INVALID_ROUTINE_CONDITION_POLL','INVALID_ROUTINE_COOLDOWN','ROUTINE_TRIGGER_MISMATCH','INVALID_ROUTINE_INPUT','INVALID_ROUTINE_SERVICE_BUDGET','INVALID_ROUTINE_RUN_BUDGET','INVALID_ROUTINE_BUDGET_PERIOD','INVALID_ROUTINE_EXECUTION_BEHAVIOR','INVALID_NOTIFICATION_PREFERENCE','INVALID_QUIET_HOURS_TIME','INVALID_TIME_ZONE','INVALID_NOTIFICATION_PREVIEW','ROUTINE_WORKER_NOT_INSTALLED'].includes(code)) {
       writeJson(res, 400, { error: 'invalid_request', message: code, requestId });
       return;
     }

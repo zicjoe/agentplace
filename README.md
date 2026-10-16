@@ -32,7 +32,7 @@ AgentPlace turns that goal into durable work owned by specialist **Workers**, ma
 
 A crypto Worker is a persistent AI specialist designed to own a specific crypto job. A Worker has a defined responsibility, operating context, capabilities and boundaries. Workers can research and coordinate work, and the current production slice includes a narrowly gated user-signed Connected Wallet execution path plus deterministic post-confirmation outcome verification for supported direct EVM transfers. Financial execution remains subject to exact deterministic authority, one-time approval, wallet signing and independent transaction observation.
 
-AgentPlace also has a supply-side model: experts can turn methods into Workers or Workflows, while developers and protocols can expose software as reusable Capabilities. The production creator/publishing system is still on the roadmap; the current build extends the orchestration, Router, authority and execution foundation with independently verified direct EVM transfer outcomes and durable Verified Receipts, while keeping Agent Account autonomy and broader swap/bridge verification out of scope.
+AgentPlace also has a supply-side model: experts can turn methods into Workers or Workflows, while developers and protocols can expose software as reusable Capabilities. The production creator/publishing system is still on the roadmap; the current build now also adds durable background Routines on top of the frozen verified-transfer lifecycle, while keeping Agent Account autonomy, autonomous Mainnet signing and broader swap/bridge verification out of scope.
 
 ---
 
@@ -40,10 +40,10 @@ AgentPlace also has a supply-side model: experts can turn methods into Workers o
 
 | Build metadata | Value |
 |---|---|
-| Version | `v0.13.0` Milestone 10 Settlement Verification + Verified Outcomes + Verified Receipts candidate |
+| Version | `v0.14.0` Milestone 11 Routines + Background Work candidate |
 | Production app | https://www.agentplace.tech |
 | Frontend | Vercel |
-| API + background Worker | Railway |
+| API + background Worker + Scheduler | Railway |
 | Database | PostgreSQL on Railway |
 | Onchain component | Robinhood Chain Testnet |
 
@@ -62,12 +62,13 @@ AgentPlace also has a supply-side model: experts can turn methods into Workers o
 | Telegraph live paid testnet acceptance | Acceptance tooling ready; controlled paid pass deliberately deferred |
 | Robinhood Chain receipt registry | Deployed on testnet |
 | Connected-wallet financial execution | M9 frozen — exact user-approved EVM actions; Mainnet gate disabled by default |
-| Independent settlement verification | M10 candidate — direct EVM transfers with durable Verified Outcomes/Receipts |
+| Independent settlement verification | M10 frozen — direct EVM transfers with durable Verified Outcomes/Receipts |
 | Arbitrum receipt proof | Durable privacy-safe proof queue only; production anchor signer deliberately not included |
+| Durable Routines + background work | M11 candidate — scheduled/condition/event triggers, RoutineRuns, Worker Jobs, budgets and in-app notifications |
 | Agent Account financial authority | Mandates exist; Agent Account signing/deployment remains out of M9 scope |
 | Autonomous capital movement | Not enabled in the current build |
 
-The current build has durable Wallets, Mandates/Authority, exact Action Preparation/Review, frozen M9 Connected Wallet execution, and an M10 settlement-verification candidate. User signing stays inside the browser wallet; transaction observation and outcome verification are deterministic; Mainnet execution remains disabled by default; only a durable successful Verification Contract may produce `Completed · AgentPlace Verified` and a Verified Receipt.
+The current build has durable Wallets, Mandates/Authority, exact Action Preparation/Review, frozen M9 Connected Wallet execution, frozen M10 settlement verification/receipts, and an M11 background-Routine candidate. User signing stays inside the browser wallet; Routines cannot sign or widen authority; Mainnet execution remains disabled by default.
 
 ---
 
@@ -306,7 +307,7 @@ agent-place/
 │   ├── web/                 # React/Vite product UI
 │   ├── api/                 # identity, conversations, Jobs, evidence APIs
 │   ├── worker/              # long-running Job/Worker execution
-│   └── scheduler/           # future routine/scheduling runtime
+│   └── scheduler/           # durable Routine/background-work scheduler
 ├── packages/
 │   ├── auth/                # Better Auth + AgentPlace identity projection
 │   ├── capabilities/        # canonical capabilities + implementation registry
@@ -314,6 +315,8 @@ agent-place/
 │   ├── db/                  # PostgreSQL schema + migrations
 │   ├── intelligence/        # provider adapters + IntelligenceEvidence
 │   ├── jobs/                # durable Job model
+│   ├── notifications/       # durable in-app attention/preferences
+│   ├── routines/            # Routine revisions, runs and scheduler orchestration
 │   ├── models/              # model gateway
 │   ├── router/              # deterministic Router v1
 │   ├── telegraph/           # Telegraph discovery/mapping/inference boundary
@@ -397,7 +400,8 @@ Vercel — Web
 Railway — API
        │
        ├── Railway PostgreSQL
-       └── Railway Worker
+       ├── Railway Worker
+       └── Railway Scheduler
 ```
 
 The Railway API runs `pnpm migrate` as its pre-deploy command, so normal additive migrations use the existing deployment flow rather than ad hoc manual production migration steps.
@@ -408,6 +412,7 @@ For environment-specific setup, see:
 - [`docs/MILESTONE-5B1-DEPLOYMENT.md`](docs/MILESTONE-5B1-DEPLOYMENT.md)
 - [`docs/MILESTONE-5B2-DEPLOYMENT.md`](docs/MILESTONE-5B2-DEPLOYMENT.md)
 - [`docs/MILESTONE-6-DEPLOYMENT.md`](docs/MILESTONE-6-DEPLOYMENT.md)
+- [`docs/MILESTONE-11-DEPLOYMENT.md`](docs/MILESTONE-11-DEPLOYMENT.md)
 
 ---
 
@@ -449,14 +454,13 @@ M6    Wallet Foundation — v0.9.1 frozen (viewport/layout hardened)
 M7    Mandates + Authority Engine — v0.10.0 frozen
 M8    Action Preparation + Action Review — v0.11.0 frozen
 M9    Connected Wallet Execution + Transaction Observation — v0.12.0 frozen
-M10   Settlement Verification + Verified Outcomes + Verified Receipts — v0.13.0 candidate
+M10   Settlement Verification + Verified Outcomes + Verified Receipts — v0.13.0 frozen
+M11   Routines + Background Work — v0.14.0 candidate
 ```
 
 Next major platform layers include:
 
 ```text
-M10   Settlement Verification + Verified Outcomes + Verified Receipts
-M11   Routines + Background Work
 M12   Discover + Creator System
 M13   Billing + Security Completion
 M14   Production Reconciliation + Launch Readiness

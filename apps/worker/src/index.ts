@@ -48,8 +48,8 @@ import {
 export const service = defineService({
   name: 'agent-place-worker',
   runtimeClass: 'worker',
-  version: '0.13.0',
-  milestone: 10,
+  version: '0.14.0',
+  milestone: 11,
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -135,6 +135,11 @@ function lastUserMessage(context: IntelligenceContextValue): string {
   return '';
 }
 
+function taskText(task: IntelligenceTask, context: IntelligenceContextValue): string {
+  if (task.inputSource === 'ROUTINE' || task.inputSource === 'SYSTEM') return task.inputText?.trim() ?? '';
+  return lastUserMessage(context);
+}
+
 function contextManifest(context: IntelligenceContextValue, capabilityIds: string[]): Record<string, unknown> {
   return {
     conversationId: context.conversationId,
@@ -188,7 +193,7 @@ async function enforceCallLimit(taskId: string): Promise<void> {
 }
 
 async function decide(task: IntelligenceTask, context: IntelligenceContextValue): Promise<Decision> {
-  const user = lastUserMessage(context);
+  const user = taskText(task, context);
   if (context.scope === 'worker' && context.worker) {
     return {
       responseMode: 'job',
@@ -361,7 +366,7 @@ async function createResearchJob(task: IntelligenceTask, context: IntelligenceCo
   await createJob(task.ownerUserId, {
     id: jobId,
     title: decision.title.slice(0, 200) || 'Research Job',
-    goal: decision.goal.slice(0, 4000) || lastUserMessage(context),
+    goal: decision.goal.slice(0, 4000) || taskText(task, context),
     status: 'RUNNING',
     environment: 'testnet',
     kind: 'research',
@@ -482,7 +487,7 @@ async function executeResearch(
 
   const catalog = await listWorkerCatalog();
   const lead = catalog.find((worker) => worker.id === route.leadWorkerId);
-  const originalRequest = lastUserMessage(context);
+  const originalRequest = taskText(task, context);
   const requirements = buildResearchRequirements(originalRequest, decision.researchRequirements);
   const liveCapabilities = route.capabilityRoutes.filter((capability) => capability.status === 'routable').map((capability) => capability.capabilityId);
   const unavailableRequestedCapabilities = route.capabilityRoutes
@@ -647,7 +652,7 @@ function requestedAgentAccountSelector(user: string): string | undefined {
 
 async function tryPrepareTransferRequest(task: IntelligenceTask, context: IntelligenceContextValue): Promise<boolean> {
   if (context.scope !== 'manager') return false;
-  const user = lastUserMessage(context).trim();
+  const user = taskText(task, context).trim();
   const match = user.match(/\b(?:send|transfer)\s+(\d+(?:\.\d+)?)\s+([A-Za-z0-9._-]+)\s+(?:on|from)\s+(.+?)\s+to\s+(0x[a-fA-F0-9]{40})\b/i);
   if (!match) return false;
   const amount = match[1] ?? '';
@@ -727,7 +732,7 @@ async function tryPrepareTransferRequest(task: IntelligenceTask, context: Intell
 
 async function tryPrepareBridgeRequest(task: IntelligenceTask, context: IntelligenceContextValue): Promise<boolean> {
   if (context.scope !== 'manager') return false;
-  const user = lastUserMessage(context).trim();
+  const user = taskText(task, context).trim();
   const match = user.match(/\bbridge\s+(\d+(?:\.\d+)?)\s+([A-Za-z0-9._-]+)\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+using\b|\s+with\b|[.!?]|$)/i);
   if (!match) return false;
 
@@ -872,7 +877,7 @@ async function tryPrepareBridgeRequest(task: IntelligenceTask, context: Intellig
 async function processTask(task: IntelligenceTask): Promise<void> {
   const context = await getIntelligenceContext(task.ownerUserId, task.conversationId);
   if (!context) throw new Error('INTELLIGENCE_CONTEXT_NOT_FOUND');
-  if (await tryPrepareTransferRequest(task, context) || await tryPrepareBridgeRequest(task, context)) {
+  if (task.inputSource === 'USER_MESSAGE' && (await tryPrepareTransferRequest(task, context) || await tryPrepareBridgeRequest(task, context))) {
     await completeIntelligenceTask(task.id);
     return;
   }
@@ -959,6 +964,19 @@ async function loop(): Promise<void> {
       const message = error instanceof Error ? error.message : String(error);
       await failIntelligenceTask(task.id, message).catch(() => undefined);
       const isFinalAttempt = task.attempts >= task.maxAttempts;
+      if (isFinalAttempt && task.jobId) {
+        await updateJobRuntime(task.ownerUserId, task.jobId, { status: 'FAILED_FINAL', currentStage: 'Background work failed' }).catch(() => undefined);
+        await appendJobEvent({
+          ownerUserId: task.ownerUserId,
+          jobId: task.jobId,
+          ...(task.workerId ? { workerId: task.workerId } : {}),
+          eventType: 'job.failed',
+          title: 'Background Job failed',
+          summary: 'The Worker exhausted its permitted attempts. No financial authority was widened and no automatic financial action was taken.',
+          status: 'FAILED_FINAL',
+          eventId: `evt_job_failed_${task.id}`,
+        }).catch(() => undefined);
+      }
       const response = message === 'AI_DAILY_COST_LIMIT_REACHED'
         ? 'AgentPlace reached its configured AI usage ceiling. This run stopped; your request remains saved.'
         : isFinalAttempt

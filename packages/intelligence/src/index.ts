@@ -472,3 +472,58 @@ export function intelligenceEvidencePrompt(evidence:readonly IntelligenceEvidenc
 }
 
 export const moduleManifest={name:'intelligence',layer:'controlled-runtime',milestone:'5B.2.3',status:'router-ordered-intelligence-fallback-with-telegraph-evidence'} as const;
+
+export type DeterministicMarketMetric = 'priceUsd' | 'liquidityUsd' | 'volume24hUsd' | 'marketCapUsd' | 'fdvUsd';
+
+export interface DeterministicMarketMetricObservation {
+  provider: 'dexscreener';
+  metric: DeterministicMarketMetric;
+  value: number;
+  subjectQuery: string;
+  network: string;
+  address: string;
+  observedAt: string;
+  sourceUrl?: string;
+}
+
+export async function readDeterministicMarketMetric(args: {
+  query: string;
+  network?: string;
+  address?: string;
+  metric: DeterministicMarketMetric;
+}): Promise<DeterministicMarketMetricObservation> {
+  const subject: IntelligenceSubject = {
+    kind: 'token',
+    query: args.query.trim(),
+    ...(args.network?.trim() ? { network: args.network.trim() } : {}),
+    ...(args.address?.trim() ? { address: args.address.trim() } : {}),
+  };
+  if (!subject.query) throw new Error('CONDITION_SUBJECT_REQUIRED');
+  const resolved = await resolveToken(subject);
+  if (!resolved) throw new Error('CONDITION_SUBJECT_UNRESOLVED');
+  const url = `https://api.dexscreener.com/token-pairs/v1/${encodeURIComponent(dexscreenerNetwork(resolved.network))}/${encodeURIComponent(resolved.address)}`;
+  const rows = array(await fetchJson(url, { headers: headers() }))
+    .map(object)
+    .sort((a, b) => (number(object(b.liquidity).usd) ?? 0) - (number(object(a.liquidity).usd) ?? 0));
+  const top = rows[0];
+  if (!top) throw new Error('CONDITION_METRIC_UNAVAILABLE');
+  const values: Record<DeterministicMarketMetric, number | undefined> = {
+    priceUsd: number(top.priceUsd),
+    liquidityUsd: number(object(top.liquidity).usd),
+    volume24hUsd: number(object(top.volume).h24),
+    marketCapUsd: number(top.marketCap),
+    fdvUsd: number(top.fdv),
+  };
+  const value = values[args.metric];
+  if (value === undefined) throw new Error('CONDITION_METRIC_UNAVAILABLE');
+  return {
+    provider: 'dexscreener',
+    metric: args.metric,
+    value,
+    subjectQuery: subject.query,
+    network: resolved.network,
+    address: resolved.address,
+    observedAt: new Date().toISOString(),
+    ...(string(top.url) ?? resolved.sourceUrl ? { sourceUrl: string(top.url) ?? resolved.sourceUrl } : {}),
+  };
+}
