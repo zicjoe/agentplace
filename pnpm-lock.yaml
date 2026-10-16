@@ -17,21 +17,15 @@ importers:
 
   apps/api:
     dependencies:
-      '@agent-place/verification':
-        specifier: workspace:*
-        version: link:../../packages/verification
-      '@agent-place/notifications':
-        specifier: workspace:*
-        version: link:../../packages/notifications
-      '@agent-place/routines':
-        specifier: workspace:*
-        version: link:../../packages/routines
-      '@agent-place/capabilities':
-        specifier: workspace:*
-        version: link:../../packages/capabilities
       '@agent-place/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@agent-place/authority':
+        specifier: workspace:*
+        version: link:../../packages/authority
+      '@agent-place/capabilities':
+        specifier: workspace:*
+        version: link:../../packages/capabilities
       '@agent-place/context':
         specifier: workspace:*
         version: link:../../packages/context
@@ -41,33 +35,39 @@ importers:
       '@agent-place/execution':
         specifier: workspace:*
         version: link:../../packages/execution
-      '@agent-place/jobs':
-        specifier: workspace:*
-        version: link:../../packages/jobs
       '@agent-place/intelligence':
         specifier: workspace:*
         version: link:../../packages/intelligence
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
-      '@agent-place/router':
+      '@agent-place/notifications':
         specifier: workspace:*
-        version: link:../../packages/router
-      '@agent-place/workers':
-        specifier: workspace:*
-        version: link:../../packages/workers
-      '@agent-place/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      '@agent-place/wallets':
-        specifier: workspace:*
-        version: link:../../packages/wallets
-      '@agent-place/authority':
-        specifier: workspace:*
-        version: link:../../packages/authority
+        version: link:../../packages/notifications
       '@agent-place/risk':
         specifier: workspace:*
         version: link:../../packages/risk
+      '@agent-place/router':
+        specifier: workspace:*
+        version: link:../../packages/router
+      '@agent-place/routines':
+        specifier: workspace:*
+        version: link:../../packages/routines
+      '@agent-place/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@agent-place/verification':
+        specifier: workspace:*
+        version: link:../../packages/verification
+      '@agent-place/wallets':
+        specifier: workspace:*
+        version: link:../../packages/wallets
+      '@agent-place/workers':
+        specifier: workspace:*
+        version: link:../../packages/workers
 
   apps/scheduler:
     dependencies:
@@ -117,9 +117,6 @@ importers:
 
   apps/worker:
     dependencies:
-      '@agent-place/verification':
-        specifier: workspace:*
-        version: link:../../packages/verification
       '@agent-place/capabilities':
         specifier: workspace:*
         version: link:../../packages/capabilities
@@ -132,12 +129,12 @@ importers:
       '@agent-place/execution':
         specifier: workspace:*
         version: link:../../packages/execution
-      '@agent-place/jobs':
-        specifier: workspace:*
-        version: link:../../packages/jobs
       '@agent-place/intelligence':
         specifier: workspace:*
         version: link:../../packages/intelligence
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
@@ -147,6 +144,9 @@ importers:
       '@agent-place/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@agent-place/verification':
+        specifier: workspace:*
+        version: link:../../packages/verification
       '@agent-place/workers':
         specifier: workspace:*
         version: link:../../packages/workers
@@ -166,8 +166,8 @@ importers:
         specifier: 8.23.0
         version: 8.23.0
       viem:
-        specifier: 2.56.8
-        version: 2.56.8(typescript@5.9.3)(zod@4.6.5)
+        specifier: 2.57.5
+        version: 2.57.5(typescript@5.9.3)(zod@4.6.5)
     devDependencies:
       '@types/pg':
         specifier: 8.23.1
@@ -224,12 +224,6 @@ importers:
         specifier: workspace:*
         version: link:../risk
 
-  packages/jobs:
-    dependencies:
-      '@agent-place/db':
-        specifier: workspace:*
-        version: link:../db
-
   packages/intelligence:
     dependencies:
       '@agent-place/db':
@@ -238,6 +232,12 @@ importers:
       '@agent-place/telegraph':
         specifier: workspace:*
         version: link:../telegraph
+
+  packages/jobs:
+    dependencies:
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
 
   packages/marketplace: {}
 
@@ -248,24 +248,6 @@ importers:
       '@agent-place/db':
         specifier: workspace:*
         version: link:../db
-
-  packages/routines:
-    dependencies:
-      '@agent-place/context':
-        specifier: workspace:*
-        version: link:../context
-      '@agent-place/db':
-        specifier: workspace:*
-        version: link:../db
-      '@agent-place/intelligence':
-        specifier: workspace:*
-        version: link:../intelligence
-      '@agent-place/jobs':
-        specifier: workspace:*
-        version: link:../jobs
-      '@agent-place/notifications':
-        specifier: workspace:*
-        version: link:../notifications
 
   packages/observability:
     dependencies:
@@ -290,6 +272,24 @@ importers:
         specifier: workspace:*
         version: link:../workers
 
+  packages/routines:
+    dependencies:
+      '@agent-place/context':
+        specifier: workspace:*
+        version: link:../context
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
+      '@agent-place/intelligence':
+        specifier: workspace:*
+        version: link:../intelligence
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../jobs
+      '@agent-place/notifications':
+        specifier: workspace:*
+        version: link:../notifications
+
   packages/shared: {}
 
   packages/telegraph:
@@ -298,8 +298,8 @@ importers:
         specifier: workspace:*
         version: link:../db
       viem:
-        specifier: 2.56.8
-        version: 2.56.8(typescript@5.9.3)(zod@4.6.5)
+        specifier: 2.57.5
+        version: 2.57.5(typescript@5.9.3)(zod@4.6.5)
 
   packages/verification:
     dependencies:
@@ -307,8 +307,8 @@ importers:
         specifier: workspace:*
         version: link:../db
       viem:
-        specifier: 2.56.8
-        version: 2.56.8(typescript@5.9.3)(zod@4.6.5)
+        specifier: 2.57.5
+        version: 2.57.5(typescript@5.9.3)(zod@4.6.5)
 
   packages/wallets:
     dependencies:
@@ -898,8 +898,8 @@ packages:
     resolution: {integrity: sha512-rQLB6eV4f2AW/n3L0JmwCROpaisYy9EDEADvEFSd1C/qG8hB6O5TPlh9A791JRbJr4CnMQBzptDcvD9OR1+6WA==}
     engines: {node: ^20.0.0 || >=22.0.0}
 
-  ox@0.14.45:
-    resolution: {integrity: sha512-jpsQ+p0JZh9mKCxxzxz0d5qFHZZg2/O9xW18IpEC/dNXXPVqmDJ0c//9RMz0CILkbSGPA42+cbU0fC/ghwJ03w==}
+  ox@0.14.56:
+    resolution: {integrity: sha512-Feinlj+deWEam6RIwurRE+eHZ2N3hoUb3AAjQ10BmxRCYIymfqNkv0eZ+4ln4GkgDmSGLD2rGtTMqsFYSVDC6w==}
     peerDependencies:
       typescript: '>=5.4.0'
     peerDependenciesMeta:
@@ -1020,8 +1020,8 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
-  viem@2.56.8:
-    resolution: {integrity: sha512-vD1DsnYxySMml5/02m/+boWQYfZtWug2VYzm6+hdVT+VDmULBZfpoh9gPDAENdMMBmQKW/2QJ/1DuZaslBJDAg==}
+  viem@2.57.5:
+    resolution: {integrity: sha512-BaUdS5lJJTxr6hJX17K0AjHbgUhsolsqH8CCbTq1WMunW/I/Siwc9VrTwccCcNPppgqa/gY4TqK8Zl8LLmlTlw==}
     peerDependencies:
       typescript: '>=5.0.4'
     peerDependenciesMeta:
@@ -1498,7 +1498,7 @@ snapshots:
 
   nanostores@1.5.3: {}
 
-  ox@0.14.45(typescript@5.9.3)(zod@4.6.5):
+  ox@0.14.56(typescript@5.9.3)(zod@4.6.5):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -1622,7 +1622,7 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  viem@2.56.8(typescript@5.9.3)(zod@4.6.5):
+  viem@2.57.5(typescript@5.9.3)(zod@4.6.5):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
@@ -1630,7 +1630,7 @@ snapshots:
       '@scure/bip39': 1.6.0
       abitype: 1.2.3(typescript@5.9.3)(zod@4.6.5)
       isows: 1.0.7(ws@8.21.0)
-      ox: 0.14.45(typescript@5.9.3)(zod@4.6.5)
+      ox: 0.14.56(typescript@5.9.3)(zod@4.6.5)
       ws: 8.21.0
     optionalDependencies:
       typescript: 5.9.3
