@@ -30,9 +30,9 @@ AgentPlace turns that goal into durable work owned by specialist **Workers**, ma
 
 ### What is a crypto Worker?
 
-A crypto Worker is a persistent AI specialist designed to own a specific crypto job. A Worker has a defined responsibility, operating context, capabilities and boundaries. Workers can research and coordinate work, and the current M9 candidate adds a narrowly gated user-signed Connected Wallet execution path. Financial execution remains subject to exact deterministic authority, one-time approval, wallet signing and independent transaction observation.
+A crypto Worker is a persistent AI specialist designed to own a specific crypto job. A Worker has a defined responsibility, operating context, capabilities and boundaries. Workers can research and coordinate work, and the current production slice includes a narrowly gated user-signed Connected Wallet execution path plus deterministic post-confirmation outcome verification for supported direct EVM transfers. Financial execution remains subject to exact deterministic authority, one-time approval, wallet signing and independent transaction observation.
 
-AgentPlace also has a supply-side model: experts can turn methods into Workers or Workflows, while developers and protocols can expose software as reusable Capabilities. The production creator/publishing system is still on the roadmap; the current build extends the orchestration, Router, authority and action-preparation foundation with a narrowly scoped Connected Wallet execution path while keeping Agent Account autonomy and verified economic completion out of scope.
+AgentPlace also has a supply-side model: experts can turn methods into Workers or Workflows, while developers and protocols can expose software as reusable Capabilities. The production creator/publishing system is still on the roadmap; the current build extends the orchestration, Router, authority and execution foundation with independently verified direct EVM transfer outcomes and durable Verified Receipts, while keeping Agent Account autonomy and broader swap/bridge verification out of scope.
 
 ---
 
@@ -40,7 +40,7 @@ AgentPlace also has a supply-side model: experts can turn methods into Workers o
 
 | Build metadata | Value |
 |---|---|
-| Version | `v0.12.0` Milestone 9 Connected Wallet Execution + Transaction Observation candidate |
+| Version | `v0.13.0` Milestone 10 Settlement Verification + Verified Outcomes + Verified Receipts candidate |
 | Production app | https://www.agentplace.tech |
 | Frontend | Vercel |
 | API + background Worker | Railway |
@@ -61,11 +61,13 @@ AgentPlace also has a supply-side model: experts can turn methods into Workers o
 | Telegraph discovery, mapping and Router integration | Implemented — experimental/testnet |
 | Telegraph live paid testnet acceptance | Acceptance tooling ready; controlled paid pass deliberately deferred |
 | Robinhood Chain receipt registry | Deployed on testnet |
-| Connected-wallet financial execution | M9 candidate — exact user-approved EVM actions; Mainnet gate disabled by default |
+| Connected-wallet financial execution | M9 frozen — exact user-approved EVM actions; Mainnet gate disabled by default |
+| Independent settlement verification | M10 candidate — direct EVM transfers with durable Verified Outcomes/Receipts |
+| Arbitrum receipt proof | Durable privacy-safe proof queue only; production anchor signer deliberately not included |
 | Agent Account financial authority | Mandates exist; Agent Account signing/deployment remains out of M9 scope |
 | Autonomous capital movement | Not enabled in the current build |
 
-The current build has durable Wallets, Mandates/Authority, exact Action Preparation/Review and an M9 Connected Wallet execution candidate. User signing stays inside the browser wallet; durable observation is deterministic; Mainnet execution remains disabled by default; transaction confirmation is never presented as a verified economic outcome.
+The current build has durable Wallets, Mandates/Authority, exact Action Preparation/Review, frozen M9 Connected Wallet execution, and an M10 settlement-verification candidate. User signing stays inside the browser wallet; transaction observation and outcome verification are deterministic; Mainnet execution remains disabled by default; only a durable successful Verification Contract may produce `Completed · AgentPlace Verified` and a Verified Receipt.
 
 ---
 
@@ -446,14 +448,14 @@ M5B.2 Telegraph integration through M5B.2.3; M5B.2.4 paid live acceptance delibe
 M6    Wallet Foundation — v0.9.1 frozen (viewport/layout hardened)
 M7    Mandates + Authority Engine — v0.10.0 frozen
 M8    Action Preparation + Action Review — v0.11.0 frozen
-M9    Connected Wallet Execution + Transaction Observation — v0.12.0 candidate
+M9    Connected Wallet Execution + Transaction Observation — v0.12.0 frozen
+M10   Settlement Verification + Verified Outcomes + Verified Receipts — v0.13.0 candidate
 ```
 
 Next major platform layers include:
 
 ```text
-M9    Connected Wallet Execution + Transaction Observation
-M10   Settlement + Verification + Receipts
+M10   Settlement Verification + Verified Outcomes + Verified Receipts
 M11   Routines + Background Work
 M12   Discover + Creator System
 M13   Billing + Security Completion

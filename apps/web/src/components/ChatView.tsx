@@ -12,7 +12,7 @@ import {
   uid,
 } from '../state/AppContext';
 import { PERPS_ACTION_ID } from './ActionReview';
-import type { ChatMessage } from '../state/types';
+import type { ChatMessage, VerifiedOutcome, VerifiedReceipt } from '../state/types';
 import { fetchLatestIntelligenceTask, submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
 import { createDurableConversation } from '../platform/conversationApi';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
@@ -25,6 +25,7 @@ import { scrollConversationToEnd } from '../platform/scroll';
 import { conversationHistoryTitle } from '../platform/conversationNavigation';
 import { AgentPlaceMark } from './AgentPlaceBrand';
 import { fetchActionExecution, type ApiTransactionAttempt } from '../platform/executionApi';
+import { fetchActionVerification, type ApiSettlementObservation } from '../platform/verificationApi';
 
 // Research content is always rendered as React nodes, never model-supplied HTML.
 function RenderContent({ text }: { text: string }) {
@@ -452,49 +453,78 @@ function BridgeQuoteCard({ jobId, convId }: { jobId?: string; convId: string }) 
 function DurableActionReviewCard({ actionId }: { actionId: string }) {
   const dispatch = useDispatch();
   const [attempt, setAttempt] = useState<ApiTransactionAttempt | null>(null);
+  const [observation, setObservation] = useState<ApiSettlementObservation | null>(null);
+  const [outcome, setOutcome] = useState<VerifiedOutcome | null>(null);
+  const [receipt, setReceipt] = useState<VerifiedReceipt | null>(null);
 
   useEffect(() => {
     if (WEB_RUNTIME_SETTINGS.dataMode !== 'api') return;
     let live = true;
-    const load = () => {
-      void fetchActionExecution(actionId).then((value) => { if (live) setAttempt(value); }).catch(() => undefined);
+    const load = async () => {
+      const [execution, verification] = await Promise.all([
+        fetchActionExecution(actionId).catch(() => null),
+        fetchActionVerification(actionId).catch(() => ({ observation: null, outcome: null, receipt: null })),
+      ]);
+      if (!live) return;
+      setAttempt(execution);
+      setObservation(verification.observation);
+      setOutcome(verification.outcome);
+      setReceipt(verification.receipt);
+      if (verification.outcome) dispatch({ type: 'ADD_VERIFIED_OUTCOME', outcome: verification.outcome });
+      if (verification.receipt) dispatch({ type: 'ADD_VERIFIED_RECEIPT', receipt: verification.receipt });
     };
-    load();
-    const timer = window.setInterval(load, 5000);
+    void load();
+    const timer = window.setInterval(() => { void load(); }, 5000);
     return () => { live = false; window.clearInterval(timer); };
-  }, [actionId]);
+  }, [actionId, dispatch]);
 
-  const presentation = !attempt
-    ? { label: 'Financial action prepared', title: 'Review the exact action', body: 'Inspect the current quote, preflight, risk and deterministic authority decision. Nothing has been signed or submitted.' }
-    : attempt.status === 'WALLET_PROMPTED'
-      ? { label: 'Wallet signature requested', title: 'Waiting for your wallet', body: 'AgentPlace requested a signature for this exact approved action. Submission is not yet confirmed.' }
-      : attempt.status === 'USER_REJECTED'
-        ? { label: 'Signature rejected', title: 'Nothing was submitted', body: 'You rejected the wallet request. No transaction was submitted by this execution attempt.' }
-        : attempt.status === 'PRE_SUBMISSION_FAILED'
-          ? { label: 'Signing stopped', title: 'Nothing was submitted', body: attempt.observationError ?? 'A wallet precondition failed before submission.' }
-          : attempt.status === 'SUBMITTED' || attempt.status === 'CONFIRMING'
-            ? { label: 'Transaction submitted', title: 'Confirming onchain', body: 'AgentPlace is observing the exact transaction. It will not submit a duplicate.' }
-            : attempt.status === 'CONFIRMED'
-              ? { label: 'Transaction confirmed', title: 'Verifying outcome', body: 'The exact transaction confirmed onchain. This is not yet Completed · AgentPlace Verified.' }
-              : attempt.status === 'REVERTED'
-                ? { label: 'Transaction reverted', title: 'Execution did not succeed onchain', body: 'AgentPlace will not claim the requested economic outcome completed.' }
-                : attempt.status === 'MISMATCH'
-                  ? { label: 'Transaction mismatch', title: 'Needs attention', body: 'The observed transaction does not match the exact approved request. AgentPlace will not treat it as authorized completion.' }
-                  : { label: 'Transaction status unknown', title: 'Do not resubmit', body: 'AgentPlace cannot currently prove the transaction state and is protecting against duplicate execution.' };
+  const presentation = receipt
+    ? { label: 'Completed · AgentPlace Verified', title: 'Economic outcome independently verified', body: receipt.actualEconomicOutcome }
+    : outcome?.status === 'failed' || observation?.status === 'NOT_VERIFIED'
+      ? { label: 'Outcome not verified', title: 'Independent verification did not pass', body: observation?.reasonSummary ?? 'The confirmed transaction did not satisfy the capability Verification Contract. No Verified Receipt was produced.' }
+      : observation?.status === 'UNKNOWN'
+        ? { label: 'Verification delayed', title: 'Outcome currently unknown', body: observation.reasonSummary ?? 'AgentPlace cannot currently establish the economic outcome. It is retrying independently; do not resubmit the transaction.' }
+        : !attempt
+          ? { label: 'Financial action prepared', title: 'Review the exact action', body: 'Inspect the current quote, preflight, risk and deterministic authority decision. Nothing has been signed or submitted.' }
+          : attempt.status === 'WALLET_PROMPTED'
+            ? { label: 'Wallet signature requested', title: 'Waiting for your wallet', body: 'AgentPlace requested a signature for this exact approved action. Submission is not yet confirmed.' }
+            : attempt.status === 'USER_REJECTED'
+              ? { label: 'Signature rejected', title: 'Nothing was submitted', body: 'You rejected the wallet request. No transaction was submitted by this execution attempt.' }
+              : attempt.status === 'PRE_SUBMISSION_FAILED'
+                ? { label: 'Signing stopped', title: 'Nothing was submitted', body: attempt.observationError ?? 'A wallet precondition failed before submission.' }
+                : attempt.status === 'SUBMITTED' || attempt.status === 'CONFIRMING'
+                  ? { label: 'Transaction submitted', title: 'Confirming onchain', body: 'AgentPlace is observing the exact transaction. It will not submit a duplicate.' }
+                  : attempt.status === 'CONFIRMED'
+                    ? { label: 'Transaction confirmed', title: 'Verifying outcome', body: 'The exact transaction confirmed onchain. This is not yet Completed · AgentPlace Verified.' }
+                    : attempt.status === 'REVERTED'
+                      ? { label: 'Transaction reverted', title: 'Execution did not succeed onchain', body: 'AgentPlace will not claim the requested economic outcome completed.' }
+                      : attempt.status === 'MISMATCH'
+                        ? { label: 'Transaction mismatch', title: 'Needs attention', body: 'The observed transaction does not match the exact approved request. AgentPlace will not treat it as authorized completion.' }
+                        : { label: 'Transaction status unknown', title: 'Do not resubmit', body: 'AgentPlace cannot currently prove the transaction state and is protecting against duplicate execution.' };
 
   return (
     <div className="flex justify-center pt-2">
-      <div className="border border-primary/20 rounded-lg px-5 py-4 bg-primary-dim/5 max-w-md w-full">
-        <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">{presentation.label}</p>
+      <div className={`rounded-lg px-5 py-4 max-w-md w-full border ${receipt ? 'border-accent/30 bg-accent-dim/10' : 'border-primary/20 bg-primary-dim/5'}`}>
+        <p className={`text-xs font-medium uppercase tracking-wider mb-2 ${receipt ? 'text-accent' : 'text-text-muted'}`}>{presentation.label}</p>
         <p className="text-sm font-medium text-text mb-1">{presentation.title}</p>
         <p className="text-xs text-text-sub mb-3 leading-relaxed">{presentation.body}</p>
         {attempt?.transactionHash && <p className="mb-3 text-[10px] font-mono text-text-dim break-all">{attempt.transactionHash}</p>}
-        <button
-          onClick={() => dispatch({ type: 'SET_ACTIVE_ACTION', id: actionId })}
-          className="w-full px-4 py-2.5 bg-primary text-white text-sm rounded font-medium hover:bg-primary-hover transition-colors"
-        >
-          Open Action Review
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => dispatch({ type: 'SET_ACTIVE_ACTION', id: actionId })}
+            className="flex-1 px-4 py-2.5 border border-border text-text-sub text-sm rounded font-medium hover:bg-panel transition-colors"
+          >
+            Open Action Review
+          </button>
+          {receipt && (
+            <button
+              onClick={() => dispatch({ type: 'SET_ACTIVE_RECEIPT', id: receipt.id })}
+              className="flex-1 px-4 py-2.5 bg-primary text-white text-sm rounded font-medium hover:bg-primary-hover transition-colors"
+            >
+              View receipt
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

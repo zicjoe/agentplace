@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.13.0 — M10 Settlement Verification + Verified Outcomes + Verified Receipts
+
+- Added durable `VerificationContract`, `SettlementObservation`, immutable `VerifiedOutcome`, immutable `VerifiedReceipt`, and asynchronous `ProofAnchorQueue` persistence.
+- Activated deterministic post-confirmation verification for direct EVM `asset.transfer` actions with zero routine LLM polling.
+- Native transfers now require exact historical approval/action lineage, chain, sender, recipient, atomic value, empty calldata, successful receipt, wallet-request correspondence and receipt gas evidence.
+- Supported ERC-20 transfers additionally require an allowlisted production token contract, exact `transfer(address,uint256)` calldata and matching `Transfer` event semantics.
+- Added historical backfill: confirmed M9 direct transfers are eligible for M10 verification without a new wallet signature or transaction.
+- Added exact EVM gas accounting from `gasUsed × effectiveGasPrice`, separated from transferred capital, external service cost and AgentPlace service cost.
+- Added fail-closed `VERIFYING`, `VERIFIED`, `NOT_VERIFIED`, `UNKNOWN` and future-ready `PARTIAL` settlement states; only `VERIFIED` may create a receipt.
+- Added authenticated verification/receipt APIs and production hydration of verified outcomes/receipts across browser refresh.
+- Replaced the fixture-only receipt path for production transfers with a responsive Verified Receipt surface containing action lineage, economic result, transaction evidence, verification checks, costs and technical commitments.
+- Added salted, domain-separated privacy-safe receipt commitments and a durable Arbitrum batch proof queue that stops at `PENDING`; no production proof signer/private key is introduced.
+- Mainnet execution and Mainnet autonomy remain fail-closed by default.
+
 ## 0.12.0 — M9 Connected Wallet Execution + Transaction Observation
 
 - Fixed M9 pre-sign RPC diagnostics so a reachable RPC that rejects `eth_estimateGas` (for example insufficient gas funds or a revert) is reported as a transaction preflight failure instead of being misreported as an RPC outage; transport/provider outages remain fail-closed and distinct.

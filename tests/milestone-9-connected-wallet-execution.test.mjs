@@ -77,7 +77,7 @@ test('M9 deterministic observation uses RPC receipt polling and no LLM loop', ()
   assert.match(execution, /secondary-rpc/);
   assert.match(worker, /transactionObservationLoop/);
   assert.match(worker, /observePendingTransactionAttempts/);
-  assert.match(worker, /Promise\.all\(\[loop\(\), transactionObservationLoop\(\)\]\)/);
+  assert.match(worker, /Promise\.all\(\[loop\(\), transactionObservationLoop\(\), settlementVerificationLoop\(\)\]\)/);
   const observationStart = worker.indexOf('async function transactionObservationLoop');
   const observationEnd = worker.indexOf('async function loop', observationStart);
   const observation = worker.slice(observationStart, observationEnd > observationStart ? observationEnd : undefined);

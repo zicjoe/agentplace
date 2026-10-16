@@ -38,7 +38,9 @@ function ActivityRow({ event }: { event: ActivityEvent }) {
   const isOperational = event.eventType === 'worker-added' || event.eventType === 'system' || (isRoutine && !isJob);
 
   function handleClick() {
-    if (isJob && event.jobId) {
+    if (event.receiptId) {
+      dispatch({ type: 'SET_ACTIVE_RECEIPT', id: event.receiptId });
+    } else if (isJob && event.jobId) {
       dispatch({ type: 'SET_ACTIVE_JOB', id: event.jobId });
     } else if (isFinancial && event.actionId) {
       dispatch({ type: 'SET_ACTIVE_ACTION', id: event.actionId });
@@ -53,7 +55,7 @@ function ActivityRow({ event }: { event: ActivityEvent }) {
     }
   }
 
-  const isClickable = !!(isJob && event.jobId) || !!(isFinancial && event.actionId) || !!(isWallet && event.walletId) || !!(isRoutine && event.routineId) || !!event.workerId;
+  const isClickable = !!event.receiptId || !!(isJob && event.jobId) || !!(isFinancial && event.actionId) || !!(isWallet && event.walletId) || !!(isRoutine && event.routineId) || !!event.workerId;
 
   return (
     <button

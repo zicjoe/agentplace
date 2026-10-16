@@ -4,6 +4,8 @@ import { decideAction, fetchAction, prepareAction, type ApiFinancialAction } fro
 import { fetchActionExecution, fetchExecutionAttempt, reportExecutionAttempt, startActionExecution, submitConnectedWalletRequest, walletErrorClassification, type ApiTransactionAttempt } from '../platform/executionApi';
 import { useRuntime } from '../platform/RuntimeProvider';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { fetchActionVerification, type ApiSettlementObservation } from '../platform/verificationApi';
+import type { VerifiedOutcome, VerifiedReceipt } from '../state/types';
 
 const PERPS_ACTION_ID = '__perps-demo__';
 
@@ -78,20 +80,28 @@ export function ActionReview() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [executionAttempt, setExecutionAttempt] = useState<ApiTransactionAttempt | null>(null);
   const [executionBusy, setExecutionBusy] = useState(false);
+  const [verificationObservation, setVerificationObservation] = useState<ApiSettlementObservation | null>(null);
+  const [verifiedOutcome, setVerifiedOutcome] = useState<VerifiedOutcome | null>(null);
+  const [verifiedReceipt, setVerifiedReceipt] = useState<VerifiedReceipt | null>(null);
 
   const actionId = state.activeActionId;
   const isPerpsDemo = actionId === PERPS_ACTION_ID;
 
   useEffect(() => {
-    setApproved(false); setRejected(false); setExecutionAttempt(null);
+    setApproved(false); setRejected(false); setExecutionAttempt(null); setVerificationObservation(null); setVerifiedOutcome(null); setVerifiedReceipt(null);
     if (!actionId?.startsWith('fa_') || WEB_RUNTIME_SETTINGS.dataMode !== 'api') { setServerAction(null); setServerError(null); return; }
     let live=true; setServerBusy(true); setServerError(null);
-    void Promise.all([fetchAction(actionId), fetchActionExecution(actionId)])
-      .then(([value, attempt])=>{if(live){setServerAction(value);setExecutionAttempt(attempt);setApproved(value.status==='READY_FOR_EXECUTION' && value.prepared?.authorityDecision.decision==='APPROVAL_REQUIRED');setRejected(value.status==='REJECTED');}})
+    void Promise.all([fetchAction(actionId), fetchActionExecution(actionId), fetchActionVerification(actionId).catch(()=>({ observation:null, outcome:null, receipt:null }))])
+      .then(([value, attempt, verification])=>{if(live){
+        setServerAction(value);setExecutionAttempt(attempt);setVerificationObservation(verification.observation);setVerifiedOutcome(verification.outcome);setVerifiedReceipt(verification.receipt);
+        if(verification.outcome)dispatch({type:'ADD_VERIFIED_OUTCOME',outcome:verification.outcome});
+        if(verification.receipt)dispatch({type:'ADD_VERIFIED_RECEIPT',receipt:verification.receipt});
+        setApproved(value.status==='READY_FOR_EXECUTION' && value.prepared?.authorityDecision.decision==='APPROVAL_REQUIRED');setRejected(value.status==='REJECTED');
+      }})
       .catch((error)=>{if(live)setServerError(error instanceof Error?error.message:'Unable to load action.');})
       .finally(()=>{if(live)setServerBusy(false);});
     return ()=>{live=false;};
-  }, [actionId]);
+  }, [actionId, dispatch]);
 
   useEffect(() => {
     if (!executionAttempt || !['WALLET_PROMPTED','SUBMITTED','CONFIRMING','UNKNOWN'].includes(executionAttempt.status)) return;
@@ -99,6 +109,24 @@ export function ActionReview() {
     const timer=window.setInterval(()=>{void fetchExecutionAttempt(executionAttempt.id).then((value)=>{if(live)setExecutionAttempt(value);}).catch(()=>undefined);},3500);
     return ()=>{live=false;window.clearInterval(timer);};
   }, [executionAttempt?.id, executionAttempt?.status]);
+
+  useEffect(() => {
+    if (!actionId?.startsWith('fa_') || WEB_RUNTIME_SETTINGS.dataMode !== 'api') return;
+    if (executionAttempt?.status !== 'CONFIRMED' && verificationObservation?.status !== 'VERIFYING' && verificationObservation?.status !== 'UNKNOWN') return;
+    let live = true;
+    const load = async () => {
+      const verification = await fetchActionVerification(actionId).catch(() => null);
+      if (!live || !verification) return;
+      setVerificationObservation(verification.observation);
+      setVerifiedOutcome(verification.outcome);
+      setVerifiedReceipt(verification.receipt);
+      if (verification.outcome) dispatch({ type: 'ADD_VERIFIED_OUTCOME', outcome: verification.outcome });
+      if (verification.receipt) dispatch({ type: 'ADD_VERIFIED_RECEIPT', receipt: verification.receipt });
+    };
+    void load();
+    const timer = window.setInterval(() => { void load(); }, 4000);
+    return () => { live = false; window.clearInterval(timer); };
+  }, [actionId, executionAttempt?.status, verificationObservation?.status, dispatch]);
 
   const durablePrepared=serverAction?.prepared;
   const durableDecision=durablePrepared?.authorityDecision.decision;
@@ -299,6 +327,16 @@ export function ActionReview() {
     UNKNOWN: 'Confirming transaction status. Do not resubmit. AgentPlace is protecting against duplicate execution.',
   };
 
+  const verificationStatusCopy = verifiedReceipt
+    ? `Completed · AgentPlace Verified. ${verifiedReceipt.actualEconomicOutcome}`
+    : verifiedOutcome?.status === 'failed' || verificationObservation?.status === 'NOT_VERIFIED'
+      ? verificationObservation?.reasonSummary ?? 'Outcome not verified. No Verified Receipt was produced.'
+      : verificationObservation?.status === 'UNKNOWN'
+        ? verificationObservation.reasonSummary ?? 'Outcome verification is temporarily unknown. AgentPlace is retrying independently; do not resubmit.'
+        : executionAttempt?.status === 'CONFIRMED'
+          ? 'Transaction confirmed · Verifying outcome. Confirmation is not AgentPlace Verified completion.'
+          : null;
+
   const grant = action.grantId
     ? (state.authorityGrants ?? []).find((g) => g.id === action.grantId)
     : null;
@@ -335,7 +373,9 @@ export function ActionReview() {
               <p className="text-xs text-text-sub">This approval applies only to this exact action. No future authority was created.</p>
               {executionAttempt ? (
                 <div className="mt-3 border border-border rounded bg-panel-raised px-3 py-3 text-left">
-                  <p className="text-xs font-medium text-text">{executionStatusCopy[executionAttempt.status] ?? executionAttempt.status}</p>
+                  <p className={`text-xs font-medium ${verifiedReceipt ? 'text-accent' : verificationObservation?.status === 'NOT_VERIFIED' ? 'text-danger' : 'text-text'}`}>
+                    {verificationStatusCopy ?? executionStatusCopy[executionAttempt.status] ?? executionAttempt.status}
+                  </p>
                   {executionAttempt.transactionHash && <p className="mt-1 text-[10px] font-mono text-text-dim break-all">{executionAttempt.transactionHash}</p>}
                   {executionAttempt.observationError && <p className="mt-1 text-[10px] text-text-muted">{executionAttempt.observationError}</p>}
                 </div>
@@ -351,6 +391,11 @@ export function ActionReview() {
                 </button>
               )}
               {executionAttempt?.status==='UNKNOWN' && <p className="mt-3 text-[10px] text-warn">Do not create a new preparation merely to retry this uncertain submission. Resolve transaction status first.</p>}
+              {verifiedReceipt && (
+                <button onClick={() => dispatch({ type: 'SET_ACTIVE_RECEIPT', id: verifiedReceipt.id })} className="mt-3 w-full py-2.5 text-sm font-medium bg-accent/10 border border-accent/30 text-accent rounded hover:bg-accent/15 transition-colors">
+                  View Verified Receipt
+                </button>
+              )}
               <button onClick={handleClose} className="mt-3 text-xs text-primary border border-primary/30 rounded px-3 py-1.5 hover:bg-primary-dim/20 transition-colors">
                 Return to work
               </button>

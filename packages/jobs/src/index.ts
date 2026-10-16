@@ -15,7 +15,7 @@ export interface DurableJob {
   createdAt: string; updatedAt: string;
 }
 export interface JobDraft extends Omit<DurableJob,'leadWorkerName'|'supportingWorkerNames'|'createdAt'|'updatedAt'> { createdAt?: string; updatedAt?: string; }
-export interface ActivityProjection { id:string; eventType:'job'|'worker-added'|'system'|'authority'|'wallet'|'routine'|'security'; title:string; summary:string; effect?:string; workerName?:string; workerId?:string; jobId?:string; timestamp:string; status:string; }
+export interface ActivityProjection { id:string; eventType:'job'|'worker-added'|'system'|'authority'|'wallet'|'routine'|'security'|'financial'; title:string; summary:string; effect?:string; workerName?:string; workerId?:string; jobId?:string; actionId?:string; receiptId?:string; timestamp:string; status:string; }
 
 type JobRow = { id:string; title:string; goal:string; status:JobStatus; environment:JobEnvironment; kind:JobKind; origin_type:JobOriginType; origin_worker_id:string|null; origin_conversation_id:string|null; job_conversation_id:string|null; current_stage:string; created_at:Date; updated_at:Date; };
 type AssignmentRow = { job_id:string; worker_id:string; role:'lead'|'supporting'; name:string; };
@@ -61,8 +61,18 @@ export async function createJob(ownerUserId:string,draft:JobDraft):Promise<Durab
 export async function setJobConversation(ownerUserId:string,jobId:string,conversationId:string):Promise<DurableJob|null> { await getDatabasePool().query(`UPDATE job SET job_conversation_id=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,jobId,conversationId]); return getJob(ownerUserId,jobId); }
 
 export async function listActivity(ownerUserId:string):Promise<ActivityProjection[]> {
-  const result=await getDatabasePool().query<{id:string;event_type:string;title:string;summary:string;effect:string|null;status:string;worker_id:string|null;job_id:string|null;occurred_at:Date;worker_name:string|null}>(`SELECT e.id,e.event_type,e.title,e.summary,e.effect,e.status,e.worker_id,e.job_id,e.occurred_at,d.name AS worker_name FROM domain_event e LEFT JOIN worker_definition d ON d.id=e.worker_id WHERE e.owner_user_id=$1 ORDER BY e.occurred_at DESC LIMIT 500`,[ownerUserId]);
-  return result.rows.map(r=>{ const eventType:ActivityProjection['eventType']=r.event_type.startsWith('job.')?'job':r.event_type==='worker.added'?'worker-added':r.event_type.startsWith('mandate.')||r.event_type.startsWith('authority.')?'authority':r.event_type.startsWith('wallet.')?'wallet':r.event_type.startsWith('routine.')?'routine':r.event_type.startsWith('security.')?'security':'system'; const out:ActivityProjection={id:r.id,eventType,title:r.title,summary:r.summary,status:r.status,timestamp:r.occurred_at.toISOString()}; if(r.effect) out.effect=r.effect; if(r.worker_id) out.workerId=r.worker_id; if(r.worker_name) out.workerName=r.worker_name; if(r.job_id) out.jobId=r.job_id; return out; });
+  const result=await getDatabasePool().query<{id:string;event_type:string;object_type:string;object_id:string;title:string;summary:string;effect:string|null;status:string;worker_id:string|null;job_id:string|null;metadata:Record<string,unknown>;occurred_at:Date;worker_name:string|null}>(`SELECT e.id,e.event_type,e.object_type,e.object_id,e.title,e.summary,e.effect,e.status,e.worker_id,e.job_id,e.metadata,e.occurred_at,d.name AS worker_name FROM domain_event e LEFT JOIN worker_definition d ON d.id=e.worker_id WHERE e.owner_user_id=$1 AND e.event_type<>'receipt.anchor_queued' ORDER BY e.occurred_at DESC LIMIT 500`,[ownerUserId]);
+  return result.rows.map(r=>{
+    const financialEvent=r.event_type.startsWith('action.')||r.event_type.startsWith('execution.')||r.event_type.startsWith('transaction.')||r.event_type.startsWith('outcome.')||r.event_type.startsWith('receipt.')||r.object_type==='financial-action'||r.object_type==='transaction-attempt'||r.object_type==='verified-outcome'||r.object_type==='verified-receipt';
+    const eventType:ActivityProjection['eventType']=r.event_type.startsWith('job.')?'job':financialEvent?'financial':r.event_type==='worker.added'?'worker-added':r.event_type.startsWith('mandate.')||r.event_type.startsWith('authority.')?'authority':r.event_type.startsWith('wallet.')?'wallet':r.event_type.startsWith('routine.')?'routine':r.event_type.startsWith('security.')?'security':'system';
+    const out:ActivityProjection={id:r.id,eventType,title:r.title,summary:r.summary,status:r.status,timestamp:r.occurred_at.toISOString()};
+    if(r.effect) out.effect=r.effect; if(r.worker_id) out.workerId=r.worker_id; if(r.worker_name) out.workerName=r.worker_name; if(r.job_id) out.jobId=r.job_id;
+    const metadata=r.metadata??{};
+    const actionId=typeof metadata.actionId==='string'?metadata.actionId:r.object_type==='financial-action'?r.object_id:undefined;
+    const receiptId=typeof metadata.receiptId==='string'?metadata.receiptId:r.object_type==='verified-receipt'?r.object_id:undefined;
+    if(actionId) out.actionId=actionId; if(receiptId) out.receiptId=receiptId;
+    return out;
+  });
 }
 
 export const moduleManifest={name:'jobs',layer:'controlled-runtime',milestone:4,status:'durable-jobs-and-intelligence-queue'} as const;

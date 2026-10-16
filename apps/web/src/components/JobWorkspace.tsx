@@ -100,11 +100,11 @@ function FinancialJobWorkspace() {
 
   const verifiedOutcome = job.verifiedOutcomeId
     ? (state.verifiedOutcomes ?? []).find((v) => v.id === job.verifiedOutcomeId)
-    : null;
+    : (state.verifiedOutcomes ?? []).find((v) => v.jobId === job.id) ?? null;
 
   const receipt = job.receiptId
     ? (state.verifiedReceipts ?? []).find((r) => r.id === job.receiptId)
-    : null;
+    : (state.verifiedReceipts ?? []).find((r) => r.jobId === job.id) ?? null;
 
   const originConv = job.originConversationId
     ? (state.conversations ?? []).find((c) => c.id === job.originConversationId)

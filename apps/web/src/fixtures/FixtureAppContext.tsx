@@ -55,6 +55,7 @@ import { fetchWalletState } from '../platform/walletApi';
 import { fetchAuthorityState } from '../platform/authorityApi';
 import { isJobConversation } from '../platform/conversationNavigation';
 import { createAction, prepareAction } from '../platform/actionApi';
+import { fetchVerificationState } from '../platform/verificationApi';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1007,6 +1008,8 @@ export type Action =
   | { type: 'SET_IDENTITY_CHECKPOINT'; checkpoint: IdentityCheckpoint | null }
   | { type: 'ADD_EXECUTION_RECORD'; record: ExecutionRecord }
   | { type: 'UPDATE_EXECUTION_RECORD'; recordId: string; updates: Partial<ExecutionRecord> }
+  | { type: 'SET_VERIFIED_OUTCOMES'; outcomes: VerifiedOutcome[] }
+  | { type: 'SET_VERIFIED_RECEIPTS'; receipts: VerifiedReceipt[] }
   | { type: 'ADD_VERIFIED_OUTCOME'; outcome: VerifiedOutcome }
   | { type: 'ADD_VERIFIED_RECEIPT'; receipt: VerifiedReceipt }
   | { type: 'SET_ACTIVE_RECEIPT'; id: string | null }
@@ -1454,11 +1457,17 @@ function reducer(state: AppState, action: Action): AppState {
         ),
       };
 
+    case 'SET_VERIFIED_OUTCOMES':
+      return { ...state, verifiedOutcomes: action.outcomes };
+
+    case 'SET_VERIFIED_RECEIPTS':
+      return { ...state, verifiedReceipts: action.receipts };
+
     case 'ADD_VERIFIED_OUTCOME':
-      return { ...state, verifiedOutcomes: [...(state.verifiedOutcomes ?? []), action.outcome] };
+      return { ...state, verifiedOutcomes: [action.outcome, ...(state.verifiedOutcomes ?? []).filter((item) => item.id !== action.outcome.id)] };
 
     case 'ADD_VERIFIED_RECEIPT':
-      return { ...state, verifiedReceipts: [...(state.verifiedReceipts ?? []), action.receipt] };
+      return { ...state, verifiedReceipts: [action.receipt, ...(state.verifiedReceipts ?? []).filter((item) => item.id !== action.receipt.id)] };
 
     case 'SET_ACTIVE_RECEIPT':
       return { ...state, activeReceiptId: action.id };
@@ -1684,6 +1693,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rawDispatch({ type: 'SET_AUTHORITY_CONTROLS', controls: authority.controls });
   }, []);
 
+  const refreshDurableVerification = useCallback(async () => {
+    if (WEB_RUNTIME_SETTINGS.dataMode !== 'api') return;
+    const ownerUserId = stateRef.current.user?.id;
+    if (!ownerUserId) return;
+    const verification = await fetchVerificationState();
+    if (stateRef.current.user?.id !== ownerUserId) return;
+    rawDispatch({ type: 'SET_VERIFIED_OUTCOMES', outcomes: verification.outcomes });
+    rawDispatch({ type: 'SET_VERIFIED_RECEIPTS', receipts: verification.receipts });
+  }, []);
+
   const syncWorkAction = useCallback((action: Action, before: AppState) => {
     if (WEB_RUNTIME_SETTINGS.dataMode !== 'api' || !before.user) return;
     let task: Promise<unknown> | null = null;
@@ -1803,7 +1822,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? stateRef.current.conversations.find((c) => c.id === marker.conversationId)
           : undefined;
         if (guestConversation) await importGuestConversations([guestConversation]);
-        const [conversations, identity, work, walletState, authorityState] = await Promise.all([fetchConversations(), getAgentPlaceIdentity(), fetchWorkState(), fetchWalletState(), fetchAuthorityState()]);
+        const [conversations, identity, work, walletState, authorityState, verificationState] = await Promise.all([fetchConversations(), getAgentPlaceIdentity(), fetchWorkState(), fetchWalletState(), fetchAuthorityState(), fetchVerificationState()]);
         const user = userFromAuth(identity);
         let next = reducer(stateRef.current, { type: 'SET_USER', user });
         next = reducer(next, { type: 'SET_CONVERSATIONS', conversations });
@@ -1816,6 +1835,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         next = reducer(next, { type: 'SET_AUTHORITY_GRANTS', grants: authorityState.authorityGrants });
         next = reducer(next, { type: 'SET_AUTHORITY_DECISIONS', decisions: authorityState.authorityDecisions });
         next = reducer(next, { type: 'SET_AUTHORITY_CONTROLS', controls: authorityState.controls });
+        next = reducer(next, { type: 'SET_VERIFIED_OUTCOMES', outcomes: verificationState.outcomes });
+        next = reducer(next, { type: 'SET_VERIFIED_RECEIPTS', receipts: verificationState.receipts });
         stateRef.current = next;
         rawDispatch({ type: 'SET_USER', user });
         rawDispatch({ type: 'SET_CONVERSATIONS', conversations });
@@ -1828,6 +1849,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         rawDispatch({ type: 'SET_AUTHORITY_GRANTS', grants: authorityState.authorityGrants });
         rawDispatch({ type: 'SET_AUTHORITY_DECISIONS', decisions: authorityState.authorityDecisions });
         rawDispatch({ type: 'SET_AUTHORITY_CONTROLS', controls: authorityState.controls });
+        rawDispatch({ type: 'SET_VERIFIED_OUTCOMES', outcomes: verificationState.outcomes });
+        rawDispatch({ type: 'SET_VERIFIED_RECEIPTS', receipts: verificationState.receipts });
         clearFixtureState();
         clearIdentityResume();
       } catch (error) {
@@ -1843,14 +1866,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (running || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return;
       running = true;
       try {
-        await Promise.all([refreshDurableConversations(), refreshDurableWork(), refreshDurableAuthority()]);
+        await Promise.all([refreshDurableConversations(), refreshDurableWork(), refreshDurableAuthority(), refreshDurableVerification()]);
       } finally {
         running = false;
       }
     };
     const timer = window.setInterval(() => { void refresh(); }, 4000);
     return () => window.clearInterval(timer);
-  }, [state.user?.id, refreshDurableConversations, refreshDurableWork, refreshDurableAuthority]);
+  }, [state.user?.id, refreshDurableConversations, refreshDurableWork, refreshDurableAuthority, refreshDurableVerification]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;

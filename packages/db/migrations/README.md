@@ -25,3 +25,7 @@ Adds M8 durable Financial Actions, immutable prepared revisions/digests, quote/p
 ## 0013_connected_wallet_execution.sql
 
 Adds M9 durable exact-action `transaction_attempt` state for user-signed Connected Wallet execution, idempotent execution keys, wallet-prompt/submission/confirmation/unknown/mismatch states, transaction-hash evidence and deterministic observation metadata. It stores no private key or seed phrase and creates no Agent Account signer.
+
+## 0015_settlement_verification_receipts.sql
+
+Adds M10 deterministic post-confirmation verification: versioned Verification Contracts, durable Settlement Observations, immutable Verified Outcomes, immutable Verified Receipts, exact receipt-gas accounting, and a privacy-preserving asynchronous Arbitrum proof queue. M10 queues commitments only; it does not introduce an anchoring signer or backend private key.

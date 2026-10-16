@@ -3,6 +3,7 @@ import { listCanonicalCapabilities } from '@agent-place/capabilities';
 import { addMessage, createConversation, getIntelligenceContext } from '@agent-place/context';
 import { closeDatabasePool, getDatabasePool } from '@agent-place/db';
 import { createFinancialAction, observePendingTransactionAttempts, prepareFinancialAction } from '@agent-place/execution';
+import { verifyConfirmedTransactionAttempts } from '@agent-place/verification';
 import {
   addJobEvidence,
   appendJobEvent,
@@ -47,8 +48,8 @@ import {
 export const service = defineService({
   name: 'agent-place-worker',
   runtimeClass: 'worker',
-  version: '0.12.0',
-  milestone: 9,
+  version: '0.13.0',
+  milestone: 10,
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -927,6 +928,21 @@ async function transactionObservationLoop(): Promise<void> {
   }
 }
 
+async function settlementVerificationLoop(): Promise<void> {
+  const verificationPollMs = Math.max(2000, Number.parseInt(process.env.VERIFICATION_OBSERVER_POLL_MS ?? '5000', 10) || 5000);
+  while (!stopping) {
+    try {
+      const result = await verifyConfirmedTransactionAttempts(25);
+      if (result.verified || result.notVerified || result.unknown) {
+        process.stdout.write(`${JSON.stringify({ level: 'info', service: service.name, message: 'Settlement verification pass', ...result })}\n`);
+      }
+    } catch (error) {
+      process.stderr.write(`${JSON.stringify({ level: 'error', service: service.name, message: 'Settlement verification failed', error: error instanceof Error ? error.message : String(error) })}\n`);
+    }
+    await sleep(verificationPollMs);
+  }
+}
+
 async function loop(): Promise<void> {
   process.stdout.write(`${JSON.stringify({ level: 'info', service: service.name, message: 'AgentPlace worker started', version: service.version })}\n`);
   while (!stopping) {
@@ -957,5 +973,5 @@ async function loop(): Promise<void> {
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { stopping = true; });
 
 if (process.env.NODE_ENV !== 'test') {
-  void Promise.all([loop(), transactionObservationLoop()]).finally(async () => { await closeDatabasePool(); });
+  void Promise.all([loop(), transactionObservationLoop(), settlementVerificationLoop()]).finally(async () => { await closeDatabasePool(); });
 }

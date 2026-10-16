@@ -45,7 +45,7 @@ interface ApiJob {
   originWorkerId?: string; originConversationId?: string; jobConversationId?: string; currentStage: string; stages: ApiJobStage[];
   createdAt: string; updatedAt: string;
 }
-interface ApiActivity { id:string; eventType:ActivityEvent['eventType']; title:string; summary:string; effect?:string; workerName?:string; workerId?:string; jobId?:string; timestamp:string; status:string; }
+interface ApiActivity { id:string; eventType:ActivityEvent['eventType']; title:string; summary:string; effect?:string; workerName?:string; workerId?:string; jobId?:string; actionId?:string; receiptId?:string; timestamp:string; status:string; }
 
 function endpoint(path: string): string { return `${WEB_RUNTIME_SETTINGS.apiBaseUrl}${path}`; }
 async function request<T>(path:string, init?:RequestInit):Promise<T> {

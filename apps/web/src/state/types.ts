@@ -252,6 +252,7 @@ export interface ActivityEvent {
   workerId?: string;
   jobId?: string;
   actionId?: string;
+  receiptId?: string;
   walletId?: string;
   routineId?: string;
   grantId?: string;
@@ -507,7 +508,7 @@ export interface ExecutionRecord {
 
 export interface VerifiedOutcome {
   id: string;
-  jobId: string;
+  jobId?: string;
   actionId: string;
   executionId: string;
   status: 'verified' | 'failed' | 'pending';
@@ -520,7 +521,7 @@ export interface VerifiedOutcome {
 
 export interface VerifiedReceipt {
   id: string;
-  jobId: string;
+  jobId?: string;
   actionId: string;
   executionId: string;
   verifiedOutcomeId: string;
@@ -528,13 +529,21 @@ export interface VerifiedReceipt {
   workerName: string;
   authorizedActionSummary: string;
   actualEconomicOutcome: string;
-  costs: { label: string; amount: string }[];
-  transactionReferences: { label: string; hash?: string; status: string }[];
+  costs: { label: string; amount: string; note?: string }[];
+  transactionReferences: { label: string; hash?: string; status: string; blockNumber?: string }[];
   verificationMethod: string;
   verificationEvidence: string;
-  proofAnchorStatus: 'pending' | 'anchored' | 'not-applicable';
+  proofAnchorStatus: 'pending' | 'anchored' | 'failed' | 'not-applicable';
   proofAnchorNote?: string;
   environment: Environment;
+  network?: { family: string; networkId: string; chainId: number };
+  workerId?: string;
+  workerAttribution?: 'explicit' | 'execution-path-default';
+  verificationChecks?: Array<{ code: string; label: string; status: 'PASS' | 'FAIL'; message: string }>;
+  receiptCommitment?: string;
+  receiptSalt?: string;
+  evidenceRoot?: string;
+  proofAnchorTransactionHash?: string;
   createdAt: Date;
 }
 

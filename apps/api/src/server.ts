@@ -55,6 +55,13 @@ import {
   type CreateFinancialActionInput,
   type FinancialActionKind,
 } from '@agent-place/execution';
+import {
+  getActionVerification,
+  getTransactionVerification,
+  getVerifiedReceipt,
+  listVerifiedOutcomes,
+  listVerifiedReceipts,
+} from '@agent-place/verification';
 import { getRouteDecisionForJob } from '@agent-place/router';
 import { listJobIntelligenceEvidence } from '@agent-place/intelligence';
 import { createJob, enqueueIntelligenceTask, getIntelligenceTask, getLatestIntelligenceTask, getJob, getJobEvidence, jobStatuses, listActivity, listJobs, setJobConversation, type JobDraft } from '@agent-place/jobs';
@@ -759,6 +766,39 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     return;
   }
 
+
+  if (url.pathname === '/api/v1/verification' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const [outcomes, receipts] = await Promise.all([
+      listVerifiedOutcomes(identity.appUserId, 100),
+      listVerifiedReceipts(identity.appUserId, 100),
+    ]);
+    writeJson(res, 200, { outcomes, receipts });
+    return;
+  }
+
+  const actionOutcomeMatch = url.pathname.match(/^\/api\/v1\/actions\/([^/]+)\/outcome$/);
+  if (actionOutcomeMatch && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    writeJson(res, 200, await getActionVerification(identity.appUserId, decodeURIComponent(actionOutcomeMatch[1] ?? '')));
+    return;
+  }
+
+  const executionVerificationMatch = url.pathname.match(/^\/api\/v1\/verification\/([^/]+)$/);
+  if (executionVerificationMatch && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    writeJson(res, 200, await getTransactionVerification(identity.appUserId, decodeURIComponent(executionVerificationMatch[1] ?? '')));
+    return;
+  }
+
+  const receiptMatch = url.pathname.match(/^\/api\/v1\/receipts\/([^/]+)$/);
+  if (receiptMatch && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const receipt = await getVerifiedReceipt(identity.appUserId, decodeURIComponent(receiptMatch[1] ?? ''));
+    if (!receipt) return writeJson(res, 404, { error: 'not_found', message: 'Verified Receipt not found.', requestId });
+    writeJson(res, 200, { receipt });
+    return;
+  }
 
   if (url.pathname === '/api/v1/actions' && req.method === 'GET') {
     const identity=await requireIdentity(req);
