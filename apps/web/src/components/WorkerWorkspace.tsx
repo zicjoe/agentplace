@@ -606,6 +606,7 @@ export function WorkerWorkspace() {
   const [input, setInput] = useState('');
   const [modelSelection, setModelSelection] = useState<ModelSelection>({ provider: 'auto' });
   const [showDetails, setShowDetails] = useState(false);
+  const [routineComposerMode, setRoutineComposerMode] = useState(false);
   const [catalogWorker, setCatalogWorker] = useState<WorkerCatalogItem | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -671,6 +672,7 @@ export function WorkerWorkspace() {
 
   function handleSetupRoutine() {
     setShowDetails(false);
+    setRoutineComposerMode(true);
     setInput((current) => current.trim() ? current : 'Set up a routine');
     requestAnimationFrame(() => {
       composerRef.current?.focus();
@@ -678,7 +680,7 @@ export function WorkerWorkspace() {
   }
 
   function detectRoutineIntent(text: string): boolean {
-    return /every\s+(weekday|week|day|morning|evening|hour|monday|daily)|recurring|routine|check\s+every|monitor\s+(daily|weekly|regularly)|set\s+up\s+(a\s+)?routine|\bwhen\s+.{0,80}(price|liquidity|volume|market\s*cap|fdv|job|outcome|action|wallet|authority)/i.test(text);
+    return /every\s+(weekday|week|day|morning|evening|hour|monday|daily)|\bevery\s+\d+\s+(minutes?|hours?|days?|weeks?)\b|recurring|routine|check\s+every|monitor\s+(daily|weekly|regularly)|set\s+up\s+(a\s+)?routine|\bwhen\s+.{0,80}(price|liquidity|volume|market\s*cap|fdv|job|outcome|action|wallet|authority)/i.test(text);
   }
 
   function buildRoutinePreview(text: string, workerId: string, workerName: string): Routine {
@@ -723,7 +725,8 @@ export function WorkerWorkspace() {
     setInput('');
 
     const isCompareRequest = /compare|bonk.*wif|wif.*bonk|popcat/i.test(text);
-    const isRoutineRequest = detectRoutineIntent(text);
+    const isRoutineRequest = routineComposerMode || detectRoutineIntent(text);
+    setRoutineComposerMode(false);
 
     if (productionConversation && durableConversation) {
       const userMessage = { id: uid(), role: 'user' as const, content: text, timestamp: new Date() };

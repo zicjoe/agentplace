@@ -149,11 +149,15 @@ test('M11 production UX requires explicit activation and supports durable contro
 });
 
 
-test('M11 Worker Workspace Set up a routine control opens the composer path', () => {
+test('M11 Worker Workspace Set up a routine control opens an explicit Routine composer path', () => {
   assert.match(workerWorkspace, /onClick=\{onSetupRoutine\}/);
   assert.match(workerWorkspace, /handleSetupRoutine/);
+  assert.match(workerWorkspace, /setRoutineComposerMode\(true\)/);
+  assert.match(workerWorkspace, /routineComposerMode \|\| detectRoutineIntent\(text\)/);
+  assert.match(workerWorkspace, /setRoutineComposerMode\(false\)/);
   assert.match(workerWorkspace, /composerRef\.current\?\.focus\(\)/);
   assert.match(workerWorkspace, /ref=\{composerRef\}/);
+  assert.match(workerWorkspace, /\\bevery\\s\+\\d\+\\s\+\(minutes\?\|hours\?\|days\?\|weeks\?\)/);
   assert.doesNotMatch(workerWorkspace, /const setupHint\s*=\s*["']Set up a routine["']/);
 });
 
