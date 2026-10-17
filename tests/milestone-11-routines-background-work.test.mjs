@@ -83,6 +83,16 @@ test('M11 Routine generated Jobs carry explicit Routine provenance without fabri
 });
 
 
+test('M11 Routine research understands server-side recurrence instead of denying active monitoring', () => {
+  assert.match(worker, /routineOccurrenceResearchRequest/);
+  assert.match(worker, /Routine runtime contract: This Job is one occurrence of an already-created AgentPlace Routine/);
+  assert.match(worker, /Do not tell the user that recurring monitoring or alerts are unavailable/);
+  assert.match(worker, /Timing and notification clauses in the stored Routine instruction are orchestration metadata, not research requirements/);
+  assert.match(worker, /task\.inputSource === 'ROUTINE' \? routineOccurrenceResearchRequest\(rawRequest\) : rawRequest/);
+  assert.match(routines, /instruction:scheduledRoutineWorkInstruction\(text\)/);
+});
+
+
 test('M11 financial shortcuts cannot be reached by Routine intelligence tasks', () => {
   assert.match(worker, /task\.inputSource === 'USER_MESSAGE'/);
   assert.match(worker, /tryPrepareTransferRequest/);
@@ -188,4 +198,8 @@ test('M11 pure trigger helpers behave deterministically after the workspace buil
   assert.equal(mod.evaluateCondition('LT', 11, 10), false);
   const next = mod.calculateNextScheduledAt({kind:'interval',intervalMinutes:15,timeZone:'UTC',humanReadable:'Every 15 minutes'}, new Date('2026-10-16T10:00:00.000Z'));
   assert.equal(next.toISOString(), '2026-10-16T10:15:00.000Z');
+  const draft = mod.draftRoutineFromNaturalLanguage({workerId:'w-meme',workerName:'Meme Scout',environment:'mainnet',instruction:'Check BONK market activity every 5 minutes and only notify me when something materially changes.',timeZone:'UTC'});
+  assert.equal(draft.instruction, 'Check BONK market activity');
+  assert.equal(draft.triggerType, 'SCHEDULED');
+  assert.equal(draft.triggerConfig.intervalMinutes, 5);
 });

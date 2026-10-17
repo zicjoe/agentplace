@@ -305,6 +305,21 @@ export async function listRoutineRevisions(ownerUserId:string,routineId:string):
 
 function defaultNotificationPolicy():RoutineNotificationPolicy{return {mode:'needs-user',humanReadable:'Only when the Routine needs you.'};}
 function defaultBudget():{limit:number;max:number;days:number}{return {limit:Number.parseFloat(process.env.ROUTINE_DEFAULT_SERVICE_BUDGET_USD??'5')||5,max:Number.parseFloat(process.env.ROUTINE_DEFAULT_MAX_COST_PER_RUN_USD??'1')||1,days:30};}
+function scheduledRoutineWorkInstruction(value:string):string{
+  const original=value.trim();
+  let current=original
+    .replace(/^set\s+up\s+a\s+routine\s*[,;:\-]?\s*/i,'')
+    .replace(/\b(?:every|each)\s+\d+\s+(?:minutes?|hours?|days?|weeks?)\b/gi,' ')
+    .replace(/\b(?:every|each)\s+(?:weekday|weekdays|day|daily|week|weekly|month|monthly)(?:\s+(?:morning|afternoon|evening|night))?\b/gi,' ')
+    .replace(/\b(?:and\s+)?(?:only\s+)?(?:tell|notify|alert)\s+me\s+(?:only\s+)?(?:when|if|unless)\b[\s\S]*$/i,'')
+    .replace(/\b(?:and\s+)?(?:tell|notify|alert)\s+me\s+only\s+(?:when|if|unless)\b[\s\S]*$/i,'')
+    .replace(/\s+([,.;!?])/g,'$1')
+    .replace(/\s{2,}/g,' ')
+    .replace(/[\s,;:-]+$/g,'')
+    .trim();
+  if(!current)current=original;
+  return current;
+}
 function validateBudget(limit:number|undefined,max:number|undefined,days:number):void{
   if(limit!==undefined&&(!Number.isFinite(limit)||limit<0||limit>1_000_000))throw new Error('INVALID_ROUTINE_SERVICE_BUDGET');
   if(max!==undefined&&(!Number.isFinite(max)||max<0||max>1_000_000))throw new Error('INVALID_ROUTINE_RUN_BUDGET');
@@ -589,6 +604,6 @@ export function draftRoutineFromNaturalLanguage(args:{workerId:string;workerName
   }else{
     config={kind:'daily',localTime,timeZone:args.timeZone,humanReadable:`Daily · ${localTime} · ${args.timeZone}`};
   }
-  return {title,workerId:args.workerId,environment:args.environment,instruction:text,triggerType:'SCHEDULED',triggerConfig:config,executionBehavior:'RECOMMEND_ONLY',notificationPolicy};
+  return {title,workerId:args.workerId,environment:args.environment,instruction:scheduledRoutineWorkInstruction(text),triggerType:'SCHEDULED',triggerConfig:config,executionBehavior:'RECOMMEND_ONLY',notificationPolicy};
 }
 export const moduleManifest={name:'routines',layer:'controlled-runtime',milestone:11,status:'durable-routines-background-scheduler'} as const;
