@@ -149,6 +149,15 @@ test('M11 production UX requires explicit activation and supports durable contro
 });
 
 
+test('M11 Worker Workspace Set up a routine control opens the composer path', () => {
+  assert.match(workerWorkspace, /onClick=\{onSetupRoutine\}/);
+  assert.match(workerWorkspace, /handleSetupRoutine/);
+  assert.match(workerWorkspace, /composerRef\.current\?\.focus\(\)/);
+  assert.match(workerWorkspace, /ref=\{composerRef\}/);
+  assert.doesNotMatch(workerWorkspace, /const setupHint\s*=\s*["']Set up a routine["']/);
+});
+
+
 test('M11 Make this recurring creates a draft rather than silently activating it', () => {
   assert.match(jobWorkspace, /makeJobRecurring/);
   assert.match(api, /createRoutineDraft/);

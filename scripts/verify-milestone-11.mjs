@@ -38,6 +38,10 @@ for (const token of ['/api/v1/routines','/api/v1/notifications','/api/v1/notific
 const routineWorkspace = readFileSync('apps/web/src/components/RoutineWorkspace.tsx', 'utf8');
 for (const token of ['Activate Routine','Run now','Retry this check once','Resume future checks','Background Routines cannot sign in v0.14.0']) if (!routineWorkspace.includes(token)) throw new Error(`M11 Routine UX missing ${token}`);
 
+const workerWorkspace = readFileSync('apps/web/src/components/WorkerWorkspace.tsx', 'utf8');
+for (const token of ['onClick={onSetupRoutine}','handleSetupRoutine','composerRef.current?.focus()','ref={composerRef}']) if (!workerWorkspace.includes(token)) throw new Error(`M11 Worker Routine setup UX missing ${token}`);
+if (/const setupHint\s*=\s*["']Set up a routine["']/.test(workerWorkspace)) throw new Error('M11 Worker Routine setup control must not be a no-op placeholder.');
+
 const env = readFileSync('config/environments/production-mainnet.env.example', 'utf8');
 if (!env.includes('MAINNET_EXECUTION_ENABLED=false') || !env.includes('MAINNET_AUTONOMY_ENABLED=false')) throw new Error('M11 must keep Mainnet execution/autonomy disabled by default.');
 if (!env.includes('ROUTINE_SCHEDULER_POLL_MS=5000')) throw new Error('M11 production environment contract must include the Scheduler cadence.');

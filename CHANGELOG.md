@@ -2,6 +2,7 @@
 
 ## 0.14.0 — M11 Routines + Background Work (candidate)
 
+- Fixed the Worker Workspace **Set up a routine** control so it opens and focuses the Routine composer path instead of being a no-op placeholder.
 - Added durable owner-scoped Routines, immutable Routine revisions, exactly-once RoutineRuns, service budgets and durable in-app Notifications.
 - Activated `apps/scheduler` as a dedicated Railway background scheduler using PostgreSQL leases and `FOR UPDATE SKIP LOCKED`; browser timers are not part of the production Routine path.
 - Added scheduled, deterministic market-condition and AgentPlace-domain event triggers with cooldown/deduplication. False conditions create no Job and require no LLM call.
