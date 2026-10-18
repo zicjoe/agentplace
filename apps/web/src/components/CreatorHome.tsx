@@ -105,7 +105,7 @@ function EarningsTab({ assets }: { assets: CreatorAsset[] }) {
       ) : (
         <div className="text-center py-8">
           <p className="text-sm text-text-muted">No public assets yet.</p>
-          <button onClick={() => dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'agent-builder' })} className="mt-3 px-4 py-2 text-xs bg-primary text-white rounded hover:opacity-90 transition-opacity">Create a Worker</button>
+          <button onClick={() => { dispatch({ type: 'SET_ACTIVE_CREATION', id: null }); dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'agent-builder' }); }} className="mt-3 px-4 py-2 text-xs bg-primary text-white rounded hover:opacity-90 transition-opacity">Create a Worker</button>
         </div>
       )}
     </div>

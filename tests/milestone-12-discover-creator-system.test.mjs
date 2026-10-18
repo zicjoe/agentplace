@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const migration=readFileSync('packages/db/migrations/0017_discover_creator_system.sql','utf8');
+const builderMigration=readFileSync('packages/db/migrations/0018_creator_builder_conversations.sql','utf8');
 const marketplace=readFileSync('packages/marketplace/src/index.ts','utf8');
 const creatorSdk=readFileSync('packages/creator-sdk/src/index.ts','utf8');
 const workers=readFileSync('packages/workers/src/index.ts','utf8');
@@ -18,6 +19,7 @@ const builder=readFileSync('apps/web/src/components/AgentBuilder.tsx','utf8');
 const workflow=readFileSync('apps/web/src/components/WorkflowStudio.tsx','utf8');
 const capability=readFileSync('apps/web/src/components/CapabilityStudio.tsx','utf8');
 const creatorHome=readFileSync('apps/web/src/components/CreatorHome.tsx','utf8');
+const createMenu=readFileSync('apps/web/src/components/CreateMenu.tsx','utf8');
 
 test('M12 persists creator supply, versions, lineage and listing state',()=>{
   for(const token of ['workflow_definition','workflow_version','creator_capability','creator_capability_version','creator_capability_operation','creator_test_run','creator_lineage','marketplace_listing']) assert.match(migration,new RegExp(token));
@@ -63,6 +65,26 @@ test('M12 Agent Builder is generic and uses real sandbox Jobs',()=>{
   assert.match(builder,/Open real test Job/);
   assert.match(builder,/Teach Mode active/);
   assert.doesNotMatch(builder,/WHALE_MEME_DRAFT|Prototype acceptance suite|8 \/ 8 passed/);
+});
+
+
+test('M12 Agent Builder conversation choices and draft continuity are durable',()=>{
+  for(const token of ['creator_builder_session','creator_builder_message','draft_snapshot']) assert.match(builderMigration,new RegExp(token));
+  assert.match(marketplace,/getCreatorBuilderSession/);
+  assert.match(marketplace,/saveCreatorBuilderSession/);
+  assert.match(api,/builder-session/);
+  assert.match(creatorApi,/fetchCreatorBuilderSession/);
+  assert.match(creatorApi,/saveCreatorBuilderSession/);
+  assert.match(builder,/addUserChoice/);
+  assert.match(builder,/choose\('Use privately'/);
+  assert.match(builder,/Saving privately does \*\*not\*\* end Agent Builder/);
+  assert.match(builder,/Continue editing/);
+  assert.match(builder,/Restoring Builder conversation/);
+  assert.doesNotMatch(builder,/step !== 'published'/);
+  const clearIndex=createMenu.indexOf("SET_ACTIVE_CREATION', id: null");
+  const openIndex=createMenu.indexOf("SET_CREATOR_SURFACE', surface: 'agent-builder'");
+  assert.ok(clearIndex>=0&&openIndex>clearIndex,'New Worker must clear the previous creation before opening Agent Builder');
+  assert.match(creatorHome,/SET_ACTIVE_CREATION', id: null/);
 });
 
 test('M12 creator tests cannot self-certify safety or grant authority',()=>{

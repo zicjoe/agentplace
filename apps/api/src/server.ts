@@ -30,9 +30,11 @@ import {
   createNewWorkerVersion,
   createNewWorkflowVersion,
   forkWorker,
+  getCreatorBuilderSession,
   listCreatorAssets,
   listDiscoverSupply,
   publishCreatorAsset,
+  saveCreatorBuilderSession,
 } from '@agent-place/marketplace';
 import { assertSafeRemoteHttpsUrl, parseOpenApiOperations } from '@agent-place/creator-sdk';
 import type { CapabilityImportDraft, CreatorWorkerDraft, CreatorWorkflowDraft, ImportedOperationDraft } from '@agent-place/creator-sdk';
@@ -793,6 +795,41 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     const body = asRecord(await readJson(req));
     const asset = await createCapabilityImport(identity.appUserId, body.draft as unknown as CapabilityImportDraft);
     writeJson(res, 201, { asset });
+    return;
+  }
+
+
+  const creatorBuilderSessionMatch = url.pathname.match(/^\/api\/v1\/creator\/workers\/([^/]+)\/builder-session$/);
+  if (creatorBuilderSessionMatch && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const workerId = decodeURIComponent(creatorBuilderSessionMatch[1] ?? '');
+    writeJson(res, 200, { session: await getCreatorBuilderSession(identity.appUserId, workerId) });
+    return;
+  }
+  if (creatorBuilderSessionMatch && req.method === 'PUT') {
+    const identity = await requireIdentity(req);
+    const workerId = decodeURIComponent(creatorBuilderSessionMatch[1] ?? '');
+    const body = asRecord(await readJson(req));
+    const rawMessages = Array.isArray(body.messages) ? body.messages : [];
+    const messages = rawMessages.map((value) => {
+      const row = asRecord(value);
+      let role: 'user' | 'builder';
+      if (row.role === 'user' || row.role === 'builder') role = row.role;
+      else throw new Error('INVALID_CREATOR_BUILDER_MESSAGE_ROLE');
+      return {
+        id: requiredString(row.id, 'INVALID_CREATOR_BUILDER_MESSAGE_ID', 160),
+        role,
+        content: requiredString(row.content, 'INVALID_CREATOR_BUILDER_MESSAGE_CONTENT', 12000),
+      };
+    });
+    const session = await saveCreatorBuilderSession(identity.appUserId, workerId, {
+      step: requiredString(body.step, 'INVALID_CREATOR_BUILDER_STEP', 80),
+      teachMode: body.teachMode === true,
+      ...(body.testJobId === undefined || body.testJobId === null ? {} : { testJobId: requiredString(body.testJobId, 'INVALID_CREATOR_BUILDER_TEST_JOB', 160) }),
+      draft: body.draft as unknown as CreatorWorkerDraft,
+      messages,
+    });
+    writeJson(res, 200, { session });
     return;
   }
 

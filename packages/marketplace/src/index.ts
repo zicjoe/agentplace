@@ -253,4 +253,100 @@ export async function createNewWorkerVersion(ownerUserId:string,definitionId:str
   return {id:definitionId,type:'worker',visibility:'draft',name:draft.name,version,versionId,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),worker:draft};
 }
 
+
+export interface CreatorBuilderMessageRecord {
+  id: string;
+  role: 'user' | 'builder';
+  content: string;
+}
+
+export interface CreatorBuilderSessionRecord {
+  workerId: string;
+  step: string;
+  teachMode: boolean;
+  testJobId?: string;
+  draft: CreatorWorkerDraft;
+  messages: CreatorBuilderMessageRecord[];
+  updatedAt: string;
+}
+
+export interface SaveCreatorBuilderSessionInput {
+  step: string;
+  teachMode: boolean;
+  testJobId?: string;
+  draft: CreatorWorkerDraft;
+  messages: CreatorBuilderMessageRecord[];
+}
+
+const CREATOR_BUILDER_STEPS = new Set([
+  'idle','initial-response','collaborators-added','teach-prompt','teach-response','testing','runtime-test-launched','editing','private-saved','public-saved'
+]);
+
+function validateBuilderStep(value: string): string {
+  if (!CREATOR_BUILDER_STEPS.has(value)) throw new Error('INVALID_CREATOR_BUILDER_STEP');
+  return value;
+}
+
+function validateBuilderMessages(messages: CreatorBuilderMessageRecord[]): CreatorBuilderMessageRecord[] {
+  if (!Array.isArray(messages) || messages.length > 500) throw new Error('INVALID_CREATOR_BUILDER_MESSAGES');
+  return messages.map((message) => {
+    if (!message || (message.role !== 'user' && message.role !== 'builder')) throw new Error('INVALID_CREATOR_BUILDER_MESSAGE_ROLE');
+    const content = typeof message.content === 'string' ? message.content.trim() : '';
+    if (!content || content.length > 12000) throw new Error('INVALID_CREATOR_BUILDER_MESSAGE_CONTENT');
+    const messageId = typeof message.id === 'string' && message.id.length > 0 && message.id.length <= 160 ? message.id : id('cbm');
+    return { id: messageId, role: message.role, content };
+  });
+}
+
+export async function getCreatorBuilderSession(ownerUserId: string, workerId: string): Promise<CreatorBuilderSessionRecord | null> {
+  const session = await getDatabasePool().query<{id:string;step:string;teach_mode:boolean;test_job_id:string|null;draft_snapshot:unknown;updated_at:Date}>(`
+    SELECT s.id,s.step,s.teach_mode,s.test_job_id,s.draft_snapshot,s.updated_at
+    FROM creator_builder_session s
+    JOIN worker_definition d ON d.id=s.worker_definition_id
+    WHERE s.owner_user_id=$1 AND s.worker_definition_id=$2 AND d.creator_user_id=$1
+    LIMIT 1`, [ownerUserId, workerId]);
+  const row = session.rows[0];
+  if (!row) return null;
+  const draft = validateCreatorWorkerDraft(row.draft_snapshot as CreatorWorkerDraft);
+  const messages = await getDatabasePool().query<{id:string;role:'user'|'builder';content:string}>(`
+    SELECT id,role,content FROM creator_builder_message WHERE session_id=$1 ORDER BY ordinal ASC`, [row.id]);
+  return {
+    workerId,
+    step: validateBuilderStep(row.step),
+    teachMode: row.teach_mode,
+    ...(row.test_job_id ? { testJobId: row.test_job_id } : {}),
+    draft,
+    messages: messages.rows,
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+export async function saveCreatorBuilderSession(ownerUserId: string, workerId: string, input: SaveCreatorBuilderSessionInput): Promise<CreatorBuilderSessionRecord> {
+  const draft = validateCreatorWorkerDraft(input.draft);
+  const step = validateBuilderStep(input.step);
+  const messages = validateBuilderMessages(input.messages);
+  const testJobId = input.testJobId && input.testJobId.length <= 160 ? input.testJobId : null;
+  const sessionId = `cbs_${createHash('sha256').update(`${ownerUserId}:${workerId}`).digest('hex').slice(0,32)}`;
+  await withTransaction(async (client) => {
+    const owner = await client.query(`SELECT id FROM worker_definition WHERE id=$1 AND creator_user_id=$2`, [workerId, ownerUserId]);
+    if (!owner.rowCount) throw new Error('CREATOR_WORKER_NOT_FOUND');
+    const savedSession = await client.query<{id:string}>(`INSERT INTO creator_builder_session(id,owner_user_id,worker_definition_id,step,teach_mode,test_job_id,draft_snapshot)
+      VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)
+      ON CONFLICT(owner_user_id,worker_definition_id) DO UPDATE SET step=EXCLUDED.step,teach_mode=EXCLUDED.teach_mode,test_job_id=EXCLUDED.test_job_id,draft_snapshot=EXCLUDED.draft_snapshot,updated_at=now()
+      RETURNING id`,
+      [sessionId, ownerUserId, workerId, step, Boolean(input.teachMode), testJobId, JSON.stringify(draft)]);
+    const actualSessionId = savedSession.rows[0]?.id;
+    if (!actualSessionId) throw new Error('CREATOR_BUILDER_SESSION_SAVE_FAILED');
+    await client.query(`DELETE FROM creator_builder_message WHERE session_id=$1`, [actualSessionId]);
+    for (let ordinal = 0; ordinal < messages.length; ordinal += 1) {
+      const message = messages[ordinal]!;
+      await client.query(`INSERT INTO creator_builder_message(id,session_id,ordinal,role,content) VALUES($1,$2,$3,$4,$5)`,
+        [message.id, actualSessionId, ordinal, message.role, message.content]);
+    }
+  });
+  const saved = await getCreatorBuilderSession(ownerUserId, workerId);
+  if (!saved) throw new Error('CREATOR_BUILDER_SESSION_SAVE_FAILED');
+  return saved;
+}
+
 export const moduleManifest={name:'marketplace',layer:'controlled-runtime',milestone:12,status:'production-discover-creator-supply'} as const;

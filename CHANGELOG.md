@@ -334,6 +334,7 @@
 - Replaced production Discover fixture truth with durable Worker/Workflow/Capability supply and runtime-readiness projection.
 - Added durable creator Workers, Workflows, imported capabilities, publication lifecycle, lineage and creator test records.
 - Added generic Agent Builder, real sandbox Worker tests, private install, versioned edits and public publication.
+- Added durable per-Worker Agent Builder conversations, user-turn quick actions, non-terminal private save, clean New Worker behavior, and reopen/continue continuity across refreshes.
 - Added Worker-version pinning through installations and Job assignments.
 - Added real server-side OpenAPI/MCP inspection with SSRF controls and bounded read-only OpenAPI sandbox invocation.
 - Kept creator imports isolated from trusted AgentPlace capability routing, with no new signer, custody, paid acquisition or Mainnet autonomy.

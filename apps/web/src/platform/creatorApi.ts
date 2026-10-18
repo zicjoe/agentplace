@@ -25,6 +25,25 @@ interface ApiWorkerDraft {
   collaborators?:Array<{role:string;pinnedWorkerId?:string;roleBased?:boolean;required:boolean;whenUsed:string;contextShared:string;authorityBoundary:string}>;
   lineage?:{sourceType:'worker'|'workflow'|'capability';sourceId:string;sourceVersionId?:string;sourceName:string;sourceCreator:string};
 }
+
+export interface CreatorBuilderSessionSnapshot {
+  workerId:string;
+  step:string;
+  teachMode:boolean;
+  testJobId?:string;
+  draft:WorkerDraftData;
+  messages:Array<{id:string;role:'user'|'builder';content:string}>;
+  updatedAt:Date;
+}
+interface ApiCreatorBuilderSession {
+  workerId:string;
+  step:string;
+  teachMode:boolean;
+  testJobId?:string;
+  draft:ApiWorkerDraft;
+  messages:Array<{id:string;role:'user'|'builder';content:string}>;
+  updatedAt:string;
+}
 interface ApiWorkflowDraft { name:string;purpose:string;inputs:string[];steps:string[];conditions:string[];outputs:string[];requiredCapabilities:string[];safetyBoundaries:string[];compatibleWorkers:string[]; }
 interface ApiCapabilityDraft { name:string;importType:'mcp'|'openapi';endpoint?:string;provider?:string;version?:string;operations:Array<{original:string;canonical?:string;classification:'read'|'prepare'|'execution-sensitive';description:string}>; }
 
@@ -83,3 +102,15 @@ export async function inspectCreatorCapability(input:{importType:'mcp'|'openapi'
 }
 
 export async function testCreatorCapabilityRead(input:{importType:'openapi';endpoint:string;operation:string}):Promise<{status:number;url:string;preview:string;notice:string}>{return request('/api/v1/creator/capabilities/sandbox-test',{method:'POST',body:JSON.stringify(input)});}
+
+
+export async function fetchCreatorBuilderSession(workerId:string):Promise<CreatorBuilderSessionSnapshot|null>{
+  const data=await request<{session:ApiCreatorBuilderSession|null}>(`/api/v1/creator/workers/${encodeURIComponent(workerId)}/builder-session`);
+  if(!data.session)return null;
+  return {workerId:data.session.workerId,step:data.session.step,teachMode:data.session.teachMode,...(data.session.testJobId?{testJobId:data.session.testJobId}:{}),draft:workerDraft(data.session.draft),messages:data.session.messages,updatedAt:new Date(data.session.updatedAt)};
+}
+
+export async function saveCreatorBuilderSession(workerId:string,snapshot:{step:string;teachMode:boolean;testJobId?:string;draft:WorkerDraftData;messages:Array<{id:string;role:'user'|'builder';content:string}>}):Promise<CreatorBuilderSessionSnapshot>{
+  const data=await request<{session:ApiCreatorBuilderSession}>(`/api/v1/creator/workers/${encodeURIComponent(workerId)}/builder-session`,{method:'PUT',body:JSON.stringify({step:snapshot.step,teachMode:snapshot.teachMode,...(snapshot.testJobId?{testJobId:snapshot.testJobId}:{}),draft:toWorkerDraft(snapshot.draft),messages:snapshot.messages})});
+  return {workerId:data.session.workerId,step:data.session.step,teachMode:data.session.teachMode,...(data.session.testJobId?{testJobId:data.session.testJobId}:{}),draft:workerDraft(data.session.draft),messages:data.session.messages,updatedAt:new Date(data.session.updatedAt)};
+}

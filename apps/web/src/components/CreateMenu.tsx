@@ -51,14 +51,14 @@ export function CreateMenu() {
   function handleSelect(id: string) {
     close();
     if (id === 'worker') {
+      dispatch({ type: 'SET_ACTIVE_CREATION', id: null });
       dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'agent-builder' });
-      dispatch({ type: 'SET_ACTIVE_CREATION', id: null });
     } else if (id === 'workflow') {
+      dispatch({ type: 'SET_ACTIVE_CREATION', id: null });
       dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'workflow-studio' });
-      dispatch({ type: 'SET_ACTIVE_CREATION', id: null });
     } else if (id === 'capability') {
-      dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'capability-studio' });
       dispatch({ type: 'SET_ACTIVE_CREATION', id: null });
+      dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'capability-studio' });
     } else if (id === 'my-creations') {
       dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'creator-home' });
     }

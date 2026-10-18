@@ -3,11 +3,11 @@
 Do not freeze v0.15.0 until `pnpm check` passes and these production flows are manually accepted.
 
 1. Open Discover as a signed-out user. Verify supply comes from production and each Worker displays truthful readiness rather than assuming every published Worker is operational.
-2. Sign in and create a completely new Worker in Agent Builder from natural language. Teach one unique rule. Reuse an eligible existing specialist where helpful.
+2. Sign in and create a completely new Worker in Agent Builder from natural language. Confirm quick-action choices become user-side conversation turns. Teach one unique rule. Reuse an eligible existing specialist where helpful.
 3. Start the creator test. Confirm a real Job is created, routing/evidence are inspectable, and the UI never says the Worker self-certified safety.
-4. Save the Worker privately. Confirm it appears in My creations and My Workers after refresh/restart. Confirm adding it grants no wallet authority.
+4. Save the Worker privately before testing once, then confirm this does not end Agent Builder. The composer must remain available with Test Worker / Continue editing / Open in Workers / Publish options. Confirm the Worker appears in My creations and My Workers after refresh/restart and adding it grants no wallet authority.
 5. Run a real read-only Job through the creator Worker. Confirm the Job records and executes the pinned Worker version.
-6. Reopen the Worker, edit it, save a new version and test the new version. Confirm existing installed/old Jobs do not silently change versions.
+6. Reopen the Worker from My creations. Confirm the Builder transcript and Live Draft restore together. Edit it conversationally, save/test a new version and confirm existing installed/old Jobs do not silently change versions. Then use + Create → Worker and confirm it opens a clean Builder rather than the existing creation.
 7. Publish the Worker. Confirm it appears in Discover with creator/version/readiness/authority posture. Publication must not imply AgentPlace Verified.
 8. Customize a copy of a public Worker. Confirm the draft is preloaded and lineage identifies source Worker/creator/version.
 9. Create and save a Workflow, refresh, reopen, edit, and save a new version. Confirm no Routine or financial authority is created.

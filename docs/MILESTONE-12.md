@@ -12,11 +12,12 @@ Turn the approved Discover/Create experience into durable production supply with
 - Worker listings expose publication separately from calculated runtime readiness: Available, Limited, Preview or Unavailable.
 - Installing a Worker pins the exact Worker version until an explicit update. Jobs record exact Worker-version assignments for reproducibility.
 - Creator-owned private Workers can be installed and tested without public publication. Adding/installing never grants financial authority.
-- Agent Builder creates generic durable creator Workers, supports Teach Mode, reuse of existing specialist Workers, real sandbox Jobs, private use, publication, reopening/versioning and fork lineage.
+- Agent Builder creates generic durable creator Workers, supports Teach Mode, reuse of existing specialist Workers, real sandbox Jobs, private use, publication, reopening/versioning and fork lineage. Builder choices are recorded as user turns, and Builder chat/draft continuity persists per creator Worker once a durable asset exists.
 - Workflow Studio persists versioned Workflow definitions. A Workflow defines how work is done; it is not a Routine and grants no authority.
 - Capability Studio performs real server-side OpenAPI inspection and remote MCP tool discovery. Imports remain creator-scoped and isolated from the trusted canonical implementation registry.
 - Public/no-auth, parameter-free OpenAPI GET operations may be invoked through a bounded server-side creator sandbox. Mutating/imported MCP operations remain blocked from trusted routing.
 - Remote imports require public HTTPS and reject embedded credentials, loopback/private/link-local DNS results, unsafe redirects, oversized responses and excessive redirects.
+- Saving privately is non-terminal: creators can continue editing/testing, reopen the same Builder conversation from My creations, or publish later. New Worker always starts a clean Builder.
 - Paid acquisition, creator revenue and payouts remain disabled until Billing + Security Completion.
 
 ## Trust rules

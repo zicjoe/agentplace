@@ -2,7 +2,7 @@
 
 ## Order
 
-1. Railway API — apply additive migration `0017_discover_creator_system.sql`.
+1. Railway API — apply additive migrations `0017_discover_creator_system.sql` and `0018_creator_builder_conversations.sql`.
 2. Railway Worker — redeploy so Job routing/execution honors exact Worker-version assignments.
 3. Railway Scheduler — normal redeploy; M12 does not change its signer/custody posture.
 4. Vercel Web.
@@ -26,6 +26,7 @@ Capability Studio remote inspection uses outbound HTTPS from the API. Do not add
 - existing installed Workers remain visible and pinned;
 - API `/api/v1/discover` works for guest/public reads;
 - creator endpoints remain authenticated/owner-scoped;
+- Builder-session reads/writes are owner-scoped to the creator Worker;
 - Worker and Scheduler start normally;
 - production Discover does not fall back to fixture supply in API mode;
 - no paid-acquisition or creator-payout path is enabled.

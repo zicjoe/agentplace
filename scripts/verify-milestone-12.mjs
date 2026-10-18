@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const required = [
   'packages/db/migrations/0017_discover_creator_system.sql',
+  'packages/db/migrations/0018_creator_builder_conversations.sql',
   'packages/creator-sdk/src/index.ts',
   'packages/marketplace/src/index.ts',
   'apps/web/src/platform/creatorApi.ts',
@@ -31,8 +32,14 @@ for (const token of [
   if (!migration.includes(token)) throw new Error(`M12 persistence missing ${token}`);
 }
 
+
+const builderMigration = readFileSync('packages/db/migrations/0018_creator_builder_conversations.sql', 'utf8');
+for (const token of ['creator_builder_session','creator_builder_message','draft_snapshot']) {
+  if (!builderMigration.includes(token)) throw new Error(`M12 Builder continuity missing ${token}`);
+}
+
 const marketplace = readFileSync('packages/marketplace/src/index.ts', 'utf8');
-for (const token of ['listDiscoverSupply','workerReadiness','createCreatorWorker','createNewWorkerVersion','createCreatorWorkflow','createNewWorkflowVersion','createCapabilityImport','forkWorker','publishCreatorAsset','withTransaction']) {
+for (const token of ['listDiscoverSupply','workerReadiness','createCreatorWorker','createNewWorkerVersion','createCreatorWorkflow','createNewWorkflowVersion','createCapabilityImport','forkWorker','publishCreatorAsset','getCreatorBuilderSession','saveCreatorBuilderSession','withTransaction']) {
   if (!marketplace.includes(token)) throw new Error(`M12 marketplace/creator core missing ${token}`);
 }
 if (/INSERT INTO capability_implementation[\s\S]{0,120}creator/i.test(marketplace)) throw new Error('M12 creator imports must not auto-promote into trusted capability implementations.');
@@ -51,8 +58,14 @@ const creatorSdk = readFileSync('packages/creator-sdk/src/index.ts', 'utf8');
 for (const token of ['assertSafeRemoteHttpsUrl','parseOpenApiOperations','runtimeEligibilityForImportedOperation','CREATOR_WORKER_FINANCIAL_AUTHORITY_NOT_ALLOWED']) if (!creatorSdk.includes(token)) throw new Error(`M12 creator boundary missing ${token}`);
 
 const api = readFileSync('apps/api/src/server.ts', 'utf8');
-for (const token of ['/api/v1/discover','/api/v1/creator/assets','/api/v1/creator/workers','/api/v1/creator/workflows','/api/v1/creator/capabilities/inspect','/api/v1/creator/capabilities/sandbox-test','IMPORT_URL_PRIVATE_HOST_FORBIDDEN']) if (!api.includes(token)) throw new Error(`M12 API missing ${token}`);
+for (const token of ['/api/v1/discover','/api/v1/creator/assets','/api/v1/creator/workers','/api/v1/creator/workflows','/api/v1/creator/capabilities/inspect','/api/v1/creator/capabilities/sandbox-test','builder-session','IMPORT_URL_PRIVATE_HOST_FORBIDDEN']) if (!api.includes(token)) throw new Error(`M12 API missing ${token}`);
 if (/PRIVATE_KEY|MNEMONIC|SEED_PHRASE/.test(api)) throw new Error('M12 creator API must not introduce signing secrets.');
+
+
+const agentBuilder = readFileSync('apps/web/src/components/AgentBuilder.tsx', 'utf8');
+for (const token of ['fetchCreatorBuilderSession','saveCreatorBuilderSession','addUserChoice','Continue editing','Saving privately does **not** end Agent Builder']) {
+  if (!agentBuilder.includes(token)) throw new Error(`M12 conversational Builder continuity missing ${token}`);
+}
 
 const discoverDetail = readFileSync('apps/web/src/components/DiscoverDetail.tsx', 'utf8');
 if (!discoverDetail.includes('Paid · not yet enabled')) throw new Error('M12 paid acquisition must remain truthfully disabled.');
