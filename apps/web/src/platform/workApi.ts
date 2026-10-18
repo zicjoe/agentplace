@@ -105,6 +105,11 @@ export async function installDurableWorker(definitionId:string):Promise<Worker> 
   const data=await request<{worker:ApiWorker}>('/api/v1/workers',{method:'POST',body:JSON.stringify({definitionId})}); return fromWorker(data.worker);
 }
 
+export async function updateDurableWorkerVersion(workerId:string):Promise<Worker> {
+  const data=await request<{worker:ApiWorker}>(`/api/v1/workers/${encodeURIComponent(workerId)}/update-version`,{method:'POST'});
+  return fromWorker(data.worker);
+}
+
 export async function updateDurableWorkerStatus(
   workerId:string,
   status:'standby'|'paused'|'removed',

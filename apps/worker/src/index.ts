@@ -12,6 +12,7 @@ import {
   createJob,
   failIntelligenceTask,
   getDailyModelCostUsd,
+  getJobWorkerVersionAssignments,
   recordModelRun,
   setJobConversation,
   updateJobRuntime,
@@ -35,7 +36,7 @@ import {
   type RouteProposal,
 } from '@agent-place/router';
 import { defineService, parseEnvironmentContract } from '@agent-place/shared';
-import { listWorkerCatalog } from '@agent-place/workers';
+import { getWorkerCatalogVersions, listWorkerCatalog } from '@agent-place/workers';
 import { collectRoutedIntelligenceWithFallback, intelligenceEvidencePrompt, type IntelligenceSubject } from '@agent-place/intelligence';
 import {
   appendCoverageFallback,
@@ -48,8 +49,8 @@ import {
 export const service = defineService({
   name: 'agent-place-worker',
   runtimeClass: 'worker',
-  version: '0.14.0',
-  milestone: 11,
+  version: '0.15.0',
+  milestone: 12,
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -342,6 +343,8 @@ async function routeTask(task: IntelligenceTask, context: IntelligenceContextVal
       ? decision.leadWorkerId
       : undefined;
   const forcedSupportingWorkerIds = context.scope === 'job' ? decision.supportingWorkerIds : undefined;
+  const assignments = task.jobId ? await getJobWorkerVersionAssignments(task.ownerUserId, task.jobId) : [];
+  const forcedWorkerVersionIds = Object.fromEntries(assignments.map((item)=>[item.workerId,item.workerVersionId]));
   return planRoute({
     ownerUserId: task.ownerUserId,
     taskId: task.id,
@@ -352,6 +355,7 @@ async function routeTask(task: IntelligenceTask, context: IntelligenceContextVal
     defaultProvider,
     ...(forcedLeadWorkerId ? { forcedLeadWorkerId } : {}),
     ...(forcedSupportingWorkerIds ? { forcedSupportingWorkerIds } : {}),
+    ...(Object.keys(forcedWorkerVersionIds).length ? { forcedWorkerVersionIds } : {}),
   });
 }
 
@@ -507,7 +511,10 @@ async function executeResearch(
   await enforceCallLimit(task.id);
   await updateJobRuntime(task.ownerUserId, jobId, { status: 'RUNNING', currentStage: 'Gathering current sources', stageId: 'stage_2', stageStatus: 'active' });
 
-  const catalog = await listWorkerCatalog();
+  const assignments = await getJobWorkerVersionAssignments(task.ownerUserId, jobId);
+  const leadAssignment = assignments.find((item)=>item.workerId===route.leadWorkerId);
+  const exactLead = leadAssignment ? (await getWorkerCatalogVersions([leadAssignment.workerVersionId]))[0] : undefined;
+  const catalog = exactLead ? [exactLead] : await listWorkerCatalog();
   const lead = catalog.find((worker) => worker.id === route.leadWorkerId);
   const rawRequest = taskText(task, context);
   const originalRequest = task.inputSource === 'ROUTINE' ? routineOccurrenceResearchRequest(rawRequest) : rawRequest;

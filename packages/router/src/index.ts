@@ -8,7 +8,7 @@ import {
 } from '@agent-place/capabilities';
 import { getDatabasePool } from '@agent-place/db';
 import { telegraphRouterImplementations } from '@agent-place/telegraph/runtime';
-import { listWorkerCatalog, type WorkerCatalogItem } from '@agent-place/workers';
+import { getWorkerCatalogVersions, listWorkerCatalog, type WorkerCatalogItem } from '@agent-place/workers';
 
 export type DeploymentEnvironment = 'development' | 'testnet' | 'staging-mainnet-readonly' | 'production-mainnet';
 export type RouteDecisionStatus = 'routable' | 'partially-routable' | 'blocked';
@@ -385,14 +385,21 @@ export async function planRoute(args: {
   defaultProvider?: RouteProviderPreference;
   forcedLeadWorkerId?: string;
   forcedSupportingWorkerIds?: string[];
+  forcedWorkerVersionIds?: Record<string,string>;
 }): Promise<DurableRouteDecision> {
-  const [capabilities, implementations, catalog, compatibility, telegraphImplementations] = await Promise.all([
+  const [capabilities, implementations, publicCatalog, allCompatibility, telegraphImplementations] = await Promise.all([
     listCanonicalCapabilities(),
     listCapabilityImplementations(),
     listWorkerCatalog(),
     listWorkerCompatibility(),
     telegraphRouterImplementations(),
   ]);
+  const forcedVersions=args.forcedWorkerVersionIds??{};
+  const exactWorkers=await getWorkerCatalogVersions([...new Set(Object.values(forcedVersions))]);
+  const exactByWorker=new Map(exactWorkers.map((worker)=>[worker.id,worker]));
+  const catalog=[...publicCatalog.filter((worker)=>!forcedVersions[worker.id]),...exactWorkers];
+  const activeVersionByWorker=new Map(catalog.map((worker)=>[worker.id,worker.versionId]));
+  const compatibility=allCompatibility.filter((row)=>activeVersionByWorker.get(row.worker_id)===row.worker_version_id);
   const allImplementations: CapabilityImplementation[] = [...implementations, ...telegraphImplementations];
   const capabilityById = new Map(capabilities.map((capability) => [capability.id, capability]));
   const knownIds = new Set(capabilities.map((capability) => capability.id));

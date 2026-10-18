@@ -1,0 +1,150 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const migration=readFileSync('packages/db/migrations/0017_discover_creator_system.sql','utf8');
+const marketplace=readFileSync('packages/marketplace/src/index.ts','utf8');
+const creatorSdk=readFileSync('packages/creator-sdk/src/index.ts','utf8');
+const workers=readFileSync('packages/workers/src/index.ts','utf8');
+const jobs=readFileSync('packages/jobs/src/index.ts','utf8');
+const router=readFileSync('packages/router/src/index.ts','utf8');
+const workerRuntime=readFileSync('apps/worker/src/index.ts','utf8');
+const api=readFileSync('apps/api/src/server.ts','utf8');
+const creatorApi=readFileSync('apps/web/src/platform/creatorApi.ts','utf8');
+const fixture=readFileSync('apps/web/src/fixtures/FixtureAppContext.tsx','utf8');
+const discover=readFileSync('apps/web/src/components/Discover.tsx','utf8');
+const detail=readFileSync('apps/web/src/components/DiscoverDetail.tsx','utf8');
+const builder=readFileSync('apps/web/src/components/AgentBuilder.tsx','utf8');
+const workflow=readFileSync('apps/web/src/components/WorkflowStudio.tsx','utf8');
+const capability=readFileSync('apps/web/src/components/CapabilityStudio.tsx','utf8');
+const creatorHome=readFileSync('apps/web/src/components/CreatorHome.tsx','utf8');
+
+test('M12 persists creator supply, versions, lineage and listing state',()=>{
+  for(const token of ['workflow_definition','workflow_version','creator_capability','creator_capability_version','creator_capability_operation','creator_test_run','creator_lineage','marketplace_listing']) assert.match(migration,new RegExp(token));
+  assert.match(migration,/worker_version_immutable_release/);
+  assert.match(migration,/workflow_version_immutable_release/);
+});
+
+test('M12 pins installed Workers and Jobs to exact Worker versions',()=>{
+  assert.match(workers,/JOIN worker_version v ON v\.id=uw\.worker_version_id/);
+  assert.match(jobs,/worker_version_id/);
+  assert.match(jobs,/workerVersionOverrides/);
+  assert.match(router,/forcedWorkerVersionIds/);
+  assert.match(workerRuntime,/getJobWorkerVersionAssignments/);
+  assert.match(workerRuntime,/getWorkerCatalogVersions/);
+  assert.match(workers,/updateInstalledWorkerVersion/);
+  assert.match(api,/updateInstalledWorkerVersion/);
+});
+
+test('M12 private creator Workers are owner-scoped and do not need public publication',()=>{
+  assert.match(workers,/creator_user_id=\$2/);
+  assert.match(workers,/publication_status IN \('draft','private','unlisted','published'\)/);
+  assert.match(jobs,/creator_user_id=\$2/);
+});
+
+test('M12 Discover is a live durable projection with truthful readiness',()=>{
+  assert.match(marketplace,/listDiscoverSupply/);
+  assert.match(marketplace,/workerReadiness/);
+  for(const state of ['available','limited','preview','unavailable']) assert.match(marketplace,new RegExp(`'${state}'`));
+  assert.match(api,/\/api\/v1\/discover/);
+  assert.match(fixture,/fetchDiscoverSupply\(\)/);
+  assert.match(discover,/workerDefinitionId/);
+});
+
+test('M12 Add Worker persists through backend and never grants authority',()=>{
+  assert.match(detail,/installDurableWorker/);
+  assert.match(detail,/No permission to move funds/);
+  assert.doesNotMatch(detail,/ADD_AUTHORITY_GRANT/);
+});
+
+test('M12 Agent Builder is generic and uses real sandbox Jobs',()=>{
+  assert.match(builder,/draftFromIntent/);
+  assert.match(builder,/testCreatorWorker/);
+  assert.match(builder,/Open real test Job/);
+  assert.match(builder,/Teach Mode active/);
+  assert.doesNotMatch(builder,/WHALE_MEME_DRAFT|Prototype acceptance suite|8 \/ 8 passed/);
+});
+
+test('M12 creator tests cannot self-certify safety or grant authority',()=>{
+  assert.match(api,/This is a sandbox creator test\. Do not claim that passing self-certifies safety/);
+  assert.match(builder,/Passing this test does not self-certify safety/);
+  assert.match(creatorSdk,/CREATOR_WORKER_FINANCIAL_AUTHORITY_NOT_ALLOWED/);
+});
+
+test('M12 fork/customize creates durable source lineage',()=>{
+  assert.match(migration,/creator_lineage/);
+  assert.match(marketplace,/forkWorker/);
+  assert.match(detail,/forkCreatorWorker/);
+  assert.match(detail,/SET_ACTIVE_CREATION/);
+});
+
+test('M12 Workflow Studio persists and versions real Workflow drafts',()=>{
+  assert.match(workflow,/createCreatorWorkflow/);
+  assert.match(workflow,/createCreatorWorkflowVersion/);
+  assert.match(marketplace,/createNewWorkflowVersion/);
+  assert.doesNotMatch(workflow,/MORNING_BRIEF_DRAFT/);
+  assert.doesNotMatch(workflow,/>Publish<\/button>/);
+});
+
+test('M12 OpenAPI and MCP imports are real inspection paths, not fixture discovery',()=>{
+  assert.match(api,/inspectMcpEndpoint/);
+  assert.match(api,/parseOpenApiOperations/);
+  assert.match(api,/notifications\/initialized/);
+  assert.match(api,/text\/event-stream/);
+  assert.match(creatorSdk,/parseOpenApiOperations/);
+  assert.match(capability,/inspectCreatorCapability/);
+  assert.doesNotMatch(capability,/MCP_DISCOVERED_OPS|OPENAPI_DISCOVERED_OPS/);
+  assert.match(capability,/Publish after saving/);
+});
+
+test('M12 remote imports fail closed against SSRF and embedded credentials',()=>{
+  assert.match(creatorSdk,/IMPORT_URL_HTTPS_REQUIRED/);
+  assert.match(creatorSdk,/IMPORT_URL_CREDENTIALS_FORBIDDEN/);
+  assert.match(api,/assertPublicResolvedHost/);
+  assert.match(api,/IMPORT_URL_PRIVATE_HOST_FORBIDDEN/);
+  assert.match(api,/redirect:'manual'/);
+  assert.match(api,/IMPORT_RESPONSE_TOO_LARGE/);
+  assert.match(api,/IMPORT_CONTENT_TYPE_UNSUPPORTED/);
+});
+
+test('M12 safe imported capability testing is read-only and isolated',()=>{
+  assert.match(api,/creator\/capabilities\/sandbox-test/);
+  assert.match(api,/^.*GET.*$/m);
+  assert.match(creatorApi,/testCreatorCapabilityRead/);
+  assert.match(capability,/testCreatorCapabilityRead/);
+  assert.match(marketplace,/creator_capability_operation/);
+  assert.doesNotMatch(marketplace,/INSERT INTO capability_implementation/);
+});
+
+test('M12 does not collect provider secrets in Capability Studio',()=>{
+  assert.match(capability,/public endpoint only in M12/);
+  assert.match(capability,/will not ask for or persist provider secrets/);
+  assert.doesNotMatch(capability,/<option>API key<\/option>|<option>OAuth2<\/option>/);
+});
+
+
+test('M12 creator sandbox Jobs map deployment environment truthfully',()=>{
+  assert.match(api,/function deploymentJobEnvironment\(\): 'mainnet' \| 'testnet'/);
+  assert.match(api,/environment\.environment === 'development' \|\| environment\.environment === 'testnet'/);
+  assert.doesNotMatch(api,/production-testnet/);
+  assert.ok((api.match(/environment: deploymentJobEnvironment\(\)/g)??[]).length>=2);
+});
+
+test('M12 MCP discovery accepts schemas only when they are real objects',()=>{
+  assert.match(api,/function optionalRecord\(value: unknown\): Record<string, unknown> \| undefined/);
+  assert.match(api,/const inputSchema=optionalRecord\(row\.inputSchema\)/);
+  assert.doesNotMatch(api,/inputSchema:record\(row\.inputSchema\)/);
+});
+
+test('M12 paid acquisition and creator earnings stay truthfully disabled',()=>{
+  assert.match(detail,/Paid · not yet enabled/);
+  assert.match(creatorHome,/Creator earnings are not enabled yet/);
+  assert.doesNotMatch(creatorHome,/Pending payout.*\$/s);
+});
+
+test('M12 keeps Mainnet financial execution and autonomy disabled',()=>{
+  const env=readFileSync('config/environments/production-mainnet.env.example','utf8');
+  assert.match(env,/MAINNET_EXECUTION_ENABLED=false/);
+  assert.match(env,/MAINNET_AUTONOMY_ENABLED=false/);
+  assert.doesNotMatch(marketplace,/privateKey|mnemonic|walletClient|sendTransaction/i);
+});

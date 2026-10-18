@@ -32,7 +32,7 @@ AgentPlace turns that goal into durable work owned by specialist **Workers**, ma
 
 A crypto Worker is a persistent AI specialist designed to own a specific crypto job. A Worker has a defined responsibility, operating context, capabilities and boundaries. Workers can research and coordinate work, and the current production slice includes a narrowly gated user-signed Connected Wallet execution path plus deterministic post-confirmation outcome verification for supported direct EVM transfers. Financial execution remains subject to exact deterministic authority, one-time approval, wallet signing and independent transaction observation.
 
-AgentPlace also has a supply-side model: experts can turn methods into Workers or Workflows, while developers and protocols can expose software as reusable Capabilities. The production creator/publishing system is still on the roadmap; the current build now also adds durable background Routines on top of the frozen verified-transfer lifecycle, while keeping Agent Account autonomy, autonomous Mainnet signing and broader swap/bridge verification out of scope.
+AgentPlace also has a supply-side model: experts can turn methods into Workers or Workflows, while developers and protocols can expose software as reusable Capabilities. The current v0.15.0 candidate activates durable Discover and Creator systems on top of the frozen Routine and verified-transfer lifecycle, while keeping paid acquisition, secret-bearing external tools, Agent Account autonomy, autonomous Mainnet signing and broader swap/bridge verification out of scope.
 
 ---
 
@@ -40,7 +40,7 @@ AgentPlace also has a supply-side model: experts can turn methods into Workers o
 
 | Build metadata | Value |
 |---|---|
-| Version | `v0.14.0` Milestone 11 Routines + Background Work candidate |
+| Version | `v0.15.0` Milestone 12 Discover + Creator System candidate |
 | Production app | https://www.agentplace.tech |
 | Frontend | Vercel |
 | API + background Worker + Scheduler | Railway |
@@ -64,11 +64,12 @@ AgentPlace also has a supply-side model: experts can turn methods into Workers o
 | Connected-wallet financial execution | M9 frozen — exact user-approved EVM actions; Mainnet gate disabled by default |
 | Independent settlement verification | M10 frozen — direct EVM transfers with durable Verified Outcomes/Receipts |
 | Arbitrum receipt proof | Durable privacy-safe proof queue only; production anchor signer deliberately not included |
-| Durable Routines + background work | M11 candidate — scheduled/condition/event triggers, RoutineRuns, Worker Jobs, budgets and in-app notifications |
+| Durable Routines + background work | M11 frozen — scheduled/condition/event triggers, RoutineRuns, Worker Jobs, budgets and in-app notifications |
+| Discover + Creator System | M12 candidate — durable supply/readiness, creator Workers/Workflows, version pinning, publication/lineage and safe MCP/OpenAPI import |
 | Agent Account financial authority | Mandates exist; Agent Account signing/deployment remains out of M9 scope |
 | Autonomous capital movement | Not enabled in the current build |
 
-The current build has durable Wallets, Mandates/Authority, exact Action Preparation/Review, frozen M9 Connected Wallet execution, frozen M10 settlement verification/receipts, and an M11 background-Routine candidate. User signing stays inside the browser wallet; Routines cannot sign or widen authority; Mainnet execution remains disabled by default.
+The current build has durable Wallets, Mandates/Authority, exact Action Preparation/Review, frozen M9 Connected Wallet execution, frozen M10 settlement verification/receipts, frozen M11 background Routines, and an M12 Discover/Creator candidate. User signing stays inside the browser wallet; creating, adding or publishing a Worker cannot grant wallet authority; Mainnet execution remains disabled by default.
 
 ---
 
@@ -455,13 +456,13 @@ M7    Mandates + Authority Engine — v0.10.0 frozen
 M8    Action Preparation + Action Review — v0.11.0 frozen
 M9    Connected Wallet Execution + Transaction Observation — v0.12.0 frozen
 M10   Settlement Verification + Verified Outcomes + Verified Receipts — v0.13.0 frozen
-M11   Routines + Background Work — v0.14.0 candidate
+M11   Routines + Background Work — v0.14.0 frozen
+M12   Discover + Creator System — v0.15.0 candidate
 ```
 
 Next major platform layers include:
 
 ```text
-M12   Discover + Creator System
 M13   Billing + Security Completion
 M14   Production Reconciliation + Launch Readiness
 ```

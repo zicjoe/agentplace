@@ -1,4 +1,6 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import {
   getAuthAvailability,
@@ -21,6 +23,19 @@ import {
 } from '@agent-place/context';
 import { checkDatabase } from '@agent-place/db';
 import { listCanonicalCapabilities, listCapabilityImplementations } from '@agent-place/capabilities';
+import {
+  createCapabilityImport,
+  createCreatorWorkflow,
+  createCreatorWorker,
+  createNewWorkerVersion,
+  createNewWorkflowVersion,
+  forkWorker,
+  listCreatorAssets,
+  listDiscoverSupply,
+  publishCreatorAsset,
+} from '@agent-place/marketplace';
+import { assertSafeRemoteHttpsUrl, parseOpenApiOperations } from '@agent-place/creator-sdk';
+import type { CapabilityImportDraft, CreatorWorkerDraft, CreatorWorkflowDraft, ImportedOperationDraft } from '@agent-place/creator-sdk';
 import { getModelCatalog } from '@agent-place/models';
 import {
   createMandate,
@@ -90,7 +105,7 @@ import {
 import { getRouteDecisionForJob } from '@agent-place/router';
 import { listJobIntelligenceEvidence } from '@agent-place/intelligence';
 import { createJob, enqueueIntelligenceTask, getIntelligenceTask, getLatestIntelligenceTask, getJob, getJobEvidence, jobStatuses, listActivity, listJobs, setJobConversation, type JobDraft } from '@agent-place/jobs';
-import { getUserWorker, installWorker, listUserWorkers, listWorkerCatalog, updateUserWorker, type UserWorkerStatus } from '@agent-place/workers';
+import { getUserWorker, installWorker, listUserWorkers, listWorkerCatalog, updateInstalledWorkerVersion, updateUserWorker, type UserWorkerStatus } from '@agent-place/workers';
 import { createAgentAccount, createWatchWallet, connectWallet, getWallet, listAgentAccounts, listWallets, observeWalletNetwork, updateWallet, type WalletNamespace } from '@agent-place/wallets';
 import {
   createRequestId,
@@ -101,6 +116,10 @@ import {
 import { service } from './index.js';
 
 const environment = parseEnvironmentContract(process.env);
+
+function deploymentJobEnvironment(): 'mainnet' | 'testnet' {
+  return environment.environment === 'development' || environment.environment === 'testnet' ? 'testnet' : 'mainnet';
+}
 const host = process.env.API_HOST?.trim() || (process.env.RAILWAY_ENVIRONMENT ? '0.0.0.0' : '127.0.0.1');
 const port = Number.parseInt(process.env.API_PORT ?? process.env.PORT ?? '8787', 10);
 
@@ -153,6 +172,10 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
 function asRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('INVALID_BODY');
   return value as Record<string, unknown>;
+}
+
+function optionalRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
 function isMessage(value: unknown): value is DurableConversationMessage {
@@ -437,6 +460,73 @@ function parseRoutineCreateInput(value: unknown): CreateRoutineInput {
   return input;
 }
 
+
+function isPrivateAddress(address:string):boolean {
+  if (address === '::1' || address === '::' || address.toLowerCase().startsWith('fe80:') || address.toLowerCase().startsWith('fc') || address.toLowerCase().startsWith('fd')) return true;
+  if (isIP(address) === 4) {
+    const [a,b] = address.split('.').map(Number);
+    if (a === 10 || a === 127 || a === 0 || a === 169 && b === 254 || a === 192 && b === 168 || a === 172 && b !== undefined && b >= 16 && b <= 31) return true;
+  }
+  return false;
+}
+
+async function assertPublicResolvedHost(url:URL):Promise<void> {
+  const resolved=await lookup(url.hostname,{all:true,verbatim:true});
+  if(resolved.length===0||resolved.some((entry)=>isPrivateAddress(entry.address))) throw new Error('IMPORT_URL_PRIVATE_HOST_FORBIDDEN');
+}
+
+async function readLimitedResponse(response:Response,maxBytes=1024*1024):Promise<string> {
+  if(!response.body) return '';
+  const reader=response.body.getReader(); const chunks:Uint8Array[]=[]; let total=0;
+  while(true){const next=await reader.read();if(next.done)break;total+=next.value.byteLength;if(total>maxBytes){await reader.cancel();throw new Error('IMPORT_RESPONSE_TOO_LARGE');}chunks.push(next.value);}
+  const bytes=new Uint8Array(total);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}return new TextDecoder().decode(bytes);
+}
+
+async function safeFetchText(rawUrl:string,init?:RequestInit):Promise<{url:string;text:string;headers:Headers;status:number}> {
+  let current=assertSafeRemoteHttpsUrl(rawUrl);
+  for(let redirect=0;redirect<4;redirect+=1){
+    await assertPublicResolvedHost(current);
+    const response=await fetch(current,{...init,redirect:'manual',signal:AbortSignal.timeout(10000),headers:{accept:'application/json, application/yaml, text/yaml, text/plain;q=0.8',...(init?.headers??{})}});
+    if(response.status>=300&&response.status<400){const location=response.headers.get('location');if(!location)throw new Error('IMPORT_REDIRECT_INVALID');current=assertSafeRemoteHttpsUrl(new URL(location,current).toString());continue;}
+    if(!response.ok)throw new Error(`IMPORT_HTTP_${response.status}`);
+    const contentType=response.headers.get('content-type')?.toLowerCase()??'';
+    if(contentType && !/(json|yaml|text\/plain|text\/event-stream)/i.test(contentType)) throw new Error('IMPORT_CONTENT_TYPE_UNSUPPORTED');
+    return {url:current.toString(),text:await readLimitedResponse(response),headers:response.headers,status:response.status};
+  }
+  throw new Error('IMPORT_TOO_MANY_REDIRECTS');
+}
+
+function parseMcpJsonRpcPayload(text:string):Record<string,unknown> {
+  const trimmed=text.trim();
+  if(!trimmed) return {};
+  try { const value=JSON.parse(trimmed) as unknown; if(value&&typeof value==='object'&&!Array.isArray(value)) return value as Record<string,unknown>; } catch { /* Streamable HTTP may return SSE. */ }
+  for(const line of trimmed.split(/\r?\n/)){
+    if(!line.startsWith('data:')) continue;
+    const data=line.slice(5).trim(); if(!data||data==='[DONE]') continue;
+    try { const value=JSON.parse(data) as unknown; if(value&&typeof value==='object'&&!Array.isArray(value)) return value as Record<string,unknown>; } catch { /* ignore non-JSON SSE events */ }
+  }
+  throw new Error('MCP_RESPONSE_INVALID');
+}
+
+async function inspectMcpEndpoint(rawUrl:string):Promise<ImportedOperationDraft[]> {
+  const mcpHeaders={'content-type':'application/json','accept':'application/json, text/event-stream'};
+  const initialize={jsonrpc:'2.0',id:'agentplace-init',method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'AgentPlace Capability Studio',version:'0.15.0'}}};
+  const first=await safeFetchText(rawUrl,{method:'POST',headers:mcpHeaders,body:JSON.stringify(initialize)});
+  const sessionId=first.headers.get('mcp-session-id')??undefined;
+  const initPayload=parseMcpJsonRpcPayload(first.text); if(initPayload.error)throw new Error('MCP_INITIALIZE_FAILED');
+  await safeFetchText(first.url,{method:'POST',headers:{...mcpHeaders,...(sessionId?{'mcp-session-id':sessionId}:{})},body:JSON.stringify({jsonrpc:'2.0',method:'notifications/initialized',params:{}})});
+  const list={jsonrpc:'2.0',id:'agentplace-tools',method:'tools/list',params:{}};
+  const second=await safeFetchText(first.url,{method:'POST',headers:{...mcpHeaders,...(sessionId?{'mcp-session-id':sessionId}:{})},body:JSON.stringify(list)});
+  const payload=parseMcpJsonRpcPayload(second.text) as {result?:{tools?:unknown[]};error?:unknown}; if(payload.error)throw new Error('MCP_TOOLS_LIST_FAILED');
+  const tools=Array.isArray(payload.result?.tools)?payload.result!.tools:[];
+  return tools.slice(0,128).flatMap((tool):ImportedOperationDraft[]=>{
+    if(!tool||typeof tool!=='object'||Array.isArray(tool))return[];const row=tool as Record<string,unknown>;const name=typeof row.name==='string'?row.name:'';if(!name)return[];
+    const description=typeof row.description==='string'?row.description:`MCP tool ${name}`;
+    const inputSchema=optionalRecord(row.inputSchema);
+    return [{original:name,classification:'execution-sensitive',description,...(inputSchema?{inputSchema}:{})}];
+  });
+}
+
 function scopedId(prefix: string, ownerUserId: string, objectId: string): string {
   const digest = createHash('sha256').update(`${ownerUserId}:${objectId}`).digest('hex').slice(0, 24);
   return `${prefix}_${digest}`;
@@ -596,6 +686,178 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     }
   }
 
+
+  if (url.pathname === '/api/v1/discover' && req.method === 'GET') {
+    const supply = await listDiscoverSupply();
+    writeJson(res, 200, { supply });
+    return;
+  }
+
+  const discoverTryMatch = url.pathname.match(/^\/api\/v1\/discover\/workers\/([^/]+)\/try$/);
+  if (discoverTryMatch && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const workerId = decodeURIComponent(discoverTryMatch[1] ?? '');
+    const body = asRecord(await readJson(req));
+    const prompt = requiredString(body.prompt, 'INVALID_TRY_PROMPT', 4000);
+    const catalog = await listWorkerCatalog();
+    const worker = catalog.find((item) => item.id === workerId);
+    if (!worker) return writeJson(res, 404, { error: 'not_found', message: 'Worker is not publicly available.', requestId });
+    const jobId = `try_${randomUUID()}`;
+    const conversationId = scopedId('tryconv', identity.appUserId, jobId);
+    const job = await createJob(identity.appUserId, {
+      id: jobId,
+      title: `Try ${worker.name}`,
+      goal: prompt,
+      status: 'PLANNED',
+      environment: deploymentJobEnvironment(),
+      kind: 'research',
+      originType: 'agentplace',
+      leadWorkerId: worker.id,
+      supportingWorkerIds: [],
+      currentStage: 'Sandbox research queued',
+      stages: [
+        { id: 'plan', label: 'Plan', ordinal: 0, status: 'active' },
+        { id: 'research', label: 'Research', ordinal: 1, status: 'pending' },
+        { id: 'result', label: 'Result', ordinal: 2, status: 'pending' },
+      ],
+    });
+    await createConversation(identity.appUserId, {
+      id: conversationId, scope: 'job', jobId, title: `Try · ${worker.name}`, titleSource: 'auto', pinned: false, archived: false,
+      createdAt: new Date().toISOString(), messages: [],
+    });
+    await setJobConversation(identity.appUserId, jobId, conversationId);
+    const task = await enqueueIntelligenceTask({ ownerUserId: identity.appUserId, conversationId, inputSource: 'SYSTEM', inputText: prompt, scope: 'job', workerId: worker.id, jobId });
+    writeJson(res, 202, { job: { ...job, jobConversationId: conversationId }, task });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/creator/capabilities/inspect' && req.method === 'POST') {
+    await requireIdentity(req);
+    const body=asRecord(await readJson(req));
+    if(body.importType!=='openapi'&&body.importType!=='mcp')throw new Error('INVALID_IMPORT_TYPE');
+    const importType=body.importType;
+    const sourceText=body.sourceText===undefined?undefined:requiredString(body.sourceText,'INVALID_IMPORT_SOURCE',1024*1024);
+    const endpoint=body.endpoint===undefined?undefined:requiredString(body.endpoint,'INVALID_IMPORT_ENDPOINT',2000);
+    let operations:ImportedOperationDraft[]; let resolvedEndpoint=endpoint;
+    if(importType==='openapi'){
+      let text=sourceText;
+      if(!text){if(!endpoint)throw new Error('OPENAPI_SOURCE_REQUIRED');const fetched=await safeFetchText(endpoint);text=fetched.text;resolvedEndpoint=fetched.url;}
+      operations=parseOpenApiOperations(text);
+    } else {
+      if(!endpoint)throw new Error('MCP_ENDPOINT_REQUIRED');operations=await inspectMcpEndpoint(endpoint);
+    }
+    writeJson(res,200,{operations,endpoint:resolvedEndpoint??null,notice:'Imported operations remain creator-scoped and are not trusted production routes.'});
+    return;
+  }
+
+  if (url.pathname === '/api/v1/creator/capabilities/sandbox-test' && req.method === 'POST') {
+    await requireIdentity(req);
+    const body=asRecord(await readJson(req));
+    if(body.importType!=='openapi') return writeJson(res,400,{error:'unsupported',message:'M12 sandbox invocation is limited to safe read-only OpenAPI GET operations.',requestId});
+    const endpoint=requiredString(body.endpoint,'INVALID_IMPORT_ENDPOINT',2000);
+    const operation=requiredString(body.operation,'INVALID_IMPORT_OPERATION',600);
+    const match=operation.match(/^GET\s+(\/[^\s]*)$/i);
+    if(!match||match[1]!.includes('{')) return writeJson(res,400,{error:'unsupported',message:'Only parameter-free read-only GET operations can be invoked in the M12 sandbox.',requestId});
+    const specUrl=assertSafeRemoteHttpsUrl(endpoint);
+    const target=new URL(match[1]!,specUrl.origin);
+    if(target.origin!==specUrl.origin) throw new Error('IMPORT_SANDBOX_ORIGIN_MISMATCH');
+    const fetched=await safeFetchText(target.toString(),{method:'GET'});
+    writeJson(res,200,{status:fetched.status,url:fetched.url,preview:fetched.text.slice(0,2000),notice:'Read-only creator sandbox request completed. This capability remains isolated from trusted AgentPlace routing.'});
+    return;
+  }
+
+  if (url.pathname === '/api/v1/creator/assets' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    writeJson(res, 200, { assets: await listCreatorAssets(identity.appUserId) });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/creator/workers' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const asset = await createCreatorWorker(identity.appUserId, identity.name, body.draft as unknown as CreatorWorkerDraft);
+    writeJson(res, 201, { asset });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/creator/workflows' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const asset = await createCreatorWorkflow(identity.appUserId, body.draft as unknown as CreatorWorkflowDraft);
+    writeJson(res, 201, { asset });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/creator/capabilities' && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const asset = await createCapabilityImport(identity.appUserId, body.draft as unknown as CapabilityImportDraft);
+    writeJson(res, 201, { asset });
+    return;
+  }
+
+  const creatorWorkerTestMatch = url.pathname.match(/^\/api\/v1\/creator\/workers\/([^/]+)\/test$/);
+  if (creatorWorkerTestMatch && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const workerId = decodeURIComponent(creatorWorkerTestMatch[1] ?? '');
+    const assets = await listCreatorAssets(identity.appUserId);
+    const asset = assets.find((item) => item.type === 'worker' && item.id === workerId);
+    if (!asset?.worker) return writeJson(res, 404, { error: 'not_found', message: 'Creator Worker not found.', requestId });
+    const body = asRecord(await readJson(req));
+    const scenario = requiredString(body.scenario, 'INVALID_CREATOR_TEST_SCENARIO', 4000);
+    const expected = body.expected === undefined ? 'Bounded evidence-backed behavior that respects the Job Contract.' : requiredString(body.expected, 'INVALID_CREATOR_TEST_EXPECTED', 2000);
+    const jobId = `ctest_${randomUUID()}`;
+    const conversationId = scopedId('ctestconv', identity.appUserId, jobId);
+    const job = await createJob(identity.appUserId, {
+      id: jobId, title: `Test · ${asset.name}`, goal: scenario, status: 'PLANNED', environment: deploymentJobEnvironment(), kind: 'research', originType: 'agentplace', leadWorkerId: workerId, supportingWorkerIds: [], currentStage: 'Creator test queued',
+      stages: [{id:'plan',label:'Plan',ordinal:0,status:'active'},{id:'research',label:'Research',ordinal:1,status:'pending'},{id:'result',label:'Result',ordinal:2,status:'pending'}],
+      ...(asset.versionId?{workerVersionOverrides:{[workerId]:asset.versionId}}:{}),
+    });
+    await createConversation(identity.appUserId,{id:conversationId,scope:'job',jobId,title:`Test · ${asset.name}`,titleSource:'auto',pinned:false,archived:false,createdAt:new Date().toISOString(),messages:[]});
+    await setJobConversation(identity.appUserId,jobId,conversationId);
+    const task=await enqueueIntelligenceTask({ownerUserId:identity.appUserId,conversationId,inputSource:'SYSTEM',inputText:`Creator acceptance scenario: ${scenario}
+Expected behavior: ${expected}
+This is a sandbox creator test. Do not claim that passing self-certifies safety.`,scope:'job',workerId,jobId});
+    writeJson(res,202,{job:{...job,jobConversationId:conversationId},task});
+    return;
+  }
+
+  const creatorWorkflowVersionMatch = url.pathname.match(/^\/api\/v1\/creator\/workflows\/([^/]+)\/versions$/);
+  if (creatorWorkflowVersionMatch && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const asset = await createNewWorkflowVersion(identity.appUserId, decodeURIComponent(creatorWorkflowVersionMatch[1] ?? ''), body.draft as unknown as CreatorWorkflowDraft);
+    writeJson(res, 201, { asset });
+    return;
+  }
+
+  const creatorWorkerVersionMatch = url.pathname.match(/^\/api\/v1\/creator\/workers\/([^/]+)\/versions$/);
+  if (creatorWorkerVersionMatch && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    const asset = await createNewWorkerVersion(identity.appUserId, decodeURIComponent(creatorWorkerVersionMatch[1] ?? ''), body.draft as unknown as CreatorWorkerDraft);
+    writeJson(res, 201, { asset });
+    return;
+  }
+
+  const creatorWorkerForkMatch = url.pathname.match(/^\/api\/v1\/creator\/workers\/([^/]+)\/fork$/);
+  if (creatorWorkerForkMatch && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const asset = await forkWorker(identity.appUserId, identity.name, decodeURIComponent(creatorWorkerForkMatch[1] ?? ''));
+    writeJson(res, 201, { asset });
+    return;
+  }
+
+  const creatorPublishMatch = url.pathname.match(/^\/api\/v1\/creator\/(worker|workflow|capability)s\/([^/]+)\/publish$/);
+  if (creatorPublishMatch && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    if (body.visibility !== 'private' && body.visibility !== 'unlisted' && body.visibility !== 'published') throw new Error('INVALID_PUBLICATION_VISIBILITY');
+    await publishCreatorAsset(identity.appUserId, identity.name, creatorPublishMatch[1] as 'worker'|'workflow'|'capability', decodeURIComponent(creatorPublishMatch[2] ?? ''), body.visibility);
+    writeJson(res, 200, { ok: true });
+    return;
+  }
+
   if (url.pathname === '/api/v1/capabilities' && req.method === 'GET') {
     await requireIdentity(req);
     const [capabilities, implementations] = await Promise.all([listCanonicalCapabilities(), listCapabilityImplementations()]);
@@ -728,6 +990,16 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     });
     worker = (await updateUserWorker(identity.appUserId, worker.id, { primaryConversationId: conversationId })) ?? worker;
     writeJson(res, 201, { worker });
+    return;
+  }
+
+  const workerUpdateVersionMatch = url.pathname.match(/^\/api\/v1\/workers\/([^/]+)\/update-version$/);
+  if (workerUpdateVersionMatch && req.method === 'POST') {
+    const identity = await requireIdentity(req);
+    const workerId = decodeURIComponent(workerUpdateVersionMatch[1] ?? '');
+    const worker = await updateInstalledWorkerVersion(identity.appUserId, workerId);
+    if (!worker) return writeJson(res, 404, { error: 'not_found', message: 'Installed Worker not found or no eligible version is available.', requestId });
+    writeJson(res, 200, { worker });
     return;
   }
 

@@ -1,22 +1,14 @@
 import { useState } from 'react';
-import { useAppState, useDispatch, uid } from '../state/AppContext';
-import type { CreatorAsset, CapabilityDraftData, CapabilityOperation } from '../state/types';
+import { useAppState, useDispatch } from '../state/AppContext';
+import { createCreatorCapability, inspectCreatorCapability, publishCreatorAsset, testCreatorCapabilityRead } from '../platform/creatorApi';
+import type { CapabilityDraftData, CapabilityOperation } from '../state/types';
 
 type ImportType = 'mcp' | 'openapi';
 type StudioStep = 'choose' | 'configure' | 'discovered' | 'tested' | 'saved';
 
-const MCP_DISCOVERED_OPS: CapabilityOperation[] = [
-  { original: 'get_token_market_data', canonical: 'token.market.read', classification: 'read', description: 'Returns price, volume, and market cap for a given token.' },
-  { original: 'get_wallet_activity', canonical: 'wallet.activity.read', classification: 'read', description: 'Returns normalised transaction history for any address.' },
-  { original: 'prepare_swap', canonical: 'swap.prepare', classification: 'execution-sensitive', description: 'Prepares a structured unsigned swap proposal. Does not execute.' },
-];
 
-const OPENAPI_DISCOVERED_OPS: CapabilityOperation[] = [
-  { original: 'GET /markets', canonical: 'markets.read', classification: 'read', description: 'Returns current market data for tracked assets.' },
-  { original: 'GET /wallets/{address}/activity', canonical: 'wallet.activity.read', classification: 'read', description: 'Returns activity for any watched address.' },
-  { original: 'POST /quote', canonical: 'quote.prepare', classification: 'prepare', description: 'Prepares a quote for a swap or bridge operation.' },
-  { original: 'POST /prepare', canonical: 'action.prepare', classification: 'execution-sensitive', description: 'Prepares an unsigned action. Does not submit to network.' },
-];
+
+
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
   read: 'text-accent border-accent/20 bg-accent-dim/10',
@@ -58,28 +50,36 @@ export function CapabilityStudio() {
   const [inspecting, setInspecting] = useState(false);
   const [testPassed, setTestPassed] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [sourceText,setSourceText]=useState('');
+  const [error,setError]=useState<string|null>(null);
+  const [notice,setNotice]=useState<string|null>(null);
 
   function close() {
     dispatch({ type: 'SET_CREATOR_SURFACE', surface: null });
   }
 
-  function handleInspect() {
-    setInspecting(true);
-    setTimeout(() => {
-      const discovered = importType === 'mcp' ? MCP_DISCOVERED_OPS : OPENAPI_DISCOVERED_OPS;
-      setOps(discovered);
-      setStep('discovered');
-      setInspecting(false);
-    }, 1400);
+  async function handleInspect() {
+    if(!importType)return;
+    setInspecting(true);setError(null);setNotice(null);
+    try{
+      const result=await inspectCreatorCapability({importType,...(importType==='mcp'?(endpoint?{endpoint}:{}):(openapiUrl?{endpoint:openapiUrl}:{})),...(sourceText?{sourceText}:{})});
+      setOps(result.operations);if(result.endpoint){if(importType==='mcp')setEndpoint(result.endpoint);else setOpenapiUrl(result.endpoint);}setNotice(result.notice);setStep('discovered');
+    }catch(value){setError(value instanceof Error?value.message:'Inspection failed');}
+    finally{setInspecting(false);}
   }
 
-  function handleTest() {
-    setTesting(true);
-    setTimeout(() => {
-      setTesting(false);
-      setTestPassed(true);
-      setStep('tested');
-    }, 1600);
+  async function handleTest() {
+    setTesting(true);setError(null);
+    try {
+      const safeRead=ops.find((op)=>op.classification==='read' && /^GET\s+\/[^{}\s]*$/i.test(op.original));
+      if(importType==='openapi' && openapiUrl && safeRead){
+        const result=await testCreatorCapabilityRead({importType:'openapi',endpoint:openapiUrl,operation:safeRead.original});
+        setNotice(`${result.notice} HTTP ${result.status}.`);setTestPassed(true);setStep('tested');return;
+      }
+      setTestPassed(false);setStep('tested');
+      setError(importType==='mcp'?'MCP tools remain execution-sensitive in M12 and are discovery-only until a stronger runtime trust gate exists.':'No parameter-free read-only GET operation is eligible for live sandbox invocation. The import can still be saved as metadata.');
+    } catch(value){setTestPassed(false);setError(value instanceof Error?value.message:'Sandbox test failed');}
+    finally{setTesting(false);}
   }
 
   function handleSavePrivately() {
@@ -91,34 +91,20 @@ export function CapabilityStudio() {
           feature: 'save your capability privately',
           onComplete: (user) => {
             dispatch({ type: 'SET_USER', user });
-            doSave();
+            void doSave();
           },
         },
       });
     } else {
-      doSave();
+      void doSave();
     }
   }
 
-  function doSave() {
-    const draft: CapabilityDraftData = {
-      name: importType === 'mcp' ? (serverName || 'MCP Capability') : 'OpenAPI Capability',
-      importType: importType!,
-      endpoint: importType === 'mcp' ? endpoint : openapiUrl,
-      operations: ops,
-      version: '1.0.0',
-      pricing: { type: 'free' },
-    };
-    const asset: CreatorAsset = {
-      id: uid(),
-      type: 'capability',
-      visibility: 'private',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      capabilityDraft: draft,
-    };
-    dispatch({ type: 'ADD_CREATOR_ASSET', asset });
-    setStep('saved');
+  async function doSave() {
+    if(!importType)return;
+    const draft:CapabilityDraftData={name:importType==='mcp'?(serverName||'MCP Capability'):'OpenAPI Capability',importType,...((importType==='mcp'?endpoint:openapiUrl)?{endpoint:importType==='mcp'?endpoint:openapiUrl}:{}),operations:ops,version:'1.0.0',pricing:{type:'free'}};
+    try{const asset=await createCreatorCapability(draft);await publishCreatorAsset('capability',asset.id,'private');dispatch({type:'ADD_CREATOR_ASSET',asset:{...asset,visibility:'private'}});setStep('saved');}
+    catch(value){setError(value instanceof Error?value.message:'Could not save capability');}
   }
 
   return (
@@ -136,6 +122,7 @@ export function CapabilityStudio() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-6 max-w-2xl">
+        {error&&step!=='discovered'&&<p className="text-xs text-danger mb-3">{error}</p>}
         {step === 'choose' && (
           <div>
             <p className="text-sm font-medium text-text mb-1">What do you want to connect?</p>
@@ -187,18 +174,17 @@ export function CapabilityStudio() {
               </div>
               <div>
                 <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1">MCP endpoint</label>
-                <input className="w-full bg-panel-raised border border-border rounded-lg px-3 py-2 text-sm text-text font-mono focus:outline-none focus:border-primary/50" placeholder="mcp://provider.example.com/v1" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} />
+                <input className="w-full bg-panel-raised border border-border rounded-lg px-3 py-2 text-sm text-text font-mono focus:outline-none focus:border-primary/50" placeholder="https://provider.example.com/mcp" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} />
               </div>
               <div>
                 <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1">Authentication</label>
-                <select className="w-full bg-panel-raised border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none">
-                  <option>None (public)</option>
-                  <option>API key</option>
-                  <option>OAuth2</option>
+                <select disabled className="w-full bg-panel-raised border border-border rounded-lg px-3 py-2 text-sm text-text-muted opacity-80">
+                  <option>None (public endpoint only in M12)</option>
                 </select>
+                <p className="text-[10px] text-text-dim mt-1">Authenticated imports can be described, but AgentPlace will not ask for or persist provider secrets until the credential-vault security milestone.</p>
               </div>
             </div>
-            <p className="text-xs text-text-dim">No real network call is made in this prototype. Discovery is illustrative.</p>
+            <p className="text-xs text-text-dim">AgentPlace performs server-side inspection. Remote URLs must use public HTTPS; private-network destinations and embedded credentials are rejected.</p>
             <button onClick={handleInspect} disabled={inspecting} className="w-full py-2.5 bg-primary text-white text-sm rounded-lg font-medium hover:bg-primary-hover disabled:opacity-60 transition-colors">
               {inspecting ? 'Inspecting…' : 'Inspect server'}
             </button>
@@ -221,10 +207,10 @@ export function CapabilityStudio() {
               <label className="block border border-dashed border-border rounded-lg px-5 py-6 text-center cursor-pointer hover:border-primary/30 transition-colors">
                 <p className="text-xs text-text-muted mb-1">Upload specification</p>
                 <p className="text-[10px] text-text-dim">JSON or YAML</p>
-                <input type="file" className="hidden" accept=".json,.yaml,.yml" />
+                <input type="file" className="hidden" accept=".json,.yaml,.yml" onChange={(e)=>{const file=e.target.files?.[0];if(file)void file.text().then(setSourceText);}} />
               </label>
             </div>
-            <p className="text-xs text-text-dim">No real network call is made in this prototype. Discovery is illustrative.</p>
+            <p className="text-xs text-text-dim">AgentPlace performs server-side inspection. Remote URLs must use public HTTPS; private-network destinations and embedded credentials are rejected.</p>
             <button onClick={handleInspect} disabled={inspecting} className="w-full py-2.5 bg-primary text-white text-sm rounded-lg font-medium hover:bg-primary-hover disabled:opacity-60 transition-colors">
               {inspecting ? 'Inspecting…' : 'Inspect specification'}
             </button>
@@ -238,6 +224,8 @@ export function CapabilityStudio() {
               <span className="text-xs text-text-muted font-mono">{ops.length} operations</span>
             </div>
             <p className="text-xs text-text-dim mb-2">Operations are reviewed and normalised into canonical AgentPlace capabilities. Imported operations are not inherently trusted.</p>
+            {notice&&<p className="text-xs text-text-muted">{notice}</p>}
+            {error&&<p className="text-xs text-danger">{error}</p>}
             <div className="space-y-2">
               {ops.map((op) => <OpRow key={op.original} op={op} />)}
             </div>
@@ -251,16 +239,16 @@ export function CapabilityStudio() {
             {step === 'tested' && (
               <div className="space-y-3">
                 <div className="bg-accent-dim/20 border border-accent/20 rounded-lg px-4 py-3">
-                  <p className="text-sm font-medium text-accent">Tests passed</p>
-                  <p className="text-xs text-text-sub mt-1">Read operation returned expected normalised data · Pass</p>
-                  <p className="text-xs text-text-sub">Prepare operation produced a structured unsigned action · Pass</p>
+                  <p className="text-sm font-medium text-accent">Inspection complete</p>
+                  <p className="text-xs text-text-sub mt-1">Read-only operations may be saved for creator-scoped sandbox use.</p>
+                  <p className="text-xs text-text-sub">Prepare/execution-sensitive operations remain isolated from trusted production routing.</p>
                 </div>
                 <div className="flex gap-3">
                   <button onClick={handleSavePrivately} className="flex-1 py-2.5 bg-primary text-white text-sm rounded-lg font-medium hover:bg-primary-hover transition-colors">
                     Use privately
                   </button>
-                  <button className="flex-1 py-2.5 border border-border text-text-sub text-sm rounded-lg hover:bg-panel-raised transition-colors">
-                    Publish for builders
+                  <button disabled title="Save privately first, then publish from My creations." className="flex-1 py-2.5 border border-border text-text-dim text-sm rounded-lg opacity-60 cursor-not-allowed">
+                    Publish after saving
                   </button>
                 </div>
               </div>

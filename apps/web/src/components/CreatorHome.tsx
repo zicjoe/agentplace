@@ -1,8 +1,13 @@
 import { useState } from 'react';
 import { useAppState, useDispatch } from '../state/AppContext';
+import { publishCreatorAsset } from '../platform/creatorApi';
 import type { CreatorAsset } from '../state/types';
 
 type CreatorTab = 'my-creations' | 'performance' | 'earnings' | 'publishing';
+
+function typeLabelForAsset(asset: CreatorAsset): string {
+  return asset.type === 'worker' ? 'Worker' : asset.type === 'workflow' ? 'Workflow' : 'Capability';
+}
 
 function AssetRow({ asset }: { asset: CreatorAsset }) {
   const dispatch = useDispatch();
@@ -10,7 +15,7 @@ function AssetRow({ asset }: { asset: CreatorAsset }) {
   const label = asset.workerDraft?.name ?? asset.workflowDraft?.name ?? asset.capabilityDraft?.name ?? 'Unnamed';
   const typeLabel = asset.type === 'worker' ? 'Worker' : asset.type === 'workflow' ? 'Workflow' : 'Capability';
   const visLabel = asset.visibility === 'private' ? 'Private' : asset.visibility === 'public' ? 'Public' : asset.visibility;
-  const version = '0.1';
+  const version = asset.version ?? '0.1.0';
 
   function openAsset() {
     dispatch({ type: 'SET_ACTIVE_CREATION', id: asset.id });
@@ -84,71 +89,25 @@ function PerformanceTab({ assets }: { assets: CreatorAsset[] }) {
 }
 
 function EarningsTab({ assets }: { assets: CreatorAsset[] }) {
-  const state = useAppState();
   const dispatch = useDispatch();
-  const earnings = state.creatorEarnings ?? [];
-  const publicAssets = assets.filter((a) => a.visibility === 'public');
-  const totalEarned = earnings.reduce((s, e) => s + e.creatorAmountUsd, 0);
-
+  const publicAssets = assets.filter((asset) => asset.visibility === 'public');
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: 'Total earned', value: `$${totalEarned.toFixed(2)}` },
-          { label: 'Pending payout', value: `$${earnings.filter((e) => e.status === 'pending').reduce((s, e) => s + e.creatorAmountUsd, 0).toFixed(2)}` },
-          { label: 'Paid out', value: `$${earnings.filter((e) => e.status === 'paid').reduce((s, e) => s + e.creatorAmountUsd, 0).toFixed(2)}` },
-        ].map((item) => (
-          <div key={item.label} className="border border-border rounded-lg bg-panel px-4 py-3">
-            <p className="text-[10px] font-mono text-text-dim mb-1">{item.label}</p>
-            <p className="text-base font-semibold text-text">{item.value}</p>
-          </div>
-        ))}
+      <div className="border border-border rounded-lg bg-panel px-5 py-5">
+        <p className="text-sm font-semibold text-text">Creator earnings are not enabled yet</p>
+        <p className="text-xs text-text-muted mt-1 leading-relaxed">M12 makes creator assets durable and discoverable. Paid acquisition, revenue attribution and payouts arrive with Billing + Security Completion, so AgentPlace will not display fabricated earnings.</p>
       </div>
-
-      {earnings.length > 0 && (
-        <div>
-          <p className="text-xs font-mono uppercase tracking-wider text-text-dim mb-2">Earning ledger</p>
-          <div className="border border-border rounded-lg bg-panel divide-y divide-border-dim">
-            {earnings.map((e) => (
-              <div key={e.id} className="px-4 py-3 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-medium text-text">{e.assetName}</p>
-                  <p className="text-[10px] text-text-muted">{new Date(e.timestamp).toLocaleDateString()} · {Math.round(e.platformShareUsd / e.grossAmountUsd * 100)}% platform share</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-semibold text-text">${e.creatorAmountUsd.toFixed(2)}</p>
-                  <span className={`text-[10px] ${e.status === 'paid' ? 'text-accent' : 'text-warn'}`}>{e.status}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+      {publicAssets.length > 0 ? (
+        <div className="border border-border-dim rounded-lg bg-panel px-5 py-4">
+          <p className="text-xs text-text-sub">{publicAssets.length} public asset{publicAssets.length === 1 ? '' : 's'} in Discover.</p>
+          <p className="text-xs text-text-muted mt-1">Public visibility does not imply monetization or payout eligibility.</p>
         </div>
-      )}
-
-      {publicAssets.length === 0 && earnings.length === 0 && (
+      ) : (
         <div className="text-center py-8">
-          <p className="text-sm text-text-muted">No public assets yet. Publish a Worker to start earning.</p>
-          <button
-            onClick={() => dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'agent-builder' })}
-            className="mt-3 px-4 py-2 text-xs bg-primary text-white rounded hover:opacity-90 transition-opacity"
-          >
-            Create a Worker
-          </button>
+          <p className="text-sm text-text-muted">No public assets yet.</p>
+          <button onClick={() => dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'agent-builder' })} className="mt-3 px-4 py-2 text-xs bg-primary text-white rounded hover:opacity-90 transition-opacity">Create a Worker</button>
         </div>
       )}
-
-      {assets.filter((a) => a.visibility !== 'public').map((asset) => {
-        const label = asset.workerDraft?.name ?? asset.workflowDraft?.name ?? 'Unnamed';
-        return (
-          <div key={asset.id} className="border border-border-dim rounded-lg bg-panel px-5 py-4 opacity-60">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-text-sub">{label}</p>
-              <span className="text-xs text-text-dim">Private · $0 earnings</span>
-            </div>
-            <p className="text-xs text-text-muted mt-1">Publish publicly to enable marketplace earnings.</p>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -158,45 +117,21 @@ function PublishingTab({ assets }: { assets: CreatorAsset[] }) {
   const state = useAppState();
   const [reviewing, setReviewing] = useState<string | null>(null);
 
-  function handlePublish(asset: CreatorAsset) {
-    if (!asset.workerDraft) return;
-    const supplyId = 'ds-whale-meme-pub';
-    const existing = (state.discoverSupply ?? []).find((s) => s.id === supplyId);
-    if (!existing) {
-      dispatch({
-        type: 'ADD_DISCOVER_SUPPLY_ITEM',
-        item: {
-          id: supplyId,
-          type: 'worker',
-          name: asset.workerDraft.name,
-          tagline: 'Finds meme opportunities backed by credible whale wallet behaviour',
-          description: asset.workerDraft.jobContract,
-          whatItDoes: asset.workerDraft.responsibilities,
-          whatItDoesNot: asset.workerDraft.antiJobs,
-          creatorId: state.user?.id ?? 'u1',
-          creatorName: state.user?.name ?? 'You',
-          isOriginal: false,
-          category: 'Research & Discovery',
-          networks: asset.workerDraft.networks,
-          pricing: asset.workerDraft.pricing,
-          visibility: 'public',
-          authorityDefault: asset.workerDraft.authorityDefault,
-          sponsored: false,
-          lastUpdated: new Date(),
-          version: '0.1.0',
-          creatorAssetId: asset.id,
-        },
-      });
-    }
-    dispatch({ type: 'UPDATE_CREATOR_ASSET', assetId: asset.id, updates: { visibility: 'public', publishedSupplyItemId: supplyId } });
-    setReviewing(null);
+  async function handlePublish(asset: CreatorAsset) {
+    try{
+      await publishCreatorAsset(asset.type,asset.id,'published');
+      dispatch({type:'UPDATE_CREATOR_ASSET',assetId:asset.id,updates:{visibility:'public'}});
+      setReviewing(null);
+    }catch(error){console.error('Creator publication failed',error);}
   }
 
   return (
     <div className="space-y-4">
       {assets.map((asset) => {
-        const label = asset.workerDraft?.name ?? 'Unnamed';
+        const label = asset.workerDraft?.name ?? asset.workflowDraft?.name ?? asset.capabilityDraft?.name ?? 'Unnamed';
         const draft = asset.workerDraft;
+        const workflow = asset.workflowDraft;
+        const capability = asset.capabilityDraft;
         const isPublic = asset.visibility === 'public';
 
         return (
@@ -215,27 +150,26 @@ function PublishingTab({ assets }: { assets: CreatorAsset[] }) {
                 Publish publicly
               </button>
             )}
-            {reviewing === asset.id && draft && (
+            {reviewing === asset.id && (draft || workflow || capability) && (
               <div className="space-y-3">
                 <p className="text-xs font-medium text-text-sub">Review before publishing:</p>
                 {[
-                  ['Listing description', draft.jobContract],
+                  ['Asset type', typeLabelForAsset(asset)],
+                  ['Description', draft?.jobContract ?? workflow?.purpose ?? capability?.operations[0]?.description ?? 'Creator asset'],
                   ['Creator', state.user?.name ?? 'You'],
-                  ['Networks', draft.networks.join(', ') || '—'],
-                  ['Authority default', draft.authorityDefault],
-                  ['Pricing', draft.pricing.type === 'free' ? 'Free' : draft.pricing.label ?? 'Paid'],
-                  ['Version', '0.1.0'],
-                  ['Test status', draft.testResults.filter((r) => r.passed).length + '/' + draft.testResults.length + ' passed'],
+                  ['Authority posture', draft?.authorityDefault ?? (asset.type === 'capability' ? 'Imported capability · no wallet authority' : 'Workflow does not create authority')],
+                  ['Pricing', (draft?.pricing ?? workflow?.pricing ?? capability?.pricing)?.type === 'free' ? 'Free' : (draft?.pricing ?? workflow?.pricing ?? capability?.pricing)?.label ?? 'Paid'],
+                  ['Version', asset.version ?? '0.1.0'],
                 ].map(([l, v]) => (
                   <div key={l} className="flex gap-3 text-xs">
                     <span className="text-text-dim w-32 shrink-0">{l}</span>
                     <span className="text-text-sub">{v}</span>
                   </div>
                 ))}
-                <p className="text-xs text-text-dim">Publishing does not grant any end-user wallet authority.</p>
+                <p className="text-xs text-text-dim">Publishing changes visibility only. It does not grant end-user wallet authority or promote imported capabilities into trusted production routing.</p>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handlePublish(asset)}
+                    onClick={() => void handlePublish(asset)}
                     className="px-4 py-2 bg-primary text-white text-xs rounded font-medium hover:bg-primary-hover transition-colors"
                   >
                     Publish

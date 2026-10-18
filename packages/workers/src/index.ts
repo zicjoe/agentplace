@@ -71,27 +71,35 @@ function durable(row: UserWorkerRow): DurableUserWorker {
 const catalogSelect = `d.id,d.slug,d.origin,d.trust_status,d.creator_name,d.name,d.tagline,d.responsibility,d.category,
   v.id AS version_id,v.version,v.default_autonomy,c.mission,c.responsibilities,c.anti_jobs,c.expected_outputs,c.success_conditions,
   c.default_approval_boundary,c.default_capability_requirements`;
-const catalogFrom = `FROM worker_definition d
+const latestCatalogFrom = `FROM worker_definition d
   JOIN LATERAL (SELECT * FROM worker_version wv WHERE wv.worker_definition_id=d.id AND wv.retired_at IS NULL ORDER BY wv.released_at DESC LIMIT 1) v ON true
   JOIN job_contract c ON c.worker_version_id=v.id`;
-const catalogSql = `SELECT ${catalogSelect} ${catalogFrom}`;
+const catalogSql = `SELECT ${catalogSelect} ${latestCatalogFrom}`;
+const installedFrom = `FROM user_worker uw
+  JOIN worker_definition d ON d.id=uw.worker_definition_id
+  JOIN worker_version v ON v.id=uw.worker_version_id AND v.worker_definition_id=d.id
+  JOIN job_contract c ON c.worker_version_id=v.id`;
 
 export async function listWorkerCatalog(): Promise<WorkerCatalogItem[]> {
-  const result = await getDatabasePool().query<CatalogRow>(`${catalogSql} WHERE d.publication_status='published' ORDER BY (d.origin='agentplace-original') DESC,d.name`);
+  const result = await getDatabasePool().query<CatalogRow>(`${catalogSql} WHERE d.publication_status='published' AND d.trust_status <> 'quarantined' ORDER BY (d.origin='agentplace-original') DESC,d.name`);
+  return result.rows.map(catalog);
+}
+
+export async function getWorkerCatalogVersions(versionIds:string[]):Promise<WorkerCatalogItem[]> {
+  if(versionIds.length===0)return [];
+  const result=await getDatabasePool().query<CatalogRow>(`SELECT ${catalogSelect} FROM worker_version v JOIN worker_definition d ON d.id=v.worker_definition_id JOIN job_contract c ON c.worker_version_id=v.id WHERE v.id=ANY($1::text[]) AND d.trust_status<>'quarantined'`,[versionIds]);
   return result.rows.map(catalog);
 }
 
 export async function listUserWorkers(ownerUserId: string, includeRemoved = false): Promise<DurableUserWorker[]> {
-  const result = await getDatabasePool().query<UserWorkerRow>(`SELECT ${catalogSelect}, uw.status,uw.current_focus,uw.current_job_id,uw.primary_conversation_id,uw.added_at,uw.updated_at ${catalogFrom}
-    JOIN user_worker uw ON uw.worker_definition_id=d.id AND uw.worker_version_id=v.id
+  const result = await getDatabasePool().query<UserWorkerRow>(`SELECT ${catalogSelect}, uw.status,uw.current_focus,uw.current_job_id,uw.primary_conversation_id,uw.added_at,uw.updated_at ${installedFrom}
     WHERE uw.owner_user_id=$1 AND ($2::boolean OR uw.status <> 'removed')
     ORDER BY uw.added_at DESC`, [ownerUserId, includeRemoved]);
   return result.rows.map((row) => durable({ ...row, status: row.status, current_focus: row.current_focus, current_job_id: row.current_job_id, primary_conversation_id: row.primary_conversation_id, added_at: row.added_at, updated_at: row.updated_at }));
 }
 
 export async function getUserWorker(ownerUserId: string, workerId: string): Promise<DurableUserWorker | null> {
-  const result = await getDatabasePool().query<UserWorkerRow>(`SELECT ${catalogSelect}, uw.status,uw.current_focus,uw.current_job_id,uw.primary_conversation_id,uw.added_at,uw.updated_at ${catalogFrom}
-    JOIN user_worker uw ON uw.worker_definition_id=d.id AND uw.worker_version_id=v.id
+  const result = await getDatabasePool().query<UserWorkerRow>(`SELECT ${catalogSelect}, uw.status,uw.current_focus,uw.current_job_id,uw.primary_conversation_id,uw.added_at,uw.updated_at ${installedFrom}
     WHERE uw.owner_user_id=$1 AND uw.id=$2`, [ownerUserId, workerId]);
   return result.rows[0] ? durable(result.rows[0]) : null;
 }
@@ -100,7 +108,7 @@ export async function installWorker(ownerUserId: string, definitionId: string): 
   const before = await getUserWorker(ownerUserId, definitionId);
   const lookup = await getDatabasePool().query<{version_id:string}>(`SELECT v.id AS version_id FROM worker_definition d
     JOIN LATERAL (SELECT id FROM worker_version WHERE worker_definition_id=d.id AND retired_at IS NULL ORDER BY released_at DESC LIMIT 1) v ON true
-    WHERE d.id=$1 AND d.publication_status='published'`, [definitionId]);
+    WHERE d.id=$1 AND d.trust_status <> 'quarantined' AND (d.publication_status='published' OR (d.creator_user_id=$2 AND d.publication_status IN ('draft','private','unlisted','published')))`, [definitionId, ownerUserId]);
   const versionId = lookup.rows[0]?.version_id;
   if (!versionId) throw new Error('WORKER_DEFINITION_NOT_FOUND');
   await getDatabasePool().query(`INSERT INTO user_worker(owner_user_id,id,worker_definition_id,worker_version_id,status)
@@ -112,6 +120,13 @@ export async function installWorker(ownerUserId: string, definitionId: string): 
     await recordWorkerEvent(ownerUserId, `evt_${randomUUID()}`, definitionId, 'worker.added', `${worker.name} added to your workforce`, 'Standing by · No financial authority', 'standby');
   }
   return worker;
+}
+
+export async function updateInstalledWorkerVersion(ownerUserId:string,workerId:string):Promise<DurableUserWorker|null>{
+  const latest=await getDatabasePool().query<{version_id:string}>(`SELECT v.id AS version_id FROM user_worker uw JOIN worker_definition d ON d.id=uw.worker_definition_id JOIN LATERAL(SELECT id FROM worker_version WHERE worker_definition_id=d.id AND retired_at IS NULL ORDER BY released_at DESC,id DESC LIMIT 1)v ON true WHERE uw.owner_user_id=$1 AND uw.id=$2 AND uw.status<>'removed' AND d.trust_status<>'quarantined'`,[ownerUserId,workerId]);
+  const versionId=latest.rows[0]?.version_id;if(!versionId)return null;
+  await getDatabasePool().query(`UPDATE user_worker SET worker_version_id=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,workerId,versionId]);
+  return getUserWorker(ownerUserId,workerId);
 }
 
 export async function updateUserWorker(ownerUserId: string, workerId: string, patch: {status?: UserWorkerStatus; currentFocus?: string | null; currentJobId?: string | null; primaryConversationId?: string | null}): Promise<DurableUserWorker | null> {

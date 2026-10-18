@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/api",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -34,6 +34,8 @@
     "@agent-place/risk": "workspace:*",
     "@agent-place/verification": "workspace:*",
     "@agent-place/routines": "workspace:*",
-    "@agent-place/notifications": "workspace:*"
+    "@agent-place/notifications": "workspace:*",
+    "@agent-place/marketplace": "workspace:*",
+    "@agent-place/creator-sdk": "workspace:*"
   }
 }

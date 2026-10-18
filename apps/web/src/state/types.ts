@@ -597,6 +597,9 @@ export interface DiscoverSupplyItem {
   workflowCompatibleWorkers?: string[];
   capabilityClassification?: 'read' | 'prepare' | 'execution-sensitive';
   capabilityProvider?: string;
+  readiness?: 'available' | 'limited' | 'preview' | 'unavailable';
+  readinessReason?: string;
+  requiredCapabilities?: string[];
 }
 
 // ── Creator system ────────────────────────────────────────────────────────────
@@ -688,6 +691,7 @@ export interface CreatorAsset {
   id: string;
   type: CreatorAssetType;
   visibility: CreatorAssetVisibility;
+  version?: string;
   createdAt: Date;
   updatedAt: Date;
   workerDraft?: WorkerDraftData;

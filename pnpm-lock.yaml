@@ -17,6 +17,12 @@ importers:
 
   apps/api:
     dependencies:
+      '@agent-place/marketplace':
+        specifier: workspace:*
+        version: link:../../packages/marketplace
+      '@agent-place/creator-sdk':
+        specifier: workspace:*
+        version: link:../../packages/creator-sdk
       '@agent-place/verification':
         specifier: workspace:*
         version: link:../../packages/verification
@@ -239,7 +245,14 @@ importers:
         specifier: workspace:*
         version: link:../telegraph
 
-  packages/marketplace: {}
+  packages/marketplace:
+    dependencies:
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
+      '@agent-place/creator-sdk':
+        specifier: workspace:*
+        version: link:../creator-sdk
 
   packages/models: {}
 

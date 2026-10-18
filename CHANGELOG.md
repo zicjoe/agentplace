@@ -328,3 +328,12 @@
 - Added the missing canonical `asset.transfer` capability so it appears in Mandate/Authority editing.
 - Aligned M9 direct-transfer preparation with the Execution Operator worker contract, which already uses `asset.transfer`.
 - Added migration `0014_transfer_capability_alignment.sql`; no custody/signing behavior changed.
+
+## 0.15.0 — M12 Discover + Creator System (candidate)
+
+- Replaced production Discover fixture truth with durable Worker/Workflow/Capability supply and runtime-readiness projection.
+- Added durable creator Workers, Workflows, imported capabilities, publication lifecycle, lineage and creator test records.
+- Added generic Agent Builder, real sandbox Worker tests, private install, versioned edits and public publication.
+- Added Worker-version pinning through installations and Job assignments.
+- Added real server-side OpenAPI/MCP inspection with SSRF controls and bounded read-only OpenAPI sandbox invocation.
+- Kept creator imports isolated from trusted AgentPlace capability routing, with no new signer, custody, paid acquisition or Mainnet autonomy.

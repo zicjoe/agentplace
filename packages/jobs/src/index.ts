@@ -14,7 +14,8 @@ export interface DurableJob {
   originWorkerId?: string; originConversationId?: string; jobConversationId?: string; originRoutineId?: string; routineRunId?: string; currentStage: string; stages: DurableJobStage[];
   createdAt: string; updatedAt: string;
 }
-export interface JobDraft extends Omit<DurableJob,'leadWorkerName'|'supportingWorkerNames'|'createdAt'|'updatedAt'> { createdAt?: string; updatedAt?: string; }
+export interface JobDraft extends Omit<DurableJob,'leadWorkerName'|'supportingWorkerNames'|'createdAt'|'updatedAt'> { createdAt?: string; updatedAt?: string; workerVersionOverrides?: Record<string,string>; }
+export interface JobWorkerVersionAssignment { workerId:string; workerVersionId:string; role:'lead'|'supporting'; }
 export interface ActivityProjection { id:string; eventType:'job'|'worker-added'|'system'|'authority'|'wallet'|'routine'|'security'|'financial'; title:string; summary:string; effect?:string; workerName?:string; workerId?:string; jobId?:string; actionId?:string; receiptId?:string; routineId?:string; timestamp:string; status:string; }
 
 type JobRow = { id:string; title:string; goal:string; status:JobStatus; environment:JobEnvironment; kind:JobKind; origin_type:JobOriginType; origin_worker_id:string|null; origin_conversation_id:string|null; job_conversation_id:string|null; origin_routine_id:string|null; routine_run_id:string|null; current_stage:string; created_at:Date; updated_at:Date; };
@@ -38,18 +39,34 @@ async function hydrate(ownerUserId:string, rows:JobRow[]):Promise<DurableJob[]> 
 export async function listJobs(ownerUserId:string):Promise<DurableJob[]> { const r=await getDatabasePool().query<JobRow>(`SELECT id,title,goal,status,environment,kind,origin_type,origin_worker_id,origin_conversation_id,job_conversation_id,origin_routine_id,routine_run_id,current_stage,created_at,updated_at FROM job WHERE owner_user_id=$1 ORDER BY updated_at DESC`,[ownerUserId]); return hydrate(ownerUserId,r.rows); }
 export async function getJob(ownerUserId:string,id:string):Promise<DurableJob|null> { const r=await getDatabasePool().query<JobRow>(`SELECT id,title,goal,status,environment,kind,origin_type,origin_worker_id,origin_conversation_id,job_conversation_id,origin_routine_id,routine_run_id,current_stage,created_at,updated_at FROM job WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,id]); const values=await hydrate(ownerUserId,r.rows); return values[0]??null; }
 
+export async function getJobWorkerVersionAssignments(ownerUserId:string,jobId:string):Promise<JobWorkerVersionAssignment[]> {
+  const result=await getDatabasePool().query<{worker_id:string;worker_version_id:string;role:'lead'|'supporting'}>(`SELECT worker_id,worker_version_id,role FROM job_worker WHERE owner_user_id=$1 AND job_id=$2 ORDER BY role DESC,added_at`,[ownerUserId,jobId]);
+  return result.rows.map((row)=>({workerId:row.worker_id,workerVersionId:row.worker_version_id,role:row.role}));
+}
+
 export async function createJob(ownerUserId:string,draft:JobDraft):Promise<DurableJob> {
   if(!draft.leadWorkerId) throw new Error('JOB_LEAD_REQUIRED');
   const team=[draft.leadWorkerId,...draft.supportingWorkerIds];
-  const workerCheck=await getDatabasePool().query<{id:string}>(`SELECT id FROM worker_definition WHERE id=ANY($1::text[]) AND publication_status='published' AND trust_status<>'quarantined'`,[team]);
+  const workerCheck=await getDatabasePool().query<{id:string;version_id:string}>(`SELECT d.id,COALESCE(uw.worker_version_id,latest.id) AS version_id
+    FROM worker_definition d
+    JOIN LATERAL (SELECT id FROM worker_version WHERE worker_definition_id=d.id AND retired_at IS NULL ORDER BY released_at DESC,id DESC LIMIT 1) latest ON true
+    LEFT JOIN user_worker uw ON uw.owner_user_id=$2 AND uw.worker_definition_id=d.id AND uw.status<>'removed'
+    WHERE d.id=ANY($1::text[]) AND d.trust_status<>'quarantined' AND (d.publication_status='published' OR (d.creator_user_id=$2 AND d.publication_status IN ('draft','private','unlisted','published')))`,[team,ownerUserId]);
   if(new Set(workerCheck.rows.map(r=>r.id)).size!==new Set(team).size) throw new Error('JOB_WORKER_NOT_AVAILABLE');
+  const versionByWorker=new Map(workerCheck.rows.map((row)=>[row.id,row.version_id]));
+  for(const [workerId,versionId] of Object.entries(draft.workerVersionOverrides??{})){
+    if(!team.includes(workerId))continue;
+    const exact=await getDatabasePool().query<{id:string}>(`SELECT id FROM worker_version WHERE id=$1 AND worker_definition_id=$2 AND retired_at IS NULL`,[versionId,workerId]);
+    if(!exact.rows[0])throw new Error('JOB_WORKER_VERSION_NOT_AVAILABLE');
+    versionByWorker.set(workerId,versionId);
+  }
   await withTransaction(async db=>{
     await db.query(`INSERT INTO job(id,owner_user_id,title,goal,status,environment,kind,origin_type,origin_worker_id,origin_conversation_id,job_conversation_id,origin_routine_id,routine_run_id,current_stage,created_at,updated_at)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,COALESCE($15::timestamptz,now()),COALESCE($16::timestamptz,now()))
       ON CONFLICT(id) DO NOTHING`,[draft.id,ownerUserId,draft.title,draft.goal,draft.status,draft.environment,draft.kind,draft.originType,draft.originWorkerId??null,draft.originConversationId??null,draft.jobConversationId??null,draft.originRoutineId??null,draft.routineRunId??null,draft.currentStage,draft.createdAt??null,draft.updatedAt??null]);
     const ownership=await db.query<{owner_user_id:string}>(`SELECT owner_user_id FROM job WHERE id=$1`,[draft.id]); if(ownership.rows[0]?.owner_user_id!==ownerUserId) throw new Error('JOB_ID_CONFLICT');
-    await db.query(`INSERT INTO job_worker(job_id,owner_user_id,worker_id,role) VALUES($1,$2,$3,'lead') ON CONFLICT(job_id,worker_id) DO UPDATE SET role='lead'`,[draft.id,ownerUserId,draft.leadWorkerId]);
-    for(const workerId of draft.supportingWorkerIds.filter(id=>id!==draft.leadWorkerId)) await db.query(`INSERT INTO job_worker(job_id,owner_user_id,worker_id,role) VALUES($1,$2,$3,'supporting') ON CONFLICT(job_id,worker_id) DO NOTHING`,[draft.id,ownerUserId,workerId]);
+    await db.query(`INSERT INTO job_worker(job_id,owner_user_id,worker_id,worker_version_id,role) VALUES($1,$2,$3,$4,'lead') ON CONFLICT(job_id,worker_id) DO UPDATE SET role='lead'`,[draft.id,ownerUserId,draft.leadWorkerId,versionByWorker.get(draft.leadWorkerId)!]);
+    for(const workerId of draft.supportingWorkerIds.filter(id=>id!==draft.leadWorkerId)) await db.query(`INSERT INTO job_worker(job_id,owner_user_id,worker_id,worker_version_id,role) VALUES($1,$2,$3,$4,'supporting') ON CONFLICT(job_id,worker_id) DO NOTHING`,[draft.id,ownerUserId,workerId,versionByWorker.get(workerId)!]);
     for(const stage of draft.stages) await db.query(`INSERT INTO job_stage(id,job_id,label,ordinal,status) VALUES($1,$2,$3,$4,$5) ON CONFLICT(job_id,id) DO UPDATE SET label=EXCLUDED.label,ordinal=EXCLUDED.ordinal,status=EXCLUDED.status,updated_at=now()`,[stage.id,draft.id,stage.label,stage.ordinal,stage.status]);
     await db.query(`UPDATE user_worker SET status=CASE WHEN $4 IN ('RUNNING','PREPARING') AND status NOT IN ('paused','blocked','limited','removed') THEN 'working' ELSE status END,current_job_id=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,draft.leadWorkerId,draft.id,draft.status]);
     await db.query(`INSERT INTO domain_event(id,owner_user_id,event_type,object_type,object_id,title,summary,status,worker_id,job_id,origin_type)

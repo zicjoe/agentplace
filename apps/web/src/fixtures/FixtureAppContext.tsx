@@ -51,6 +51,7 @@ import { getAgentPlaceIdentity, getAuthenticatedUser, signOut as signOutAuth } f
 import { addDurableMessage, createDurableConversation, fetchConversations, importGuestConversations, patchDurableConversation, updateDurableMessage } from '../platform/conversationApi';
 import { clearIdentityResume, readIdentityResume } from '../platform/identityResume';
 import { createDurableJob, fetchWorkState, installDurableWorker } from '../platform/workApi';
+import { fetchCreatorAssets, fetchDiscoverSupply } from '../platform/creatorApi';
 import { fetchWalletState } from '../platform/walletApi';
 import { fetchAuthorityState } from '../platform/authorityApi';
 import { isJobConversation } from '../platform/conversationNavigation';
@@ -1028,6 +1029,8 @@ export type Action =
   | { type: 'SET_NOTIFICATION_INBOX_OPEN'; open: boolean }
   | { type: 'UPDATE_NOTIFICATION_PREFERENCES'; updates: Partial<NotificationPreferences> }
   | { type: 'SET_ACTIVE_DISCOVER_ITEM'; id: string | null }
+  | { type: 'SET_DISCOVER_SUPPLY'; items: DiscoverSupplyItem[] }
+  | { type: 'SET_CREATOR_ASSETS'; assets: CreatorAsset[] }
   | { type: 'SET_CREATOR_SURFACE'; surface: ActiveCreatorSurface }
   | { type: 'SET_ACTIVE_CREATION'; id: string | null }
   | { type: 'ADD_CREATOR_ASSET'; asset: CreatorAsset }
@@ -1362,6 +1365,12 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'SET_IDENTITY_CHECKPOINT':
       return { ...state, identityCheckpoint: action.checkpoint };
+
+    case 'SET_DISCOVER_SUPPLY':
+      return { ...state, discoverSupply: action.items };
+
+    case 'SET_CREATOR_ASSETS':
+      return { ...state, creatorAssets: action.assets };
 
     case 'SET_ACTIVE_DISCOVER_ITEM':
       return { ...state, activeDiscoverItemId: action.id, routeNotFound: null };
@@ -1841,6 +1850,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [state]);
 
   useEffect(() => {
+    if (WEB_RUNTIME_SETTINGS.dataMode !== 'api') return;
+    let cancelled = false;
+    void fetchDiscoverSupply().then((items) => {
+      if (cancelled) return;
+      stateRef.current = reducer(stateRef.current, { type: 'SET_DISCOVER_SUPPLY', items });
+      rawDispatch({ type: 'SET_DISCOVER_SUPPLY', items });
+    }).catch((error) => console.error('AgentPlace Discover hydration failed', error));
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     if (WEB_RUNTIME_SETTINGS.dataMode !== 'api' || apiBootstrapRef.current) return;
     apiBootstrapRef.current = true;
     void (async () => {
@@ -1852,7 +1872,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? stateRef.current.conversations.find((c) => c.id === marker.conversationId)
           : undefined;
         if (guestConversation) await importGuestConversations([guestConversation]);
-        const [conversations, identity, work, walletState, authorityState, verificationState, routineState, notificationState] = await Promise.all([fetchConversations(), getAgentPlaceIdentity(), fetchWorkState(), fetchWalletState(), fetchAuthorityState(), fetchVerificationState(), fetchRoutineState(), fetchNotificationState()]);
+        const [conversations, identity, work, walletState, authorityState, verificationState, routineState, notificationState, discoverSupply, creatorAssets] = await Promise.all([fetchConversations(), getAgentPlaceIdentity(), fetchWorkState(), fetchWalletState(), fetchAuthorityState(), fetchVerificationState(), fetchRoutineState(), fetchNotificationState(), fetchDiscoverSupply(), fetchCreatorAssets()]);
         const user = userFromAuth(identity);
         let next = reducer(stateRef.current, { type: 'SET_USER', user });
         next = reducer(next, { type: 'SET_CONVERSATIONS', conversations });
@@ -1871,6 +1891,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         next = reducer(next, { type: 'SET_ROUTINE_RUNS', runs: routineState.runs });
         next = reducer(next, { type: 'SET_NOTIFICATIONS', notifications: notificationState.notifications });
         next = reducer(next, { type: 'SET_NOTIFICATION_PREFERENCES', preferences: notificationState.preferences });
+        next = reducer(next, { type: 'SET_DISCOVER_SUPPLY', items: discoverSupply });
+        next = reducer(next, { type: 'SET_CREATOR_ASSETS', assets: creatorAssets });
         stateRef.current = next;
         rawDispatch({ type: 'SET_USER', user });
         rawDispatch({ type: 'SET_CONVERSATIONS', conversations });
@@ -1889,6 +1911,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         rawDispatch({ type: 'SET_ROUTINE_RUNS', runs: routineState.runs });
         rawDispatch({ type: 'SET_NOTIFICATIONS', notifications: notificationState.notifications });
         rawDispatch({ type: 'SET_NOTIFICATION_PREFERENCES', preferences: notificationState.preferences });
+        rawDispatch({ type: 'SET_DISCOVER_SUPPLY', items: discoverSupply });
+        rawDispatch({ type: 'SET_CREATOR_ASSETS', assets: creatorAssets });
         clearFixtureState();
         clearIdentityResume();
       } catch (error) {

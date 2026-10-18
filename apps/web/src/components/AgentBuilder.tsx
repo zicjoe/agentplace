@@ -2,7 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { useAppState, useDispatch, uid } from '../state/AppContext';
 import { ResearchMarkdown } from './ResearchMarkdown';
 import { scrollConversationToEnd } from '../platform/scroll';
-import type { Worker, WorkerDraftData, CreatorAsset, CollaboratorConfig, CreatorTestCase, CreatorTestResult } from '../state/types';
+import type { WorkerDraftData, CollaboratorConfig } from '../state/types';
+import { createCreatorWorker, createCreatorWorkerVersion, publishCreatorAsset, testCreatorWorker } from '../platform/creatorApi';
+import { installDurableWorker } from '../platform/workApi';
 
 // ── Draft initial state ───────────────────────────────────────────────────────
 
@@ -16,81 +18,39 @@ const EMPTY_DRAFT: WorkerDraftData = {
   capabilities: [],
   routineTemplates: [],
   authorityDefault: 'Research & recommend only · No wallet authority',
-  serviceBudget: 'Prototype service budget',
+  serviceBudget: 'Configured separately per user or Routine',
   testCases: [],
   testResults: [],
   networks: [],
   pricing: { type: 'free' },
 };
 
-const WHALE_MEME_DRAFT: WorkerDraftData = {
-  name: 'Whale Meme Operator',
-  jobContract: 'Find meme opportunities where credible wallet behaviour supports the thesis.',
-  responsibilities: [
-    'Identify meme token candidates with unusual smart-money accumulation',
-    'Evaluate wallet quality against taught criteria',
-    'Combine on-chain evidence with meme-market context',
-    'Surface material risks alongside any opportunity',
-  ],
-  antiJobs: [
-    'No autonomous trading by default',
-    'Do not promote thin-liquidity tokens solely because of whale activity',
-    'Do not treat one-off large wallets as reliable smart money',
-  ],
-  method: [],
-  collaborators: [],
-  capabilities: ['Token discovery', 'Liquidity analysis', 'Holder analysis', 'Wallet activity', 'Research'],
-  routineTemplates: [],
-  authorityDefault: 'Research & recommend only · No wallet authority',
-  serviceBudget: 'Prototype service budget',
-  testCases: [],
-  testResults: [],
-  networks: ['Solana', 'Ethereum', 'Base'],
-  pricing: { type: 'free' },
-};
+function titleFromIntent(text:string):string {
+  const cleaned=text.replace(/^(build|create|make)\s+(me\s+)?(a|an)?\s*(worker|agent)?\s*(that|which|to)?\s*/i,'').trim();
+  const words=cleaned.split(/\s+/).filter(Boolean).slice(0,4).map((word)=>word.replace(/[^a-z0-9-]/gi,''));
+  const base=words.join(' ')||'Custom Research Worker';
+  return base.replace(/\b\w/g,(char)=>char.toUpperCase()).slice(0,60);
+}
 
-const TEST_CASES: CreatorTestCase[] = [
-  { id: 'tc-1', name: 'High-quality whale accumulation', scenario: 'Multiple repeat-profitable wallets accumulate a mid-cap token with moderate liquidity', expected: 'Surface as candidate with evidence summary' },
-  { id: 'tc-2', name: 'Single large wallet, no history', scenario: 'One whale with no profitable exit history buys a token', expected: 'Deprioritise; flag as one-off without track record' },
-  { id: 'tc-3', name: 'Deployer-funded wallets', scenario: 'Wallets recently funded by token deployer show accumulation', expected: 'Exclude or flag as suspicious origin' },
-  { id: 'tc-4', name: 'Smart money with good liquidity', scenario: 'Cluster of 4 repeat-profitable wallets, strong liquidity, wide distribution', expected: 'High-confidence candidate' },
-  { id: 'tc-5', name: 'Thin-liquidity token', scenario: 'Large whale accumulation on token with $80k liquidity, top 3 holders own 62%', expected: 'Reject or strongly downgrade' },
-  { id: 'tc-6', name: 'Community velocity without smart money', scenario: 'Strong social velocity but no notable wallet accumulation', expected: 'Present as social signal only, no whale evidence' },
-  { id: 'tc-7', name: 'Spreading accumulation', scenario: 'Initial whale buy followed by mid-tier wallet spread over 48h', expected: 'Surface as developing opportunity with context' },
-  { id: 'tc-8', name: 'Repeat profitable wallet exits', scenario: 'One of the tracked wallets that previously accumulated is now distributing', expected: 'Flag as negative signal, update opportunity view' },
-];
+function draftFromIntent(text:string):WorkerDraftData {
+  const lower=text.toLowerCase();
+  const meme=/meme|token|bonk|launch/.test(lower);
+  const smart=/wallet|whale|smart.money|flow|accumul/.test(lower);
+  const protocol=/protocol|defi|yield|stablecoin|tvl/.test(lower);
+  const capabilities:string[]=[];
+  if(meme)capabilities.push('token.market.read','token.liquidity.analyze','token.holders.analyze','token.security.assess');
+  if(smart)capabilities.push('wallet.profile','wallet.performance.analyze','wallet.activity.analyze');
+  if(protocol)capabilities.push('protocol.tvl.read','protocol.yield.read','protocol.metrics.read');
+  if(capabilities.length===0)capabilities.push('research.web.search','research.web.read','research.source.extract');
+  const unique=[...new Set(capabilities)];
+  return {
+    name:titleFromIntent(text),jobContract:text,responsibilities:['Research the requested domain using available evidence','Separate observed evidence from inference','Return a concise result with limitations'],antiJobs:['Do not move funds or sign transactions','Do not present unsupported claims as facts'],method:[],collaborators:[],capabilities:unique,routineTemplates:[],authorityDefault:'Research & recommend only · No wallet authority',serviceBudget:'Configured separately per user or Routine',testCases:[],testResults:[],networks:[],pricing:{type:'free'}
+  };
+}
 
-const INITIAL_TEST_RESULTS: CreatorTestResult[] = [
-  { caseId: 'tc-1', passed: true, observed: 'Correctly surfaced with evidence', evidence: 'Wallet quality, accumulation timing, liquidity — all within acceptable bounds.' },
-  { caseId: 'tc-2', passed: true, observed: 'Correctly deprioritised', evidence: 'No prior profitable exits detected. Flagged as one-off.' },
-  { caseId: 'tc-3', passed: true, observed: 'Correctly excluded', evidence: 'Origin wallet identified as deployer-linked.' },
-  { caseId: 'tc-4', passed: true, observed: 'High-confidence candidate surfaced', evidence: 'Cluster score high. Liquidity adequate. Holder concentration acceptable.' },
-  { caseId: 'tc-5', passed: false, observed: 'Worker surfaced it as a candidate', evidence: 'Liquidity and concentration thresholds were insufficiently strict. Strong wallet signal overrode thin-liquidity risk.' },
-  { caseId: 'tc-6', passed: true, observed: 'Social signal only — correctly presented without wallet framing', evidence: 'No qualifying wallets detected.' },
-  { caseId: 'tc-7', passed: true, observed: 'Surfaced as developing opportunity', evidence: 'Spread pattern identified within 48h window.' },
-  { caseId: 'tc-8', passed: true, observed: 'Negative signal flagged', evidence: 'Exit detected in tracked wallet. Opportunity score revised downward.' },
-];
+// ── Builder conversation ─────────────────────────────────────────────────────
 
-const FINAL_TEST_RESULTS: CreatorTestResult[] = INITIAL_TEST_RESULTS.map((r) =>
-  r.caseId === 'tc-5' ? { ...r, passed: true, observed: 'Correctly rejected', evidence: 'Liquidity and concentration threshold applied. Wallet signal did not override.' } : r
-);
-
-// ── Step-based demo conversation ──────────────────────────────────────────────
-
-type BuilderStep =
-  | 'idle'
-  | 'initial-response'
-  | 'existing-expertise'
-  | 'collaborators-added'
-  | 'teach-prompt'
-  | 'teach-response'
-  | 'testing'
-  | 'test-results'
-  | 'improving'
-  | 'improvement-applied'
-  | 'retest'
-  | 'final-test-results'
-  | 'published';
+type BuilderStep = 'idle' | 'initial-response' | 'collaborators-added' | 'teach-prompt' | 'teach-response' | 'testing' | 'runtime-test-launched' | 'published';
 
 interface BuilderMessage {
   id: string;
@@ -125,7 +85,7 @@ function DraftSection({ title, children, collapsible, defaultOpen = true }: {
   );
 }
 
-function LiveDraftPanel({ draft, step, testResults }: { draft: WorkerDraftData; step: BuilderStep; testResults: CreatorTestResult[] }) {
+function LiveDraftPanel({ draft, step, testJobId }: { draft: WorkerDraftData; step: BuilderStep; testJobId?: string }) {
   const hasContent = draft.name || draft.jobContract || draft.responsibilities.length > 0;
 
   if (!hasContent) {
@@ -143,8 +103,6 @@ function LiveDraftPanel({ draft, step, testResults }: { draft: WorkerDraftData; 
     );
   }
 
-  const passCount = testResults.filter((r) => r.passed).length;
-  const allPassed = passCount === testResults.length && testResults.length > 0;
 
   return (
     <div className="h-full min-h-0 overflow-y-auto overscroll-contain">
@@ -231,23 +189,14 @@ function LiveDraftPanel({ draft, step, testResults }: { draft: WorkerDraftData; 
         <p className="text-xs text-text-dim">{draft.serviceBudget}</p>
       </DraftSection>
 
-      <DraftSection title="Tests" collapsible defaultOpen={step === 'test-results' || step === 'final-test-results' || step === 'published'}>
-        {testResults.length === 0 ? (
-          <p className="text-xs text-text-dim">Not run yet</p>
-        ) : (
+      <DraftSection title="Tests" collapsible defaultOpen={step === 'runtime-test-launched' || step === 'published'}>
+        {testJobId ? (
           <div>
-            <div className={`text-sm font-semibold mb-2 ${allPassed ? 'text-accent' : 'text-warn'}`}>
-              {passCount} / {testResults.length} passed
-            </div>
-            <div className="space-y-1">
-              {testResults.map((r) => (
-                <div key={r.caseId} className={`flex items-center gap-2 text-xs ${r.passed ? 'text-text-sub' : 'text-danger'}`}>
-                  <span>{r.passed ? '✓' : '✗'}</span>
-                  <span>{TEST_CASES.find((c) => c.id === r.caseId)?.name}</span>
-                </div>
-              ))}
-            </div>
+            <p className="text-xs text-accent">Real sandbox Job launched</p>
+            <p className="text-[10px] text-text-dim mt-1">Open the Job to inspect routing, evidence and result. A test does not self-certify safety.</p>
           </div>
+        ) : (
+          <p className="text-xs text-text-dim">Not run yet</p>
         )}
       </DraftSection>
 
@@ -273,16 +222,16 @@ export function AgentBuilder() {
   const dispatch = useDispatch();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<BuilderMessage[]>([]);
-  const [draft, setDraft] = useState<WorkerDraftData>(EMPTY_DRAFT);
-  const [step, setStep] = useState<BuilderStep>('idle');
+  const initialAsset = state.activeCreationId ? (state.creatorAssets ?? []).find((asset)=>asset.id===state.activeCreationId) : undefined;
+  const [draft, setDraft] = useState<WorkerDraftData>(initialAsset?.workerDraft ?? EMPTY_DRAFT);
+  const [savedAssetId,setSavedAssetId]=useState<string|undefined>(initialAsset?.id);
+  const [testJobId,setTestJobId]=useState<string|undefined>();
+  const [step, setStep] = useState<BuilderStep>(initialAsset?.workerDraft ? 'initial-response' : 'idle');
   const [teachMode, setTeachMode] = useState(false);
-  const [testResults, setTestResults] = useState<CreatorTestResult[]>([]);
   const [mobileTab, setMobileTab] = useState<'chat' | 'draft'>('chat');
   const messageScrollRef = useRef<HTMLDivElement>(null);
   const [isStreaming, setIsStreaming] = useState(false);
 
-  // Pre-fill from fork if there is one — not implemented yet, draft starts empty
-  const forkSource = null as null;
 
   useEffect(() => {
     scrollConversationToEnd(messageScrollRef.current);
@@ -310,147 +259,63 @@ export function AgentBuilder() {
     setMessages((prev) => [...prev, { id: uid(), role: 'user', content: text }]);
 
     if (step === 'idle') {
-      // Initial request — start forming the draft
       setStep('initial-response');
-      setDraft(WHALE_MEME_DRAFT);
-      setTimeout(() => {
-        streamBuilderMessage(
-          `Got it. I'm forming **Whale Meme Operator** — a Worker focused on meme opportunities backed by credible on-chain wallet evidence.\n\nBefore I build from scratch, I noticed AgentPlace already has relevant expertise:\n\n**Meme Scout** — meme-token research across Solana and EVM chains\n**Smart Money Tracker** — wallet-quality and accumulation analysis\n\nThese could be collaborators rather than things you rebuild. Would you like to:\n\n• **Use existing expertise** (recommended — faster, and they're already proven)\n• **Teach unique expertise** from scratch`
-        );
-      }, 400);
+      const formed=draftFromIntent(text);
+      setDraft(formed);
+      const available=(state.discoverSupply??[]).filter((item)=>item.type==='worker'&&item.readiness==='available').slice(0,3).map((item)=>item.name);
+      setTimeout(()=>{streamBuilderMessage(`Got it. I'm forming **${formed.name}** around your actual request.
+
+I mapped a research-only Job Contract and ${formed.capabilities.length} existing AgentPlace capability requirements. Creation grants no wallet authority.
+
+${available.length?`Reusable expertise currently available: **${available.join('**, **')}**. You can reuse existing expertise or teach your own method.`:'You can teach your own method before testing.'}`);},250);
     } else if (step === 'teach-prompt') {
-      // Creator teaches wallet methodology
       setStep('teach-response');
-      setTimeout(() => {
-        const updatedMethod = [
-          'Prioritise repeat profitable wallet behaviour over one-off position size',
-          'Deprioritise wallets that have only made a single large buy',
-          'Exclude or degrade wallets recently funded by a token deployer',
-        ];
-        setDraft((d) => ({ ...d, method: updatedMethod }));
-        streamBuilderMessage(
-          `Understood. I've updated the Method / Expertise section with your criteria:\n\n→ Prioritise repeat profitable wallet behaviour\n→ Deprioritise one-off size\n→ Exclude/degrade deployer-funded wallets\n\nDoes this look right?`
-        );
-      }, 500);
+      setDraft((current)=>({...current,method:[...current.method,text]}));
+      setTimeout(()=>streamBuilderMessage(`Understood. I added your teaching to **Method / Expertise** as creator-authored guidance.
+
+> ${text}
+
+This changes methodology only; it does not create authority or bypass AgentPlace capability/risk controls.`),250);
     }
   }
 
   function handleUseExistingExpertise() {
     setStep('collaborators-added');
-    const collaborators: CollaboratorConfig[] = [
-      {
-        id: 'collab-memescout',
-        role: 'Meme-token opportunity research',
-        pinnedWorkerId: 'w-memescout',
-        pinnedWorkerName: 'Meme Scout',
-        roleBased: false,
-        whenUsed: 'Initial candidate discovery and meme-market context',
-        contextShared: 'Token name, timeframe, market context',
-        required: true,
-        authorityBoundary: 'Research only — no wallet authority',
-      },
-      {
-        id: 'collab-smartmoney',
-        role: 'Wallet-quality / whale-flow analysis',
-        pinnedWorkerId: undefined,
-        pinnedWorkerName: undefined,
-        roleBased: true,
-        whenUsed: 'Smart-money evidence layer for any candidate',
-        contextShared: 'Token addresses, timeframe',
-        required: true,
-        fallback: 'Skip smart-money layer if unavailable',
-        authorityBoundary: 'Research only — no wallet authority',
-      },
-    ];
-    setDraft((d) => ({ ...d, collaborators }));
-    setTimeout(() => {
-      streamBuilderMessage(
-        `Collaborators added to the draft:\n\n**Meme Scout** — pinned, provides meme-token research\n**Smart Money Tracker role** — role-based selection for wallet-quality analysis\n\nCollaborators do not inherit Whale Meme Operator's wallet authority.\n\nWould you like to **teach unique expertise** now — your specific criteria for evaluating whale quality — or go straight to testing?`
-      );
-    }, 400);
+    const candidates=(state.discoverSupply??[]).filter((item)=>item.type==='worker'&&item.isOriginal&&item.readiness!=='unavailable'&&item.workerDefinitionId).slice(0,2);
+    const collaborators:CollaboratorConfig[]=candidates.map((item,index)=>({id:`collab-${item.workerDefinitionId}`,role:item.tagline,pinnedWorkerId:item.workerDefinitionId,pinnedWorkerName:item.name,roleBased:index>0,whenUsed:'When specialist evidence materially improves the Job',contextShared:'Only task-relevant context',required:index===0,...(index===0?{}:{fallback:'Continue without optional specialist'}),authorityBoundary:'Research only — collaborator authority never propagates'}));
+    setDraft((d)=>({...d,collaborators}));
+    streamBuilderMessage(collaborators.length?`I added ${collaborators.length} existing specialist ${collaborators.length===1?'Worker':'Workers'} to the draft. Collaborator financial authority does not propagate. You can teach unique expertise now or run a real sandbox test.`:'No eligible reusable specialist was found, so the Worker remains standalone. You can teach unique expertise or run a real sandbox test.');
   }
 
   function handleTeachExpertise() {
     setStep('teach-prompt');
     setTeachMode(true);
     streamBuilderMessage(
-      `Teach Mode active. Describe how you evaluate smart-money quality for meme opportunities. For example:\n\n• What wallet behaviour do you prioritise?\n• What signals do you ignore or distrust?\n• Any edge cases the Worker should handle carefully?\n\nI'll interpret your input and update the Method / Expertise section.`
+      `Teach Mode active. Describe the decision rules or process that make this Worker uniquely yours. For example:\n\n• What evidence do you prioritise?\n• What signals do you ignore or distrust?\n• What edge cases should the Worker handle carefully?\n\nI'll interpret your input and update the Method / Expertise section.`
     );
   }
 
   function handleLooksRight() {
+    if (!state.user) {
+      dispatch({type:'SET_IDENTITY_CHECKPOINT',checkpoint:{reason:'test-worker',feature:'save your draft and run a real sandbox Worker test',onComplete:(user)=>{dispatch({type:'SET_USER',user});void runTests();}}});
+    } else { void runTests(); }
+  }
+
+  async function runTests() {
     setStep('testing');
-    setTimeout(() => {
-      // Identity checkpoint if no user
-      if (!state.user) {
-        dispatch({
-          type: 'SET_IDENTITY_CHECKPOINT',
-          checkpoint: {
-            reason: 'test-worker',
-            feature: 'save your draft and run worker tests',
-            onComplete: (user) => {
-              dispatch({ type: 'SET_USER', user });
-              runTests();
-            },
-          },
-        });
-      } else {
-        runTests();
-      }
-    }, 200);
-  }
+    setIsStreaming(true);
+    try {
+      let assetId=savedAssetId;
+      if(!assetId){const asset=await createCreatorWorker({...draft,testResults:[]});assetId=asset.id;setSavedAssetId(asset.id);dispatch({type:'ADD_CREATOR_ASSET',asset});}else if(state.activeCreationId===assetId){const asset=await createCreatorWorkerVersion(assetId,{...draft,testResults:[]});dispatch({type:'UPDATE_CREATOR_ASSET',assetId,updates:{workerDraft:asset.workerDraft,updatedAt:asset.updatedAt}});}
+      const scenario=draft.testCases[0]?.scenario??`Perform a bounded test of this Job Contract: ${draft.jobContract}`;
+      const expected=draft.testCases[0]?.expected??'Produce an evidence-backed result while respecting anti-jobs and no financial authority.';
+      const result=await testCreatorWorker(assetId,scenario,expected);
+      setTestJobId(result.jobId);
+      setStep('runtime-test-launched');
+      addBuilderMessage(`A real sandbox Job has been queued for **${draft.name}** using the saved creator Worker version.
 
-  function runTests() {
-    setStep('testing');
-    streamBuilderMessage('Running acceptance suite… 8 scenarios.');
-    const updatedDraft = { ...draft, testCases: TEST_CASES };
-    setDraft(updatedDraft);
-    setTimeout(() => {
-      setTestResults(INITIAL_TEST_RESULTS);
-      setStep('test-results');
-      setDraft((d) => ({ ...d, testResults: INITIAL_TEST_RESULTS }));
-      streamBuilderMessage(
-        `**7 / 8 passed.** One case needs refinement.\n\n✗ **Thin-liquidity meme token** — Worker surfaced it as a candidate.\n\nExpected: Reject or strongly downgrade (thin liquidity, high holder concentration).\nObserved: Strong wallet activity overrode the liquidity and concentration risk.\n\nEvidence: Liquidity and concentration thresholds were insufficiently strict.\n\nDo not show internal reasoning — only structured output.\n\nWould you like to **Improve Worker**?`
-      );
-    }, 2000);
-  }
-
-  function handleImproveWorker() {
-    setStep('improving');
-    streamBuilderMessage(
-      `To fix the failing case, I suggest:\n\n**Add anti-job:**\n"Do not recommend candidates below minimum liquidity threshold regardless of wallet signal strength."\n\n**Add rule:**\n"Strong wallet activity cannot override critical liquidity or holder concentration risk."\n\nApply this improvement?`
-    );
-  }
-
-  function handleApplyImprovement() {
-    setStep('improvement-applied');
-    setDraft((d) => ({
-      ...d,
-      antiJobs: [
-        ...d.antiJobs,
-        'Do not recommend candidates below minimum liquidity threshold, regardless of wallet signal strength',
-      ],
-      method: [
-        ...d.method,
-        'Strong wallet activity cannot override critical liquidity or holder concentration risk',
-      ],
-    }));
-    streamBuilderMessage(
-      `Improvement applied. Anti-job and rule added to the draft.\n\nReady to run the acceptance suite again?`
-    );
-  }
-
-  function handleRetest() {
-    setStep('retest');
-    streamBuilderMessage('Re-running acceptance suite…');
-    setTimeout(() => {
-      setTestResults(FINAL_TEST_RESULTS);
-      setStep('final-test-results');
-      setDraft((d) => ({ ...d, testResults: FINAL_TEST_RESULTS }));
-      streamBuilderMessage(
-        `**8 / 8 passed.** Prototype acceptance suite passed.\n\nPassing this prototype suite does not grant financial authority or self-certify production safety. These tests confirm the Worker behaves as designed within prototype scenarios.\n\nReady to use this Worker?`
-      );
-    }, 1800);
+Open the Job to inspect routing, evidence and the actual result. Passing this test does not self-certify safety. Creator tests never grant financial authority.`);
+    } catch(value){setStep('initial-response');addBuilderMessage(value instanceof Error?`Could not start creator test: ${value.message}`:'Could not start creator test.');}
   }
 
   function handleUsePrivately() {
@@ -462,93 +327,35 @@ export function AgentBuilder() {
           feature: 'save and use your Worker privately',
           onComplete: (user) => {
             dispatch({ type: 'SET_USER', user });
-            finalizePrivate();
+            void finalizePrivate();
           },
         },
       });
     } else {
-      finalizePrivate();
+      void finalizePrivate();
     }
   }
 
-  function finalizePrivate() {
-    const assetId = uid();
-    const workerId = 'w-whale-meme-' + uid().slice(0, 4);
-    const finalDraft = { ...draft, testResults };
+  async function finalizePrivate() {
+    try {
+      let assetId=savedAssetId;
+      if(!assetId){const asset=await createCreatorWorker({...draft,testResults:[]});assetId=asset.id;setSavedAssetId(asset.id);dispatch({type:'ADD_CREATOR_ASSET',asset});}
+      await publishCreatorAsset('worker',assetId,'private');
+      const worker=await installDurableWorker(assetId);
+      dispatch({type:'ADD_WORKER',worker});
+      dispatch({type:'UPDATE_CREATOR_ASSET',assetId,updates:{visibility:'private'}});
+      setStep('published');
+      streamBuilderMessage(`**${draft.name}** is saved privately and added to your Workers.
 
-    const asset: CreatorAsset = {
-      id: assetId,
-      type: 'worker',
-      visibility: 'private',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      workerDraft: finalDraft,
-    };
+Authority: ${draft.authorityDefault}.
 
-    const worker: Worker = {
-      id: workerId,
-      name: 'Whale Meme Operator',
-      tagline: 'Finds meme opportunities backed by credible whale wallet behaviour',
-      status: 'standby',
-      isOriginal: false,
-      responsibility: 'Whale Meme Operator researches meme opportunities where credible wallet behaviour supports the thesis.',
-      authoritySummary: 'Research & recommend only · No wallet authority',
-    };
-
-    dispatch({ type: 'ADD_CREATOR_ASSET', asset });
-    dispatch({ type: 'ADD_WORKER', worker });
-    dispatch({
-      type: 'ADD_ACTIVITY_EVENT',
-      event: {
-        id: uid(),
-        eventType: 'worker-added',
-        title: 'Whale Meme Operator published privately',
-        summary: 'Created by you · Research & recommend only · No wallet authority',
-        workerId,
-        workerName: 'Whale Meme Operator',
-        timestamp: new Date(),
-        status: 'complete',
-      },
-    });
-
-    setStep('published');
-    streamBuilderMessage(
-      `Whale Meme Operator is now available in your Workers.\n\nAuthority: Research & recommend only · No wallet authority.\n\nFinancial authority can be configured separately when you need it. Your Worker is private — it does not appear in public Discover.`
-    );
+The installed Worker is pinned to this exact version until you explicitly update it.`);
+    } catch(value){addBuilderMessage(value instanceof Error?`Could not save Worker: ${value.message}`:'Could not save Worker.');}
   }
 
-  function handlePublish() {
-    // Publishing updates discover supply
-    const existingAsset = (state.creatorAssets ?? []).find((a) => a.workerDraft?.name === 'Whale Meme Operator');
-    if (existingAsset) {
-      const supplyId = 'ds-whale-meme-' + uid().slice(0, 4);
-      dispatch({
-        type: 'ADD_DISCOVER_SUPPLY_ITEM',
-        item: {
-          id: supplyId,
-          type: 'worker',
-          name: 'Whale Meme Operator',
-          tagline: 'Finds meme opportunities backed by credible whale wallet behaviour',
-          description: draft.jobContract,
-          whatItDoes: draft.responsibilities,
-          whatItDoesNot: draft.antiJobs,
-          creatorId: state.user?.id ?? 'u1',
-          creatorName: state.user?.name ?? 'You',
-          isOriginal: false,
-          category: 'Research & Discovery',
-          networks: draft.networks,
-          pricing: draft.pricing,
-          visibility: 'public',
-          authorityDefault: draft.authorityDefault,
-          sponsored: false,
-          lastUpdated: new Date(),
-          version: '0.1.0',
-          creatorAssetId: existingAsset.id,
-        },
-      });
-      dispatch({ type: 'UPDATE_CREATOR_ASSET', assetId: existingAsset.id, updates: { visibility: 'public' } });
-    }
-    streamBuilderMessage('Whale Meme Operator is now public in Discover. Discover has been updated.');
+  async function handlePublish() {
+    if(!savedAssetId){addBuilderMessage('Save this Worker privately before publishing.');return;}
+    try{await publishCreatorAsset('worker',savedAssetId,'published');dispatch({type:'UPDATE_CREATOR_ASSET',assetId:savedAssetId,updates:{visibility:'public'}});streamBuilderMessage(`**${draft.name}** is now public in Discover. Publication does not grant end-user wallet authority, and Discover will show runtime readiness separately from publication status.`);}catch(value){addBuilderMessage(value instanceof Error?`Publishing failed: ${value.message}`:'Publishing failed.');}
   }
 
   function closeSurface() {
@@ -651,60 +458,10 @@ export function AgentBuilder() {
           </div>
         )}
 
-        {step === 'test-results' && !isStreaming && (
-          <div className="flex flex-wrap gap-2 pl-1 pt-1">
-            <button
-              onClick={handleImproveWorker}
-              className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
-            >
-              Improve Worker
-            </button>
-          </div>
-        )}
-
-        {step === 'improving' && !isStreaming && (
-          <div className="flex flex-wrap gap-2 pl-1 pt-1">
-            <button
-              onClick={handleApplyImprovement}
-              className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
-            >
-              Apply improvement
-            </button>
-            <button
-              onClick={() => {
-                setStep('teach-prompt');
-                setTeachMode(true);
-                streamBuilderMessage("What would you like to change instead?");
-              }}
-              className="px-4 py-2 text-xs font-medium border border-border text-text-sub rounded-lg hover:bg-panel-raised transition-colors"
-            >
-              Edit
-            </button>
-          </div>
-        )}
-
-        {step === 'improvement-applied' && !isStreaming && (
-          <div className="flex flex-wrap gap-2 pl-1 pt-1">
-            <button
-              onClick={handleRetest}
-              className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
-            >
-              Re-run tests
-            </button>
-          </div>
-        )}
-
-        {step === 'final-test-results' && !isStreaming && (
-          <div className="flex flex-wrap gap-2 pl-1 pt-1">
-            <button
-              onClick={handleUsePrivately}
-              className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
-            >
-              Use privately
-            </button>
-            <button className="px-4 py-2 text-xs font-medium border border-border text-text-sub rounded-lg hover:bg-panel-raised transition-colors">
-              Publishing options
-            </button>
+        {step === 'runtime-test-launched' && !isStreaming && (
+          <div className="flex gap-2 flex-wrap">
+            {testJobId && <button onClick={()=>dispatch({type:'SET_ACTIVE_JOB',id:testJobId})} className="px-3 py-1.5 text-xs bg-primary text-white rounded">Open real test Job</button>}
+            <button onClick={handleUsePrivately} className="px-3 py-1.5 text-xs border border-border text-text-sub rounded">Use privately</button>
           </div>
         )}
 
@@ -763,7 +520,7 @@ export function AgentBuilder() {
   );
 
   const DraftPanelContent = (
-    <LiveDraftPanel draft={draft} step={step} testResults={testResults} />
+    <LiveDraftPanel draft={draft} step={step} testJobId={testJobId} />
   );
 
   return (

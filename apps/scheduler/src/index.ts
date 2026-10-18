@@ -5,8 +5,8 @@ import { defineService } from '@agent-place/shared';
 export const service = defineService({
   name: 'agent-place-scheduler',
   runtimeClass: 'scheduler',
-  version: '0.14.0',
-  milestone: 11,
+  version: '0.15.0',
+  milestone: 12,
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

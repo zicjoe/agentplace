@@ -50,7 +50,7 @@ function SupplyItemCard({ item }: { item: DiscoverSupplyItem }) {
     dispatch({ type: 'SET_ACTIVE_DISCOVER_ITEM', id: item.id });
   }
 
-  const isAdded = state.workers.some((w) => w.id === item.id.replace('ds-', 'w-'));
+  const isAdded = item.type === 'worker' && !!item.workerDefinitionId && state.workers.some((w) => w.id === item.workerDefinitionId);
 
   return (
     <button

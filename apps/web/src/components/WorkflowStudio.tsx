@@ -1,26 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAppState, useDispatch, uid } from '../state/AppContext';
-import type { CreatorAsset, WorkflowDraftData } from '../state/types';
+import { createCreatorWorkflow, createCreatorWorkflowVersion, publishCreatorAsset } from '../platform/creatorApi';
+import type { WorkflowDraftData } from '../state/types';
 import { ResearchMarkdown } from './ResearchMarkdown';
 import { scrollConversationToEnd } from '../platform/scroll';
 
-const MORNING_BRIEF_DRAFT: WorkflowDraftData = {
-  name: 'Morning Portfolio Brief',
-  purpose: 'Summarise material overnight changes across watched holdings.',
-  inputs: ['Portfolio / watch addresses', 'Prior baseline', 'Relevant market / onchain data'],
-  steps: [
-    'Read portfolio state',
-    'Compare against baseline',
-    'Identify material changes',
-    'Summarise evidence',
-  ],
-  conditions: ['Only escalate changes above configured materiality threshold'],
-  outputs: ['Concise morning briefing'],
-  requiredCapabilities: ['Wallet reads', 'Market data', 'Relevant onchain data'],
-  safetyBoundaries: ['Read-only by default', 'No financial execution'],
-  compatibleWorkers: ['Portfolio Guardian'],
-  pricing: { type: 'free' },
-};
+
+
+function workflowFromIntent(text:string):WorkflowDraftData {
+  const name=text.split(/\s+/).slice(0,5).join(' ').replace(/\b\w/g,(c)=>c.toUpperCase()).slice(0,70)||'Custom Workflow';
+  return {name,purpose:text,inputs:['User goal / subject','Relevant live data'],steps:['Gather required evidence','Apply the described method','Check conditions and safety boundaries','Produce the requested output'],conditions:['Stop or surface limitations when required evidence is unavailable'],outputs:['Evidence-backed result'],requiredCapabilities:['research.web.search','research.web.read'],safetyBoundaries:['No financial authority is created by a Workflow','Any financial Action still passes risk, authority and approval'],compatibleWorkers:[],pricing:{type:'free'}};
+}
 
 interface StudioMessage {
   id: string;
@@ -82,7 +72,8 @@ export function WorkflowStudio() {
   const dispatch = useDispatch();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<StudioMessage[]>([]);
-  const [draft, setDraft] = useState<WorkflowDraftData>({ name: '', purpose: '', inputs: [], steps: [], conditions: [], outputs: [], requiredCapabilities: [], safetyBoundaries: [], compatibleWorkers: [], pricing: { type: 'free' } });
+  const existingAsset=state.activeCreationId?(state.creatorAssets??[]).find((asset)=>asset.id===state.activeCreationId):undefined;
+  const [draft, setDraft] = useState<WorkflowDraftData>(existingAsset?.workflowDraft??{ name: '', purpose: '', inputs: [], steps: [], conditions: [], outputs: [], requiredCapabilities: [], safetyBoundaries: [], compatibleWorkers: [], pricing: { type: 'free' } });
   const [step, setStep] = useState<StudioStep>('idle');
   const [mobileTab, setMobileTab] = useState<'chat' | 'draft'>('chat');
   const messageScrollRef = useRef<HTMLDivElement>(null);
@@ -113,20 +104,18 @@ export function WorkflowStudio() {
     addMsg('user', text);
 
     if (step === 'idle') {
-      setDraft(MORNING_BRIEF_DRAFT);
+      const formed=workflowFromIntent(text);
+      setDraft(formed);
       setStep('draft-formed');
       setTimeout(() => {
-        addMsg('studio', "I've formed **Morning Portfolio Brief** — a read-only workflow that summarises material overnight changes and only escalates above your materiality threshold.\n\nDraft is ready on the right. Would you like to test it or adjust anything?");
-      }, 400);
+        addMsg('studio', `I've formed **${formed.name}** as a typed, read-only Workflow draft. The Workflow defines how work is done; it does not create a Routine or financial authority.\n\nReview the steps and safety boundaries, then save it privately.`);
+      }, 300);
     }
   }
 
   function handleTest() {
-    addMsg('studio', 'Running acceptance test…');
-    setTimeout(() => {
-      setStep('tested');
-      addMsg('studio', '**2 / 2 prototype scenarios passed.**\n\nTest 1: Read portfolio state and compare against baseline — ✓ Correct output structure.\nTest 2: Materiality threshold correctly suppressed low-signal items — ✓ Only material changes escalated.\n\nReady to save privately or publish?');
-    }, 1600);
+    setStep('tested');
+    addMsg('studio','Workflow structure validated. Runtime behavior is still determined by the eligible Worker and capability routes used when a Job executes; this structural check does not self-certify safety.');
   }
 
   function handleSavePrivately() {
@@ -138,27 +127,17 @@ export function WorkflowStudio() {
           feature: 'save your workflow privately',
           onComplete: (user) => {
             dispatch({ type: 'SET_USER', user });
-            doSave();
+            void doSave();
           },
         },
       });
     } else {
-      doSave();
+      void doSave();
     }
   }
 
-  function doSave() {
-    const asset: CreatorAsset = {
-      id: uid(),
-      type: 'workflow',
-      visibility: 'private',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      workflowDraft: draft,
-    };
-    dispatch({ type: 'ADD_CREATOR_ASSET', asset });
-    setStep('saved');
-    addMsg('studio', 'Morning Portfolio Brief saved privately. Find it in Create → My creations.\n\nNo Worker was created. No Routine was created. No authority was granted.');
+  async function doSave() {
+    try{const asset=existingAsset?.type==='workflow'?await createCreatorWorkflowVersion(existingAsset.id,draft):await createCreatorWorkflow(draft);await publishCreatorAsset('workflow',asset.id,'private');if(existingAsset?.type==='workflow')dispatch({type:'UPDATE_CREATOR_ASSET',assetId:asset.id,updates:{...asset,visibility:'private'}});else dispatch({type:'ADD_CREATOR_ASSET',asset:{...asset,visibility:'private'}});setStep('saved');addMsg('studio',`**${draft.name}** saved privately as version ${asset.version ?? '0.1.0'}. No Worker, Routine, or authority was created.`);}catch(value){addMsg('studio',value instanceof Error?`Could not save Workflow: ${value.message}`:'Could not save Workflow.');}
   }
 
   function close() {
@@ -209,7 +188,7 @@ export function WorkflowStudio() {
             {step === 'tested' && !streaming && (
               <div className="flex gap-2 pl-1 pt-1">
                 <button onClick={handleSavePrivately} className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors">Use privately</button>
-                <button className="px-4 py-2 text-xs font-medium border border-border text-text-sub rounded-lg hover:bg-panel-raised transition-colors">Publish</button>
+                <button disabled title="Save privately first, then publish from My creations." className="px-4 py-2 text-xs font-medium border border-border text-text-dim rounded-lg opacity-60 cursor-not-allowed">Publish after saving</button>
               </div>
             )}
             {step === 'saved' && !streaming && (

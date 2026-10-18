@@ -1,63 +1,32 @@
 import { useState } from 'react';
-import { useAppState, useDispatch, uid } from '../state/AppContext';
-import type { Worker, BillingSubscription } from '../state/types';
+import { useAppState, useDispatch } from '../state/AppContext';
+import { installDurableWorker } from '../platform/workApi';
+import { forkCreatorWorker, tryDiscoverWorker } from '../platform/creatorApi';
 
-function SandboxTryPanel({ itemId, itemName, onClose }: { itemId: string; itemName: string; onClose: () => void }) {
-  const [step, setStep] = useState<'prompt' | 'result'>('prompt');
-
-  const examplePrompt = itemId === 'ds-whale-signal'
-    ? '"Show me what you would look for in a whale-driven meme opportunity."'
-    : itemId === 'ds-prediction-scout'
-    ? '"What prediction markets are showing the most movement right now?"'
-    : '"Give me a sample analysis."';
-
-  const exampleResult = itemId === 'ds-whale-signal'
-    ? `## Whale Signal Analyst · Sandbox result\n\n**Prototype data only**\n\nI look for coordinated wallet clusters — groups of wallets that accumulate within similar time windows, sourced from similar origin wallets, and which have historically correlated with material price moves.\n\nFor a meme opportunity I'd specifically check:\n- Cluster size and wallet quality (prior profitable exit history)\n- Whether accumulation is spreading into mid-tier wallets (not just whales)\n- Time since initial cluster activity (early or late)\n- Liquidity depth relative to cluster exposure\n\nThis is a sandbox illustration. No real analysis was performed.`
-    : `## ${itemName} · Sandbox result\n\n**Prototype data only**\n\nThis is an illustrative sandbox response. In production, ${itemName} would perform real research using connected data sources.\n\nNo installation occurred. No wallet authority was granted.`;
-
+function SandboxTryPanel({ workerDefinitionId, itemName, readiness, onClose, onOpenJob }: { workerDefinitionId: string; itemName: string; readiness?: 'available'|'limited'|'preview'|'unavailable'; onClose: () => void; onOpenJob: (jobId:string) => void }) {
+  const [prompt,setPrompt]=useState('Give me a bounded read-only analysis using your published Worker definition.');
+  const [running,setRunning]=useState(false);
+  const [error,setError]=useState<string|null>(null);
+  const runnable=readiness==='available';
+  async function run(){
+    if(!runnable)return;
+    setRunning(true);setError(null);
+    try{const result=await tryDiscoverWorker(workerDefinitionId,prompt);onOpenJob(result.jobId);onClose();}
+    catch(value){setError(value instanceof Error?value.message:'Sandbox run failed');}
+    finally{setRunning(false);}
+  }
   return (
     <div className="fixed inset-0 z-60 flex items-start justify-center overflow-y-auto bg-bg/80 backdrop-blur-sm px-4 py-4 sm:py-6">
-      <div className="w-full max-w-lg my-auto max-h-[calc(100dvh-2rem)] bg-panel border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full max-w-lg max-h-[calc(100dvh-2rem)] my-auto bg-panel border border-border rounded-xl shadow-2xl overflow-y-auto">
         <div className="px-5 py-4 border-b border-border-dim flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-text">Try · {itemName}</p>
-            <p className="text-xs text-text-muted">Sandbox — no installation, no wallet authority</p>
-          </div>
-          <button onClick={onClose} className="text-text-muted hover:text-text p-1 rounded transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div><p className="text-sm font-semibold text-text">Try · {itemName}</p><p className="text-xs text-text-muted">Real bounded sandbox Job · no installation · no wallet authority</p></div>
+          <button onClick={onClose} className="text-text-muted hover:text-text p-1 rounded">×</button>
         </div>
-        <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-4">
-          {step === 'prompt' && (
-            <div>
-              <p className="text-sm text-text-sub mb-4">Example prompt to try:</p>
-              <div className="bg-panel-raised border border-border-dim rounded-lg px-4 py-3 mb-4">
-                <p className="text-sm text-text italic">{examplePrompt}</p>
-              </div>
-              <button
-                onClick={() => setStep('result')}
-                className="w-full py-2.5 bg-primary text-white text-sm rounded font-medium hover:bg-primary-hover transition-colors"
-              >
-                Run sandbox
-              </button>
-            </div>
-          )}
-          {step === 'result' && (
-            <div>
-              <div className="bg-panel-raised border border-border-dim rounded-lg px-4 py-3 mb-4 max-h-60 overflow-y-auto">
-                <p className="text-xs text-warn font-mono mb-2">Sandbox / prototype result</p>
-                <p className="text-sm text-text-sub whitespace-pre-line leading-relaxed">{exampleResult}</p>
-              </div>
-              <button
-                onClick={onClose}
-                className="w-full py-2 text-sm text-text-sub border border-border rounded hover:bg-panel-raised transition-colors"
-              >
-                Continue exploring
-              </button>
-            </div>
-          )}
+        <div className="px-5 py-4 space-y-3">
+          {!runnable&&<div className="border border-warn/30 bg-warn/5 rounded-lg px-3 py-2 text-xs text-warn">Try is unavailable until the Worker's required capabilities have an eligible production route.</div>}
+          <textarea value={prompt} onChange={(e)=>setPrompt(e.target.value)} rows={4} className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text resize-none" />
+          {error&&<p className="text-xs text-danger">{error}</p>}
+          <button onClick={() => void run()} disabled={!runnable||running||!prompt.trim()} className="w-full py-2.5 bg-primary text-white text-sm rounded font-medium disabled:opacity-50">{running?'Starting sandbox Job…':'Run real sandbox Job'}</button>
         </div>
       </div>
     </div>
@@ -70,6 +39,7 @@ export function DiscoverDetail() {
   const [showTry, setShowTry] = useState(false);
   const [addedConfirm, setAddedConfirm] = useState(false);
   const [acquiring, setAcquiring] = useState(false);
+  const [actionError,setActionError]=useState<string|null>(null);
 
   const item = (state.discoverSupply ?? []).find((s) => s.id === state.activeDiscoverItemId);
 
@@ -103,64 +73,40 @@ export function DiscoverDetail() {
   function doAdd() {
     if (!item) return;
     if (item.pricing.type === 'paid') {
-      setAcquiring(true);
-      setTimeout(() => {
-        setAcquiring(false);
-        finalAdd();
-      }, 1200);
-    } else {
-      finalAdd();
+      setActionError('Paid Worker purchasing is not enabled yet. Billing is a later production milestone.');
+      return;
     }
+    void finalAdd();
   }
 
-  function finalAdd() {
+  async function finalAdd() {
     if (!item || !installedWorkerId) return;
-    const w: Worker = {
-      id: installedWorkerId,
-      name: item.name,
-      tagline: item.tagline,
-      status: 'standby',
-      isOriginal: item.isOriginal,
-      responsibility: item.whatItDoes?.join('. '),
-      authoritySummary: item.authorityDefault ?? 'Research & recommend only · No wallet authority',
-    };
-    dispatch({ type: 'ADD_WORKER', worker: w });
-    if (item.pricing.type === 'paid') {
-      const sub: BillingSubscription = {
-        id: `sub-${installedWorkerId}`,
-        name: item.name,
-        type: 'community-worker',
-        providerId: item.id,
-        providerName: item.creatorName ?? 'Community',
-        priceLabel: item.pricing.label ?? 'Paid',
-        priceCentsMonthly: 0,
-        cadence: 'monthly',
-        status: 'active',
-        nextChargeAt: new Date(Date.now() + 30 * 86400000),
-        prototype: true,
-      };
-      dispatch({ type: 'ADD_BILLING_SUBSCRIPTION', subscription: sub });
-    }
-    dispatch({
-      type: 'ADD_ACTIVITY_EVENT',
-      event: {
-        id: uid(),
-        eventType: 'worker-added',
-        title: `${item.name} added to your workforce`,
-        summary: 'Research & recommend only · No wallet authority',
-        workerId: installedWorkerId,
-        workerName: item.name,
-        timestamp: new Date(),
-        status: 'complete',
-      },
-    });
-    setAddedConfirm(true);
+    if (item.readiness === 'unavailable') { setActionError(item.readinessReason ?? 'Worker is unavailable.'); return; }
+    setAcquiring(true); setActionError(null);
+    try {
+      const worker = await installDurableWorker(installedWorkerId);
+      dispatch({ type: 'ADD_WORKER', worker });
+      setAddedConfirm(true);
+    } catch (value) {
+      setActionError(value instanceof Error ? value.message : 'Worker installation failed');
+    } finally { setAcquiring(false); }
   }
 
-  function handleCustomize() {
-    dispatch({ type: 'SET_ACTIVE_DISCOVER_ITEM', id: null });
-    dispatch({ type: 'SET_ACTIVE_CREATION', id: null });
-    dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'agent-builder' });
+  async function handleCustomize() {
+    if (!installedWorkerId || !state.user) {
+      setActionError('Sign in before customizing a Worker.');
+      return;
+    }
+    setAcquiring(true); setActionError(null);
+    try {
+      const asset = await forkCreatorWorker(installedWorkerId);
+      dispatch({ type: 'ADD_CREATOR_ASSET', asset });
+      dispatch({ type: 'SET_ACTIVE_DISCOVER_ITEM', id: null });
+      dispatch({ type: 'SET_ACTIVE_CREATION', id: asset.id });
+      dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'agent-builder' });
+    } catch (value) {
+      setActionError(value instanceof Error ? value.message : 'Could not customize this Worker');
+    } finally { setAcquiring(false); }
   }
 
   const evidenceItems = [
@@ -175,7 +121,7 @@ export function DiscoverDetail() {
   return (
     <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
       {showTry && (
-        <SandboxTryPanel itemId={item.id} itemName={item.name} onClose={() => setShowTry(false)} />
+        <SandboxTryPanel workerDefinitionId={installedWorkerId ?? ''} itemName={item.name} readiness={item.readiness} onClose={() => setShowTry(false)} onOpenJob={(jobId)=>dispatch({type:'SET_ACTIVE_JOB',id:jobId})} />
       )}
 
       {/* Header */}
@@ -332,6 +278,14 @@ export function DiscoverDetail() {
             </div>
           )}
 
+          {item.readiness && (
+            <div className="border border-border-dim rounded-lg px-4 py-3">
+              <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Production readiness</p>
+              <p className={`text-sm font-medium ${item.readiness==='available'?'text-accent':item.readiness==='unavailable'?'text-danger':'text-warn'}`}>{item.readiness.charAt(0).toUpperCase()+item.readiness.slice(1)}</p>
+              {item.readinessReason && <p className="text-xs text-text-dim mt-1">{item.readinessReason}</p>}
+            </div>
+          )}
+
           {/* Authority default */}
           {item.authorityDefault && (
             <div className="border border-border-dim rounded-lg px-4 py-3">
@@ -368,7 +322,7 @@ export function DiscoverDetail() {
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <p className="text-xs font-medium text-text-muted uppercase tracking-wider">Evidence</p>
-                <span className="text-[10px] text-text-dim border border-border-dim rounded px-1.5 py-0.5">Prototype data</span>
+                <span className="text-[10px] text-text-dim border border-border-dim rounded px-1.5 py-0.5">Observed / declared</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {evidenceItems.map(({ label, value }) => (
@@ -427,28 +381,16 @@ export function DiscoverDetail() {
                     disabled={acquiring}
                     className="flex-1 py-2.5 text-sm bg-primary text-white rounded-lg font-medium hover:bg-primary-hover transition-colors disabled:opacity-60"
                   >
-                    {acquiring ? 'Acquiring…' : item.pricing.type === 'paid' ? 'Subscribe & Add' : 'Add Worker'}
+                    {acquiring ? 'Adding…' : item.pricing.type === 'paid' ? 'Paid · not yet enabled' : 'Add Worker'}
                   </button>
                 )}
               </>
             )}
             {item.type === 'workflow' && (
-              <>
-                <button
-                  onClick={() => setShowTry(true)}
-                  className="flex-1 py-2.5 text-sm border border-border rounded-lg text-text-sub hover:bg-panel-raised transition-colors"
-                >
-                  Try
-                </button>
-                <button className="flex-1 py-2.5 text-sm bg-primary text-white rounded-lg font-medium hover:bg-primary-hover transition-colors">
-                  Use / Customize
-                </button>
-              </>
+              <div className="flex-1 rounded-lg border border-border px-3 py-2 text-xs text-text-muted">Published Workflow · reusable runtime wiring remains limited to eligible AgentPlace capability paths.</div>
             )}
             {item.type === 'capability' && (
-              <button className="flex-1 py-2.5 text-sm bg-primary text-white rounded-lg font-medium hover:bg-primary-hover transition-colors">
-                Connect capability
-              </button>
+              <div className="flex-1 rounded-lg border border-border px-3 py-2 text-xs text-text-muted">Builder capability · creator imports remain isolated from trusted production routing.</div>
             )}
             {item.allowsCustomization && item.type === 'worker' && (
               <button
@@ -461,9 +403,7 @@ export function DiscoverDetail() {
             )}
           </div>
         )}
-        {acquiring && (
-          <p className="text-xs text-text-dim text-center mt-2">Prototype acquisition — no real charge.</p>
-        )}
+        {actionError && <p className="text-xs text-danger text-center mt-2">{actionError}</p>}
       </div>
     </div>
   );
