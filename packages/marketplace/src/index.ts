@@ -50,6 +50,7 @@ export interface CreatorAssetRecord {
   name: string;
   version: string;
   versionId?: string;
+  versionHistory?: Array<{ versionId: string; version: string; releasedAt: string }>;
   createdAt: string;
   updatedAt: string;
   worker?: CreatorWorkerDraft;
@@ -216,11 +217,20 @@ export async function createCapabilityImport(ownerUserId:string,input:Capability
 export async function listCreatorAssets(ownerUserId:string):Promise<CreatorAssetRecord[]>{
   const workers=await getDatabasePool().query<any>(`SELECT d.id,d.name,d.tagline,d.responsibility,d.category,d.publication_status,d.created_at,d.updated_at,v.id AS version_id,v.version,v.instructions,v.capability_requirements,c.*,
     l.source_type,l.source_id,l.source_version_id,l.source_name,l.source_creator
-    FROM worker_definition d JOIN LATERAL(SELECT * FROM worker_version WHERE worker_definition_id=d.id AND retired_at IS NULL ORDER BY released_at DESC LIMIT 1)v ON true
+    FROM worker_definition d JOIN LATERAL(SELECT * FROM worker_version WHERE worker_definition_id=d.id AND retired_at IS NULL ORDER BY released_at DESC,id DESC LIMIT 1)v ON true
     JOIN job_contract c ON c.worker_version_id=v.id LEFT JOIN creator_lineage l ON l.child_type='worker' AND l.child_id=d.id
     WHERE d.creator_user_id=$1 ORDER BY d.updated_at DESC`,[ownerUserId]);
+  const versionRows=await getDatabasePool().query<{worker_definition_id:string;version_id:string;version:string;released_at:Date}>(`SELECT v.worker_definition_id,v.id AS version_id,v.version,v.released_at
+    FROM worker_version v JOIN worker_definition d ON d.id=v.worker_definition_id
+    WHERE d.creator_user_id=$1 AND v.retired_at IS NULL ORDER BY v.worker_definition_id,v.released_at DESC,v.id DESC`,[ownerUserId]);
+  const versionHistoryByWorker=new Map<string,Array<{versionId:string;version:string;releasedAt:string}>>();
+  for(const versionRow of versionRows.rows){
+    const history=versionHistoryByWorker.get(versionRow.worker_definition_id)??[];
+    history.push({versionId:versionRow.version_id,version:versionRow.version,releasedAt:versionRow.released_at.toISOString()});
+    versionHistoryByWorker.set(versionRow.worker_definition_id,history);
+  }
   const workerAssets=workers.rows.map((row:any):CreatorAssetRecord=>{const instructions=record(row.instructions); const lineage=row.source_id?{sourceType:row.source_type,sourceId:row.source_id,sourceVersionId:row.source_version_id??undefined,sourceName:row.source_name,sourceCreator:row.source_creator}:undefined; return {
-    id:row.id,type:'worker',visibility:row.publication_status,name:row.name,version:row.version,versionId:row.version_id,createdAt:row.created_at.toISOString(),updatedAt:row.updated_at.toISOString(),
+    id:row.id,type:'worker',visibility:row.publication_status,name:row.name,version:row.version,versionId:row.version_id,versionHistory:versionHistoryByWorker.get(row.id)??[],createdAt:row.created_at.toISOString(),updatedAt:row.updated_at.toISOString(),
     worker:{name:row.name,tagline:row.tagline,responsibility:row.responsibility,category:row.category,mission:row.mission,responsibilities:strings(row.responsibilities),antiJobs:strings(row.anti_jobs),expectedOutputs:strings(row.expected_outputs),successConditions:strings(row.success_conditions),method:strings(instructions.method),capabilityRequirements:strings(row.capability_requirements),networks:strings(instructions.networks),authorityDefault:row.default_approval_boundary,collaborators:Array.isArray(instructions.collaborators)?instructions.collaborators as NonNullable<CreatorWorkerDraft['collaborators']>:[],...(lineage?{lineage}:{})},...(lineage?{lineage}:{})};});
   const workflows=await getDatabasePool().query<any>(`SELECT d.*,v.id AS version_id,v.version,v.inputs,v.steps,v.conditions,v.outputs,v.required_capabilities,v.safety_boundaries,v.compatible_workers FROM workflow_definition d JOIN LATERAL(SELECT * FROM workflow_version WHERE workflow_definition_id=d.id AND retired_at IS NULL ORDER BY released_at DESC LIMIT 1)v ON true WHERE d.creator_user_id=$1 ORDER BY d.updated_at DESC`,[ownerUserId]);
   const workflowAssets=workflows.rows.map((row:any):CreatorAssetRecord=>({id:row.id,type:'workflow',visibility:row.publication_status,name:row.name,version:row.version,versionId:row.version_id,createdAt:row.created_at.toISOString(),updatedAt:row.updated_at.toISOString(),workflow:{name:row.name,purpose:row.purpose,inputs:strings(row.inputs),steps:strings(row.steps),conditions:strings(row.conditions),outputs:strings(row.outputs),requiredCapabilities:strings(row.required_capabilities),safetyBoundaries:strings(row.safety_boundaries),compatibleWorkers:strings(row.compatible_workers)}}));
@@ -262,7 +272,9 @@ export async function createNewWorkerVersion(ownerUserId:string,definitionId:str
     for(const capabilityId of draft.capabilityRequirements)await client.query(`INSERT INTO worker_capability_route(worker_version_id,canonical_capability_id,suitability) SELECT $1,id,'primary' FROM canonical_capability WHERE id=$2 AND effect='read' ON CONFLICT DO NOTHING`,[versionId,capabilityId]);
     await client.query(`UPDATE worker_definition SET name=$3,tagline=$4,responsibility=$5,category=$6,publication_status='draft',updated_at=now() WHERE id=$1 AND creator_user_id=$2`,[definitionId,ownerUserId,draft.name,draft.tagline,draft.responsibility,draft.category]);
   });
-  return {id:definitionId,type:'worker',visibility:'draft',name:draft.name,version,versionId,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),worker:draft};
+  const updated=(await listCreatorAssets(ownerUserId)).find((item)=>item.type==='worker'&&item.id===definitionId);
+  if(!updated)throw new Error('CREATOR_WORKER_NOT_FOUND_AFTER_VERSION_CREATE');
+  return {...updated,visibility:'draft'};
 }
 
 

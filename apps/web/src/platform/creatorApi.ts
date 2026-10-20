@@ -16,6 +16,7 @@ interface ApiDiscoverItem {
 }
 interface ApiCreatorAsset {
   id:string; type:'worker'|'workflow'|'capability'; visibility:'draft'|'tested'|'private'|'unlisted'|'published'|'retired'; name:string; version:string;
+  versionHistory?:Array<{versionId:string;version:string;releasedAt:string}>;
   createdAt:string; updatedAt:string; worker?:ApiWorkerDraft; workflow?:ApiWorkflowDraft; capability?:ApiCapabilityDraft;
   lineage?:{sourceType:'worker'|'workflow'|'capability';sourceId:string;sourceVersionId?:string;sourceName:string;sourceCreator:string};
 }
@@ -62,7 +63,7 @@ function workerDraft(value:ApiWorkerDraft):WorkerDraftData{
   return {name:value.name,jobContract:value.mission,responsibilities:value.responsibilities,antiJobs:value.antiJobs,method:value.method,collaborators:(value.collaborators??[]).map((item,index)=>({id:`collab-${index}`,role:item.role,...(item.pinnedWorkerId?{pinnedWorkerId:item.pinnedWorkerId}:{ }),roleBased:item.roleBased??false,whenUsed:item.whenUsed,contextShared:item.contextShared,required:item.required,authorityBoundary:item.authorityBoundary})),capabilities:value.capabilityRequirements,routineTemplates:[],authorityDefault:value.authorityDefault,serviceBudget:'Creator Worker service budget is configured separately',testCases:[],testResults:[],networks:value.networks,pricing:{type:'free'},...(value.lineage?{lineageSourceId:value.lineage.sourceId,lineageSourceName:value.lineage.sourceName,lineageSourceCreator:value.lineage.sourceCreator}:{})};
 }
 function fromAsset(value:ApiCreatorAsset):CreatorAsset{
-  const out:CreatorAsset={id:value.id,type:value.type,visibility:creatorVisibility(value.visibility),version:value.version,createdAt:new Date(value.createdAt),updatedAt:new Date(value.updatedAt)};
+  const out:CreatorAsset={id:value.id,type:value.type,visibility:creatorVisibility(value.visibility),version:value.version,...(value.versionHistory?{versionHistory:value.versionHistory.map((item)=>({versionId:item.versionId,version:item.version,releasedAt:new Date(item.releasedAt)}))}:{}),createdAt:new Date(value.createdAt),updatedAt:new Date(value.updatedAt)};
   if(value.worker)out.workerDraft=workerDraft(value.worker);
   if(value.workflow)out.workflowDraft={...value.workflow,pricing:{type:'free'}} as WorkflowDraftData;
   if(value.capability)out.capabilityDraft={name:value.capability.name,importType:value.capability.importType,...(value.capability.endpoint?{endpoint:value.capability.endpoint}:{}),operations:value.capability.operations.map((op)=>({original:op.original,canonical:op.canonical??'',classification:op.classification,description:op.description})),...(value.capability.provider?{provider:value.capability.provider}:{}),...(value.capability.version?{version:value.capability.version}:{}),pricing:{type:'free'}} as CapabilityDraftData;

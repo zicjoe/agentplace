@@ -83,6 +83,11 @@ export interface Worker {
   isOriginal: boolean;
   responsibility?: string;
   authoritySummary?: string;
+  version?: string;
+  versionId?: string;
+  latestVersion?: string;
+  latestVersionId?: string;
+  updateAvailable?: boolean;
   currentFocus?: string;
   currentJobId?: string;
 }
@@ -692,6 +697,7 @@ export interface CreatorAsset {
   type: CreatorAssetType;
   visibility: CreatorAssetVisibility;
   version?: string;
+  versionHistory?: Array<{ versionId: string; version: string; releasedAt: Date }>;
   createdAt: Date;
   updatedAt: Date;
   workerDraft?: WorkerDraftData;

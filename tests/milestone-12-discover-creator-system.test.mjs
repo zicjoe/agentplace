@@ -21,6 +21,8 @@ const workflow=readFileSync('apps/web/src/components/WorkflowStudio.tsx','utf8')
 const capability=readFileSync('apps/web/src/components/CapabilityStudio.tsx','utf8');
 const creatorHome=readFileSync('apps/web/src/components/CreatorHome.tsx','utf8');
 const createMenu=readFileSync('apps/web/src/components/CreateMenu.tsx','utf8');
+const workerWorkspace=readFileSync('apps/web/src/components/WorkerWorkspace.tsx','utf8');
+const workApi=readFileSync('apps/web/src/platform/workApi.ts','utf8');
 
 test('M12 persists creator supply, versions, lineage and listing state',()=>{
   for(const token of ['workflow_definition','workflow_version','creator_capability','creator_capability_version','creator_capability_operation','creator_test_run','creator_lineage','marketplace_listing']) assert.match(migration,new RegExp(token));
@@ -36,7 +38,12 @@ test('M12 pins installed Workers and Jobs to exact Worker versions',()=>{
   assert.match(workerRuntime,/getJobWorkerVersionAssignments/);
   assert.match(workerRuntime,/getWorkerCatalogVersions/);
   assert.match(workers,/updateInstalledWorkerVersion/);
+  assert.match(workers,/latest_version_id/);
+  assert.match(workers,/updateAvailable/);
   assert.match(api,/updateInstalledWorkerVersion/);
+  assert.match(workApi,/updateDurableWorkerVersion/);
+  assert.match(workerWorkspace,/Installed v/);
+  assert.match(workerWorkspace,/Update to v/);
 });
 
 test('M12 private creator Workers are owner-scoped and do not need public publication',()=>{
@@ -176,6 +183,15 @@ test('M12 MCP discovery accepts schemas only when they are real objects',()=>{
   assert.match(api,/function optionalRecord\(value: unknown\): Record<string, unknown> \| undefined/);
   assert.match(api,/const inputSchema=optionalRecord\(row\.inputSchema\)/);
   assert.doesNotMatch(api,/inputSchema:record\(row\.inputSchema\)/);
+});
+
+test('M12 creator UI exposes immutable version history without auto-updating installed Workers',()=>{
+  assert.match(marketplace,/versionHistory/);
+  assert.match(creatorApi,/versionHistory/);
+  assert.match(creatorHome,/immutable versions/);
+  assert.match(creatorHome,/History:/);
+  assert.match(workerWorkspace,/Latest creator version/);
+  assert.match(workerWorkspace,/Existing Jobs remain pinned/);
 });
 
 test('M12 paid acquisition and creator earnings stay truthfully disabled',()=>{

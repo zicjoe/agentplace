@@ -51,6 +51,7 @@ if (/INSERT INTO capability_implementation[\s\S]{0,120}creator/i.test(marketplac
 
 const workers = readFileSync('packages/workers/src/index.ts', 'utf8');
 if (!workers.includes('JOIN worker_version v ON v.id=uw.worker_version_id')) throw new Error('M12 installed Workers must hydrate their pinned exact version.');
+if (!workers.includes('latest_version_id') || !workers.includes('updateAvailable')) throw new Error('M12 installed Workers must expose pinned-vs-latest version state.');
 if (!workers.includes("d.creator_user_id=$2")) throw new Error('M12 creator-owned private Workers must be installable only by their owner.');
 
 const jobs = readFileSync('packages/jobs/src/index.ts', 'utf8');
@@ -79,6 +80,9 @@ if (!discoverDetail.includes('forkCreatorWorker')) throw new Error('M12 Customiz
 
 const creatorHome = readFileSync('apps/web/src/components/CreatorHome.tsx', 'utf8');
 if (!creatorHome.includes('Creator earnings are not enabled yet')) throw new Error('M12 must not show fixture creator earnings as production truth.');
+if (!creatorHome.includes('immutable versions') || !creatorHome.includes('History:')) throw new Error('M12 My creations must expose immutable Worker version history.');
+const workerWorkspace = readFileSync('apps/web/src/components/WorkerWorkspace.tsx', 'utf8');
+if (!workerWorkspace.includes('updateDurableWorkerVersion') || !workerWorkspace.includes('Installed v') || !workerWorkspace.includes('Update to v')) throw new Error('M12 Worker Workspace must expose exact installed version and an explicit update action.');
 
 const capabilityStudio = readFileSync('apps/web/src/components/CapabilityStudio.tsx', 'utf8');
 for (const token of ['inspectCreatorCapability','testCreatorCapabilityRead','public endpoint only in M12']) if (!capabilityStudio.includes(token)) throw new Error(`M12 Capability Studio missing ${token}`);
@@ -89,4 +93,4 @@ for (const envFile of ['config/environments/production-mainnet.env.example','.en
   if (!env.includes('MAINNET_EXECUTION_ENABLED=false') || !env.includes('MAINNET_AUTONOMY_ENABLED=false')) throw new Error(`M12 must keep Mainnet execution/autonomy disabled in ${envFile}`);
 }
 
-console.log('PASS: M12 Discover + Creator System makes supply and creator assets durable, version-pinned and truthfully readiness-scoped, while keeping imported tools isolated from authority, signing and trusted production routing.');
+console.log('PASS: M12 Discover + Creator System makes supply and creator assets durable, immutable-version-visible and explicitly updateable while keeping installed Workers pinned until user action, with imported tools isolated from authority, signing and trusted production routing.');

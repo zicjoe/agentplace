@@ -11,7 +11,11 @@ interface ApiWorker {
   currentFocus?: string;
   currentJobId?: string;
   primaryConversationId?: string;
+  versionId: string;
   version: string;
+  latestVersionId: string;
+  latestVersion: string;
+  updateAvailable: boolean;
   jobContract: { defaultApprovalBoundary: string; antiJobs: string[] };
 }
 
@@ -58,6 +62,7 @@ function fromWorker(value:ApiWorker):Worker {
   const out:Worker = {
     id:value.id,name:value.name,tagline:value.tagline,status:value.status==='removed'?'paused':value.status,isOriginal:value.origin==='agentplace-original',
     responsibility:value.responsibility,authoritySummary:value.jobContract.defaultApprovalBoundary || 'No financial authority',
+    version:value.version,versionId:value.versionId,latestVersion:value.latestVersion,latestVersionId:value.latestVersionId,updateAvailable:value.updateAvailable,
   };
   if (value.currentFocus) out.currentFocus=value.currentFocus;
   if (value.currentJobId) out.currentJobId=value.currentJobId;

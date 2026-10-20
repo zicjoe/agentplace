@@ -46,7 +46,15 @@ function AssetRow({ asset }: { asset: CreatorAsset }) {
               <span className="text-[10px] font-mono text-accent">Tested</span>
             )}
             <span className="text-[10px] font-mono text-text-dim">v{version}</span>
+            {asset.type === 'worker' && asset.versionHistory && asset.versionHistory.length > 1 && (
+              <span className="text-[10px] font-mono text-text-dim">{asset.versionHistory.length} immutable versions</span>
+            )}
           </div>
+          {asset.type === 'worker' && asset.versionHistory && asset.versionHistory.length > 1 && (
+            <p className="text-[10px] font-mono text-text-dim mt-1">
+              History: {asset.versionHistory.map((item) => `v${item.version}`).join(' · ')}
+            </p>
+          )}
         </div>
       </div>
       <svg className="w-4 h-4 text-text-dim shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

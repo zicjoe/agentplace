@@ -30,6 +30,9 @@ export interface WorkerCatalogItem {
 
 export interface DurableUserWorker extends WorkerCatalogItem {
   status: UserWorkerStatus;
+  latestVersionId: string;
+  latestVersion: string;
+  updateAvailable: boolean;
   currentFocus?: string;
   currentJobId?: string;
   primaryConversationId?: string;
@@ -44,6 +47,7 @@ type CatalogRow = {
 };
 
 type UserWorkerRow = CatalogRow & {
+  latest_version_id: string; latest_version: string;
   status: UserWorkerStatus; current_focus: string | null; current_job_id: string | null; primary_conversation_id: string | null;
   added_at: Date; updated_at: Date;
 };
@@ -61,7 +65,7 @@ function catalog(row: CatalogRow): WorkerCatalogItem {
   };
 }
 function durable(row: UserWorkerRow): DurableUserWorker {
-  const out: DurableUserWorker = { ...catalog(row), status: row.status, addedAt: row.added_at.toISOString(), updatedAt: row.updated_at.toISOString() };
+  const out: DurableUserWorker = { ...catalog(row), status: row.status, latestVersionId:row.latest_version_id, latestVersion:row.latest_version, updateAvailable:row.version_id!==row.latest_version_id, addedAt: row.added_at.toISOString(), updatedAt: row.updated_at.toISOString() };
   if (row.current_focus) out.currentFocus = row.current_focus;
   if (row.current_job_id) out.currentJobId = row.current_job_id;
   if (row.primary_conversation_id) out.primaryConversationId = row.primary_conversation_id;
@@ -78,7 +82,9 @@ const catalogSql = `SELECT ${catalogSelect} ${latestCatalogFrom}`;
 const installedFrom = `FROM user_worker uw
   JOIN worker_definition d ON d.id=uw.worker_definition_id
   JOIN worker_version v ON v.id=uw.worker_version_id AND v.worker_definition_id=d.id
-  JOIN job_contract c ON c.worker_version_id=v.id`;
+  JOIN job_contract c ON c.worker_version_id=v.id
+  JOIN LATERAL (SELECT latest.id,latest.version FROM worker_version latest WHERE latest.worker_definition_id=d.id AND latest.retired_at IS NULL ORDER BY latest.released_at DESC,latest.id DESC LIMIT 1) lv ON true`;
+const installedSelect = `${catalogSelect}, lv.id AS latest_version_id, lv.version AS latest_version`;
 
 export async function listWorkerCatalog(): Promise<WorkerCatalogItem[]> {
   const result = await getDatabasePool().query<CatalogRow>(`${catalogSql} WHERE d.publication_status='published' AND d.trust_status <> 'quarantined' ORDER BY (d.origin='agentplace-original') DESC,d.name`);
@@ -92,14 +98,14 @@ export async function getWorkerCatalogVersions(versionIds:string[]):Promise<Work
 }
 
 export async function listUserWorkers(ownerUserId: string, includeRemoved = false): Promise<DurableUserWorker[]> {
-  const result = await getDatabasePool().query<UserWorkerRow>(`SELECT ${catalogSelect}, uw.status,uw.current_focus,uw.current_job_id,uw.primary_conversation_id,uw.added_at,uw.updated_at ${installedFrom}
+  const result = await getDatabasePool().query<UserWorkerRow>(`SELECT ${installedSelect}, uw.status,uw.current_focus,uw.current_job_id,uw.primary_conversation_id,uw.added_at,uw.updated_at ${installedFrom}
     WHERE uw.owner_user_id=$1 AND ($2::boolean OR uw.status <> 'removed')
     ORDER BY uw.added_at DESC`, [ownerUserId, includeRemoved]);
   return result.rows.map((row) => durable({ ...row, status: row.status, current_focus: row.current_focus, current_job_id: row.current_job_id, primary_conversation_id: row.primary_conversation_id, added_at: row.added_at, updated_at: row.updated_at }));
 }
 
 export async function getUserWorker(ownerUserId: string, workerId: string): Promise<DurableUserWorker | null> {
-  const result = await getDatabasePool().query<UserWorkerRow>(`SELECT ${catalogSelect}, uw.status,uw.current_focus,uw.current_job_id,uw.primary_conversation_id,uw.added_at,uw.updated_at ${installedFrom}
+  const result = await getDatabasePool().query<UserWorkerRow>(`SELECT ${installedSelect}, uw.status,uw.current_focus,uw.current_job_id,uw.primary_conversation_id,uw.added_at,uw.updated_at ${installedFrom}
     WHERE uw.owner_user_id=$1 AND uw.id=$2`, [ownerUserId, workerId]);
   return result.rows[0] ? durable(result.rows[0]) : null;
 }

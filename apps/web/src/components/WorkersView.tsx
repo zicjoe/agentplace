@@ -132,6 +132,11 @@ export function WorkersView() {
                     <p className="text-xs text-text-sub mt-0.5">
                       {activeJob ? activeJob.title : worker.currentFocus ?? worker.tagline}
                     </p>
+                    {worker.version && (
+                      <p className="text-[10px] font-mono text-text-dim mt-1">
+                        Installed v{worker.version}{worker.updateAvailable && worker.latestVersion ? ` · Update available: v${worker.latestVersion}` : ''}
+                      </p>
+                    )}
                   </div>
                   <svg
                     className="w-4 h-4 text-text-dim group-hover:text-text-muted transition-colors shrink-0 mt-2"

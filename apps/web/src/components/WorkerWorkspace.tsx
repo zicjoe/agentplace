@@ -5,7 +5,7 @@ import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
 import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
-import { fetchWorkState, fetchWorkerCatalog, updateDurableWorkerStatus, type WorkerCatalogItem } from '../platform/workApi';
+import { fetchWorkState, fetchWorkerCatalog, updateDurableWorkerStatus, updateDurableWorkerVersion, type WorkerCatalogItem } from '../platform/workApi';
 import { ResearchMarkdown } from './ResearchMarkdown';
 import { scrollConversationToEnd } from '../platform/scroll';
 import { applyAuthorityState, fetchAuthorityState, setDurableMandateStatus } from '../platform/authorityApi';
@@ -349,7 +349,7 @@ function ContextualWorkerWorkspace({
 function WorkerSideRail({ workerId, onSetupRoutine }: { workerId: string; onSetupRoutine: () => void }) {
   const state = useAppState();
   const dispatch = useDispatch();
-  const [workerControlBusy, setWorkerControlBusy] = useState<'pause' | 'resume' | 'remove' | null>(null);
+  const [workerControlBusy, setWorkerControlBusy] = useState<'pause' | 'resume' | 'remove' | 'update-version' | null>(null);
   const [workerControlError, setWorkerControlError] = useState<string | null>(null);
   const [showAuthorityEditor, setShowAuthorityEditor] = useState(false);
   const [authorityBusy, setAuthorityBusy] = useState(false);
@@ -393,6 +393,21 @@ function WorkerSideRail({ workerId, onSetupRoutine }: { workerId: string; onSetu
       setWorkerControlBusy(null);
     }
   }
+  async function updateWorkerVersion() {
+    if (!currentWorker.updateAvailable) return;
+    setWorkerControlBusy('update-version');
+    setWorkerControlError(null);
+    try {
+      if (WEB_RUNTIME_SETTINGS.dataMode !== 'api') return;
+      const updated = await updateDurableWorkerVersion(currentWorker.id);
+      dispatch({ type: 'UPDATE_WORKER', workerId: currentWorker.id, updates: updated });
+    } catch (error) {
+      setWorkerControlError(error instanceof Error ? error.message : 'Worker version update failed.');
+    } finally {
+      setWorkerControlBusy(null);
+    }
+  }
+
   const recentOutcomes = (state.outcomes ?? []).filter((o) => o.workerId === workerId).slice(0, 3);
 
   return (
@@ -448,6 +463,30 @@ function WorkerSideRail({ workerId, onSetupRoutine }: { workerId: string; onSetu
             <p className="text-xs text-danger mt-2">{workerControlError}</p>
           )}
         </div>
+
+        {/* Version */}
+        {worker.version && (
+          <div>
+            <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim mb-2">Version</p>
+            <p className="text-xs text-text-sub">Installed v{worker.version}</p>
+            {worker.updateAvailable && worker.latestVersion ? (
+              <div className="mt-2">
+                <p className="text-xs text-text-muted">Latest creator version: v{worker.latestVersion}</p>
+                <button
+                  type="button"
+                  disabled={workerControlBusy !== null}
+                  onClick={() => void updateWorkerVersion()}
+                  className="text-xs text-primary hover:underline disabled:text-text-dim disabled:no-underline mt-1"
+                >
+                  {workerControlBusy === 'update-version' ? 'Updating…' : `Update to v${worker.latestVersion}`}
+                </button>
+                <p className="text-[10px] text-text-dim mt-1.5 leading-relaxed">Updates this installed Worker only. Existing Jobs remain pinned to the Worker versions they started with.</p>
+              </div>
+            ) : (
+              <p className="text-[10px] text-text-dim mt-1">Latest available version installed.</p>
+            )}
+          </div>
+        )}
 
         {/* Authority */}
         <div>

@@ -353,7 +353,7 @@ export function AgentBuilder() {
     dispatch({
       type: 'UPDATE_CREATOR_ASSET',
       assetId,
-      updates: { workerDraft: asset.workerDraft, version: asset.version, visibility: asset.visibility },
+      updates: { workerDraft: asset.workerDraft, version: asset.version, visibility: asset.visibility, versionHistory: asset.versionHistory },
     });
   }
 
@@ -519,7 +519,8 @@ Open the Job to inspect routing, evidence and the actual result. Passing this te
       await ensureCurrentWorkerVersion(assetId, draftToSave);
       await publishCreatorAsset('worker', assetId, 'private');
       const worker = await installDurableWorker(assetId);
-      dispatch({ type: 'ADD_WORKER', worker });
+      if (state.workers.some((item) => item.id === worker.id)) dispatch({ type: 'UPDATE_WORKER', workerId: worker.id, updates: worker });
+      else dispatch({ type: 'ADD_WORKER', worker });
       dispatch({ type: 'UPDATE_CREATOR_ASSET', assetId, updates: { visibility: 'private' } });
       setStep('private-saved');
       addBuilderMessage(`**${draftToSave.name}** is saved privately and added to your Workers.
