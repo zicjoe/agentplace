@@ -3,7 +3,7 @@ import { useAppState, useDispatch, uid } from '../state/AppContext';
 import { ResearchMarkdown } from './ResearchMarkdown';
 import { scrollConversationToEnd } from '../platform/scroll';
 import type { WorkerDraftData, CollaboratorConfig } from '../state/types';
-import { createCreatorWorker, createCreatorWorkerVersion, fetchCreatorBuilderSession, publishCreatorAsset, saveCreatorBuilderSession, testCreatorWorker } from '../platform/creatorApi';
+import { createCreatorWorker, createCreatorWorkerVersion, fetchCreatorBuilderSession, interpretCreatorBuilderTurn, publishCreatorAsset, saveCreatorBuilderSession, testCreatorWorker, type CreatorBuilderTurnResult } from '../platform/creatorApi';
 import { installDurableWorker } from '../platform/workApi';
 
 // ── Draft initial state ───────────────────────────────────────────────────────
@@ -25,30 +25,14 @@ const EMPTY_DRAFT: WorkerDraftData = {
   pricing: { type: 'free' },
 };
 
-function titleFromIntent(text:string):string {
-  const lower=text.toLowerCase();
-  if(/meme/.test(lower)&&/(launch|newly|new token)/.test(lower)&&/(research|check|evaluate|analyse|analyze)/.test(lower))return 'Meme Launch Researcher';
-  if(/smart.money|whale|wallet/.test(lower)&&/(research|check|evaluate|analyse|analyze)/.test(lower))return 'Smart Money Researcher';
-  if(/stablecoin/.test(lower)&&/(research|yield|monitor)/.test(lower))return 'Stablecoin Researcher';
-  const cleaned=text.replace(/^(build|create|make)\s+(me\s+)?(a|an)?\s*(worker|agent)?\s*(that|which|to)?\s*/i,'').trim();
-  const words=cleaned.split(/\s+/).filter(Boolean).slice(0,4).map((word)=>word.replace(/[^a-z0-9-]/gi,''));
-  const base=words.join(' ')||'Custom Research Worker';
-  return base.replace(/\b\w/g,(char)=>char.toUpperCase()).slice(0,60);
-}
-
-function draftFromIntent(text:string):WorkerDraftData {
-  const lower=text.toLowerCase();
-  const meme=/meme|token|bonk|launch/.test(lower);
-  const smart=/wallet|whale|smart.money|flow|accumul/.test(lower);
-  const protocol=/protocol|defi|yield|stablecoin|tvl/.test(lower);
-  const capabilities:string[]=[];
-  if(meme)capabilities.push('token.market.read','token.liquidity.analyze','token.holders.analyze','token.security.assess');
-  if(smart)capabilities.push('wallet.profile','wallet.performance.analyze','wallet.activity.analyze');
-  if(protocol)capabilities.push('protocol.tvl.read','protocol.yield.read','protocol.metrics.read');
-  if(capabilities.length===0)capabilities.push('research.web.search','research.web.read','research.source.extract');
-  const unique=[...new Set(capabilities)];
+function seedDraftForBuilder(text:string):WorkerDraftData {
   return {
-    name:titleFromIntent(text),jobContract:text,responsibilities:['Research the requested domain using available evidence','Separate observed evidence from inference','Return a concise result with limitations'],antiJobs:['Do not move funds or sign transactions','Do not present unsupported claims as facts'],method:[],collaborators:[],capabilities:unique,routineTemplates:[],authorityDefault:'Research & recommend only · No wallet authority',serviceBudget:'Configured separately per user or Routine',testCases:[],testResults:[],networks:[],pricing:{type:'free'}
+    ...EMPTY_DRAFT,
+    name:'Untitled Creator Worker',
+    jobContract:text,
+    responsibilities:['Research the requested domain using available evidence','Separate observed evidence from inference','Return a concise result with limitations'],
+    antiJobs:['Do not move funds or sign transactions','Do not present unsupported claims as facts'],
+    capabilities:[],
   };
 }
 
@@ -241,21 +225,6 @@ function draftSignature(draft: WorkerDraftData): string {
   });
 }
 
-function applyConversationalEdit(current: WorkerDraftData, text: string): {draft: WorkerDraftData; summary: string} {
-  const rename=text.match(/^(?:rename(?:\s+(?:it|the worker))?\s+to|call(?:\s+it)?|name(?:\s+it)?)\s+["']?(.+?)["']?\.?$/i);
-  if(rename?.[1]){
-    const name=rename[1].trim().slice(0,80);
-    return {draft:{...current,name},summary:`I renamed the Worker to **${name}**.`};
-  }
-  if(/^(?:do not|don't|never|must not)\b/i.test(text)){
-    return {draft:{...current,antiJobs:[...current.antiJobs,text]},summary:'I added that to **Anti-jobs**.'};
-  }
-  if(/\b(?:responsib|should always|must always)\b/i.test(text)){
-    return {draft:{...current,responsibilities:[...current.responsibilities,text]},summary:'I added that to **Responsibilities**.'};
-  }
-  return {draft:{...current,method:[...current.method,text]},summary:'I added that as creator-authored **Method / Expertise**.'};
-}
-
 export function AgentBuilder() {
   const state = useAppState();
   const dispatch = useDispatch();
@@ -392,43 +361,60 @@ export function AgentBuilder() {
     if (!input.trim() || isStreaming || step === 'testing' || !sessionReady) return;
     const text = input.trim();
     setInput('');
-    setMessages((prev) => [...prev, { id: uid(), role: 'user', content: text }]);
+    const userMessage:BuilderMessage={ id: uid(), role: 'user', content: text };
+    setMessages((prev) => [...prev, userMessage]);
+    if (!state.user) {
+      dispatch({
+        type:'SET_IDENTITY_CHECKPOINT',
+        checkpoint:{
+          reason:'creator-builder',
+          feature:'use Agent Builder intelligence and keep your Worker draft durable',
+          onComplete:(user)=>{ dispatch({type:'SET_USER',user}); void processBuilderTurn(text); },
+        },
+      });
+      return;
+    }
+    void processBuilderTurn(text);
+  }
 
-    if (step === 'idle') {
-      const formed = draftFromIntent(text);
-      setStep('initial-response');
-      setDraft(formed);
+  async function processBuilderTurn(text:string) {
+    const mode:'build'|'edit'|'teach'=step==='idle'?'build':(teachMode||step==='teach-prompt')?'teach':'edit';
+    const baseDraft=step==='idle'?seedDraftForBuilder(text):draft;
+    if(step==='idle'){
+      setDraft(baseDraft);
       setTeachMode(false);
-      if (state.user) void ensureSavedWorker(formed).catch((error) => console.error('Could not auto-save creator draft', error));
-      const available = (state.discoverSupply ?? []).filter((item) => item.type === 'worker' && item.readiness === 'available').slice(0, 3).map((item) => item.name);
-      window.setTimeout(() => {
-        streamBuilderMessage(`Got it. I'm forming **${formed.name}** around your actual request.
-
-I mapped a research-only Job Contract and ${formed.capabilities.length} existing AgentPlace capability requirements. Creation grants no wallet authority.
-
-${available.length ? `Reusable expertise currently available: **${available.join('**, **')}**. You can reuse existing expertise or teach your own method.` : 'You can teach your own method before testing.'}`);
-      }, 250);
-      return;
+      setStep('initial-response');
     }
-
-    if (step === 'teach-prompt') {
-      setStep('teach-response');
-      setDraft((current) => ({ ...current, method: [...current.method, text] }));
-      window.setTimeout(() => streamBuilderMessage(`Understood. I added your teaching to **Method / Expertise** as creator-authored guidance.
-
-> ${text}
-
-This changes methodology only; it does not create authority or bypass AgentPlace capability/risk controls.`), 250);
-      return;
+    setIsStreaming(true);
+    try {
+      const assetId=await ensureSavedWorker(baseDraft);
+      const result:CreatorBuilderTurnResult=await interpretCreatorBuilderTurn(assetId,{message:text,mode,draft:baseDraft,messages});
+      setDraft(result.draft);
+      const intent=result.intent;
+      if(intent==='TEACH'){
+        setTeachMode(true);
+        setStep('teach-response');
+      }else{
+        setTeachMode(false);
+        if(intent==='USE_EXISTING_EXPERTISE')setStep('collaborators-added');
+        else if(mode==='build'&&intent!=='TEST'&&intent!=='SAVE_PRIVATE'&&intent!=='PUBLISH')setStep('initial-response');
+        else setStep('editing');
+      }
+      addBuilderMessage(result.reply);
+      if(intent==='TEST'){
+        await runTests(result.draft,result.testScenario||undefined,result.testExpected||undefined);
+      }else if(intent==='SAVE_PRIVATE'){
+        await finalizePrivate(result.draft);
+      }else if(intent==='PUBLISH'){
+        await handlePublish(result.draft);
+      }
+    } catch(value) {
+      setIsStreaming(false);
+      const detail=value instanceof Error?value.message:'Agent Builder intelligence is temporarily unavailable.';
+      addBuilderMessage(step==='idle'
+        ? `Agent Builder intelligence could not interpret that turn yet: ${detail}\n\nI kept only a minimal draft seed. Nothing was published, tested, or granted authority.`
+        : `Agent Builder intelligence could not interpret that turn: ${detail}\n\nYour existing draft was not changed.`);
     }
-
-    const edited = applyConversationalEdit(draft, text);
-    setDraft(edited.draft);
-    setTeachMode(false);
-    setStep('editing');
-    window.setTimeout(() => streamBuilderMessage(`${edited.summary}
-
-This is a draft change only. It does not grant authority. You can keep editing, run a real sandbox test, or save the current version privately.`), 250);
   }
 
   function handleUseExistingExpertise() {
@@ -460,19 +446,19 @@ This is a draft change only. It does not grant authority. You can keep editing, 
 • What signals do you ignore or distrust?
 • What edge cases should the Worker handle carefully?
 
-I'll interpret your input and update the Method / Expertise section.`);
+I'll interpret it into the appropriate draft section. AgentPlace's trusted Creator core validates every proposed change.`);
   }
 
   function handleContinueTeaching() {
     setStep('teach-prompt');
     setTeachMode(true);
-    streamBuilderMessage('What else would you like to teach? I will keep it as creator-authored Method / Expertise unless it clearly describes an anti-job or responsibility.');
+    streamBuilderMessage('What else would you like to teach? Agent Builder will interpret the rule conversationally and the trusted Creator core will place it in Method / Expertise, Responsibilities, or Anti-jobs as appropriate.');
   }
 
   function handleContinueEditing() {
     setStep('editing');
     setTeachMode(false);
-    streamBuilderMessage('What would you like to change? You can rename the Worker, add a responsibility or anti-job, or describe another method/rule.');
+    streamBuilderMessage('What would you like to change? You can speak naturally — rename it, add or remove responsibilities/rules/capabilities, ask why something is present, request a test, or undo the last draft change.');
   }
 
   function handleLooksRight() {
@@ -491,18 +477,18 @@ I'll interpret your input and update the Method / Expertise section.`);
     }
   }
 
-  async function runTests() {
+  async function runTests(draftToTest:WorkerDraftData=draft,scenarioOverride?:string,expectedOverride?:string) {
     setStep('testing');
     setIsStreaming(true);
     try {
-      const assetId = await ensureSavedWorker(draft);
-      await ensureCurrentWorkerVersion(assetId, draft);
-      const scenario = draft.testCases[0]?.scenario ?? `Perform a bounded test of this Job Contract: ${draft.jobContract}`;
-      const expected = draft.testCases[0]?.expected ?? 'Produce an evidence-backed result while respecting anti-jobs and no financial authority.';
+      const assetId = await ensureSavedWorker(draftToTest);
+      await ensureCurrentWorkerVersion(assetId, draftToTest);
+      const scenario = scenarioOverride ?? draftToTest.testCases[0]?.scenario ?? `Perform a bounded test of this Job Contract: ${draftToTest.jobContract}`;
+      const expected = expectedOverride ?? draftToTest.testCases[0]?.expected ?? 'Produce an evidence-backed result while respecting anti-jobs and no financial authority.';
       const result = await testCreatorWorker(assetId, scenario, expected);
       setTestJobId(result.jobId);
       setStep('runtime-test-launched');
-      addBuilderMessage(`A real sandbox Job has been queued for **${draft.name}** using the saved creator Worker version.
+      addBuilderMessage(`A real sandbox Job has been queued for **${draftToTest.name}** using the saved creator Worker version.
 
 Open the Job to inspect routing, evidence and the actual result. Passing this test does not self-certify safety. Creator tests never grant financial authority.`);
     } catch (value) {
@@ -526,19 +512,19 @@ Open the Job to inspect routing, evidence and the actual result. Passing this te
     }
   }
 
-  async function finalizePrivate() {
+  async function finalizePrivate(draftToSave:WorkerDraftData=draft) {
     setIsStreaming(true);
     try {
-      const assetId = await ensureSavedWorker(draft);
-      await ensureCurrentWorkerVersion(assetId, draft);
+      const assetId = await ensureSavedWorker(draftToSave);
+      await ensureCurrentWorkerVersion(assetId, draftToSave);
       await publishCreatorAsset('worker', assetId, 'private');
       const worker = await installDurableWorker(assetId);
       dispatch({ type: 'ADD_WORKER', worker });
       dispatch({ type: 'UPDATE_CREATOR_ASSET', assetId, updates: { visibility: 'private' } });
       setStep('private-saved');
-      addBuilderMessage(`**${draft.name}** is saved privately and added to your Workers.
+      addBuilderMessage(`**${draftToSave.name}** is saved privately and added to your Workers.
 
-Authority: ${draft.authorityDefault}.
+Authority: ${draftToSave.authorityDefault}.
 
 The installed Worker is pinned to this exact version until you explicitly update it. Saving privately does **not** end Agent Builder — you can test it, keep editing it, open it in Workers, or publish it later.`);
     } catch (value) {
@@ -546,15 +532,15 @@ The installed Worker is pinned to this exact version until you explicitly update
     }
   }
 
-  async function handlePublish() {
+  async function handlePublish(draftToPublish:WorkerDraftData=draft) {
     setIsStreaming(true);
     try {
-      const assetId = await ensureSavedWorker(draft);
-      await ensureCurrentWorkerVersion(assetId, draft);
+      const assetId = await ensureSavedWorker(draftToPublish);
+      await ensureCurrentWorkerVersion(assetId, draftToPublish);
       await publishCreatorAsset('worker', assetId, 'published');
       dispatch({ type: 'UPDATE_CREATOR_ASSET', assetId, updates: { visibility: 'public' } });
       setStep('public-saved');
-      addBuilderMessage(`**${draft.name}** is now public in Discover. Publication changes visibility only; it does not grant end-user wallet authority, and Discover shows runtime readiness separately from publication status.
+      addBuilderMessage(`**${draftToPublish.name}** is now public in Discover. Publication changes visibility only; it does not grant end-user wallet authority, and Discover shows runtime readiness separately from publication status.
 
 You can keep editing or testing this Worker from Agent Builder.`);
     } catch (value) {
@@ -637,7 +623,7 @@ You can keep editing or testing this Worker from Agent Builder.`);
       <div className="px-5 py-4 border-b border-border shrink-0 flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold text-text">Agent Builder</p>
-          <p className="text-xs text-text-muted">{teachMode ? 'Teach Mode active' : savedAssetId ? 'Continue building this Worker conversationally' : 'Design your Worker conversationally'}</p>
+          <p className="text-xs text-text-muted">{teachMode ? 'Teach Mode active · AgentPlace Auto' : savedAssetId ? 'AgentPlace Auto · structured conversational editing' : 'AgentPlace Auto · design your Worker conversationally'}</p>
         </div>
         <button onClick={closeSurface} className="text-text-muted hover:text-text p-1 rounded transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>

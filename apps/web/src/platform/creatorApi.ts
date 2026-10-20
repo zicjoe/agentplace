@@ -104,6 +104,24 @@ export async function inspectCreatorCapability(input:{importType:'mcp'|'openapi'
 export async function testCreatorCapabilityRead(input:{importType:'openapi';endpoint:string;operation:string}):Promise<{status:number;url:string;preview:string;notice:string}>{return request('/api/v1/creator/capabilities/sandbox-test',{method:'POST',body:JSON.stringify(input)});}
 
 
+
+export type CreatorBuilderIntent = 'DISCUSS'|'MODIFY_DRAFT'|'TEACH'|'TEST'|'SAVE_PRIVATE'|'PUBLISH'|'UNDO'|'USE_EXISTING_EXPERTISE';
+export interface CreatorBuilderTurnResult {
+  intent:CreatorBuilderIntent;
+  reply:string;
+  draft:WorkerDraftData;
+  appliedOperations:Array<{type:string}>;
+  rejectedOperations:Array<{type:string;reason:string}>;
+  testScenario:string;
+  testExpected:string;
+  model:{label:string;provider:string;model:string};
+}
+
+export async function interpretCreatorBuilderTurn(workerId:string,input:{message:string;mode:'build'|'edit'|'teach';draft:WorkerDraftData;messages:Array<{role:'user'|'builder';content:string}>}):Promise<CreatorBuilderTurnResult>{
+  const data=await request<{intent:CreatorBuilderIntent;reply:string;draft:ApiWorkerDraft;appliedOperations:Array<{type:string}>;rejectedOperations:Array<{type:string;reason:string}>;testScenario:string;testExpected:string;model:{label:string;provider:string;model:string}}>(`/api/v1/creator/workers/${encodeURIComponent(workerId)}/builder-turn`,{method:'POST',body:JSON.stringify({message:input.message,mode:input.mode,draft:toWorkerDraft(input.draft),messages:input.messages.slice(-12)})});
+  return {intent:data.intent,reply:data.reply,draft:workerDraft(data.draft),appliedOperations:data.appliedOperations,rejectedOperations:data.rejectedOperations,testScenario:data.testScenario,testExpected:data.testExpected,model:data.model};
+}
+
 export async function fetchCreatorBuilderSession(workerId:string):Promise<CreatorBuilderSessionSnapshot|null>{
   const data=await request<{session:ApiCreatorBuilderSession|null}>(`/api/v1/creator/workers/${encodeURIComponent(workerId)}/builder-session`);
   if(!data.session)return null;

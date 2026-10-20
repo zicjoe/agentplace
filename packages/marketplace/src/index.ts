@@ -9,6 +9,8 @@ import {
   type CreatorWorkerDraft,
   type CreatorWorkflowDraft,
   type CreatorPublicationStatus,
+  type CreatorBuilderIntent,
+  type CreatorBuilderOperation,
 } from '@agent-place/creator-sdk';
 
 export type DiscoverReadiness = 'available' | 'limited' | 'preview' | 'unavailable';
@@ -63,6 +65,16 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 function id(prefix: string): string { return `${prefix}_${randomUUID()}`; }
+function stableJsonValue(value: unknown): unknown {
+  if(Array.isArray(value)) return value.map(stableJsonValue);
+  if(value&&typeof value==='object'){
+    const row=value as Record<string,unknown>;
+    return Object.fromEntries(Object.keys(row).sort().map((key)=>[key,stableJsonValue(row[key])]));
+  }
+  return value;
+}
+function stableJson(value: unknown): string { return JSON.stringify(stableJsonValue(value)); }
+
 function slugify(name: string): string {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64) || 'worker';
   return `${base}-${randomUUID().slice(0, 8)}`;
@@ -337,6 +349,25 @@ export async function saveCreatorBuilderSession(ownerUserId: string, workerId: s
       [sessionId, ownerUserId, workerId, step, Boolean(input.teachMode), testJobId, JSON.stringify(draft)]);
     const actualSessionId = savedSession.rows[0]?.id;
     if (!actualSessionId) throw new Error('CREATOR_BUILDER_SESSION_SAVE_FAILED');
+    const activeResult=await client.query<{active_revision_no:number|null}>(`SELECT active_revision_no FROM creator_builder_session WHERE id=$1 FOR UPDATE`,[actualSessionId]);
+    let activeRevision=activeResult.rows[0]?.active_revision_no??null;
+    if(activeRevision===null){
+      const maxRevision=await client.query<{max:number|null}>(`SELECT MAX(revision_no)::int AS max FROM creator_builder_revision WHERE session_id=$1`,[actualSessionId]);
+      const revisionNo=(maxRevision.rows[0]?.max??-1)+1;
+      await client.query(`INSERT INTO creator_builder_revision(id,session_id,revision_no,parent_revision_no,draft_snapshot) VALUES($1,$2,$3,NULL,$4::jsonb)`,[id('cbr'),actualSessionId,revisionNo,JSON.stringify(draft)]);
+      activeRevision=revisionNo;
+      await client.query(`UPDATE creator_builder_session SET active_revision_no=$2 WHERE id=$1`,[actualSessionId,activeRevision]);
+    }else{
+      const activeDraft=await client.query<{draft_snapshot:unknown}>(`SELECT draft_snapshot FROM creator_builder_revision WHERE session_id=$1 AND revision_no=$2`,[actualSessionId,activeRevision]);
+      const snapshot=activeDraft.rows[0]?.draft_snapshot;
+      if(snapshot&&stableJson(snapshot)!==stableJson(draft)){
+        const maxRevision=await client.query<{max:number|null}>(`SELECT MAX(revision_no)::int AS max FROM creator_builder_revision WHERE session_id=$1`,[actualSessionId]);
+        const revisionNo=(maxRevision.rows[0]?.max??-1)+1;
+        await client.query(`INSERT INTO creator_builder_revision(id,session_id,revision_no,parent_revision_no,draft_snapshot) VALUES($1,$2,$3,$4,$5::jsonb)`,[id('cbr'),actualSessionId,revisionNo,activeRevision,JSON.stringify(draft)]);
+        activeRevision=revisionNo;
+        await client.query(`UPDATE creator_builder_session SET active_revision_no=$2 WHERE id=$1`,[actualSessionId,activeRevision]);
+      }
+    }
     await client.query(`DELETE FROM creator_builder_message WHERE session_id=$1`, [actualSessionId]);
     for (let ordinal = 0; ordinal < messages.length; ordinal += 1) {
       const message = messages[ordinal]!;
@@ -347,6 +378,112 @@ export async function saveCreatorBuilderSession(ownerUserId: string, workerId: s
   const saved = await getCreatorBuilderSession(ownerUserId, workerId);
   if (!saved) throw new Error('CREATOR_BUILDER_SESSION_SAVE_FAILED');
   return saved;
+}
+
+
+
+export interface RecordCreatorBuilderTurnInput {
+  sourceMessage: string;
+  intent: CreatorBuilderIntent;
+  provider?: string;
+  model?: string;
+  inputHash?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  estimatedCostUsd: number;
+  beforeDraft: CreatorWorkerDraft;
+  afterDraft: CreatorWorkerDraft;
+  appliedOperations: CreatorBuilderOperation[];
+  rejectedOperations: Array<{operation: CreatorBuilderOperation; reason: string}>;
+}
+
+export interface CreatorBuilderTurnRecord {
+  turnId: string;
+  activeRevisionNo?: number;
+}
+
+function builderSessionId(ownerUserId: string, workerId: string): string {
+  return `cbs_${createHash('sha256').update(`${ownerUserId}:${workerId}`).digest('hex').slice(0,32)}`;
+}
+
+export async function recordCreatorBuilderTurn(ownerUserId: string, workerId: string, input: RecordCreatorBuilderTurnInput): Promise<CreatorBuilderTurnRecord> {
+  const beforeDraft=validateCreatorWorkerDraft(input.beforeDraft);
+  const afterDraft=validateCreatorWorkerDraft(input.afterDraft);
+  const sourceMessage=input.sourceMessage.trim();
+  if(!sourceMessage||sourceMessage.length>4000)throw new Error('INVALID_CREATOR_BUILDER_SOURCE_MESSAGE');
+  const sessionId=builderSessionId(ownerUserId,workerId);
+  let result:CreatorBuilderTurnRecord={turnId:''};
+  await withTransaction(async(client)=>{
+    const owner=await client.query(`SELECT id FROM worker_definition WHERE id=$1 AND creator_user_id=$2`,[workerId,ownerUserId]);
+    if(!owner.rowCount)throw new Error('CREATOR_WORKER_NOT_FOUND');
+    await client.query(`INSERT INTO creator_builder_session(id,owner_user_id,worker_definition_id,step,teach_mode,draft_snapshot)
+      VALUES($1,$2,$3,'editing',false,$4::jsonb) ON CONFLICT(owner_user_id,worker_definition_id) DO NOTHING`,
+      [sessionId,ownerUserId,workerId,JSON.stringify(beforeDraft)]);
+    const session=await client.query<{id:string;active_revision_no:number|null}>(`SELECT id,active_revision_no FROM creator_builder_session WHERE owner_user_id=$1 AND worker_definition_id=$2 FOR UPDATE`,[ownerUserId,workerId]);
+    const row=session.rows[0];
+    if(!row)throw new Error('CREATOR_BUILDER_SESSION_NOT_FOUND');
+    let activeRevision=row.active_revision_no;
+    if(activeRevision===null){
+      const maxRevision=await client.query<{max:number|null}>(`SELECT MAX(revision_no)::int AS max FROM creator_builder_revision WHERE session_id=$1`,[row.id]);
+      const initialRevision=(maxRevision.rows[0]?.max??-1)+1;
+      await client.query(`INSERT INTO creator_builder_revision(id,session_id,revision_no,parent_revision_no,draft_snapshot) VALUES($1,$2,$3,NULL,$4::jsonb)`,
+        [id('cbr'),row.id,initialRevision,JSON.stringify(beforeDraft)]);
+      activeRevision=initialRevision;
+      await client.query(`UPDATE creator_builder_session SET active_revision_no=$2 WHERE id=$1`,[row.id,activeRevision]);
+    }else{
+      const activeDraft=await client.query<{draft_snapshot:unknown}>(`SELECT draft_snapshot FROM creator_builder_revision WHERE session_id=$1 AND revision_no=$2`,[row.id,activeRevision]);
+      if(activeDraft.rows[0]?.draft_snapshot&&stableJson(activeDraft.rows[0].draft_snapshot)!==stableJson(beforeDraft)){
+        const maxRevision=await client.query<{max:number|null}>(`SELECT MAX(revision_no)::int AS max FROM creator_builder_revision WHERE session_id=$1`,[row.id]);
+        const beforeRevision=(maxRevision.rows[0]?.max??-1)+1;
+        await client.query(`INSERT INTO creator_builder_revision(id,session_id,revision_no,parent_revision_no,draft_snapshot) VALUES($1,$2,$3,$4,$5::jsonb)`,
+          [id('cbr'),row.id,beforeRevision,activeRevision,JSON.stringify(beforeDraft)]);
+        activeRevision=beforeRevision;
+        await client.query(`UPDATE creator_builder_session SET active_revision_no=$2 WHERE id=$1`,[row.id,activeRevision]);
+      }
+    }
+    const turnOrdinalResult=await client.query<{next:number}>(`SELECT COALESCE(MAX(ordinal),-1)::int+1 AS next FROM creator_builder_turn WHERE session_id=$1`,[row.id]);
+    const turnOrdinal=turnOrdinalResult.rows[0]?.next??0;
+    const turnId=id('cbt');
+    await client.query(`INSERT INTO creator_builder_turn(id,session_id,ordinal,source_message,intent,provider,model,input_hash,input_tokens,output_tokens,estimated_cost_usd,applied_operations,rejected_operations)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb)`,[
+      turnId,row.id,turnOrdinal,sourceMessage,input.intent,input.provider??null,input.model??null,input.inputHash??null,input.inputTokens??null,input.outputTokens??null,input.estimatedCostUsd,JSON.stringify(input.appliedOperations),JSON.stringify(input.rejectedOperations),
+    ]);
+    const changed=stableJson(beforeDraft)!==stableJson(afterDraft);
+    if(changed){
+      const maxRevision=await client.query<{max:number|null}>(`SELECT MAX(revision_no)::int AS max FROM creator_builder_revision WHERE session_id=$1`,[row.id]);
+      const revisionNo=(maxRevision.rows[0]?.max??-1)+1;
+      await client.query(`INSERT INTO creator_builder_revision(id,session_id,revision_no,parent_revision_no,draft_snapshot,source_turn_id) VALUES($1,$2,$3,$4,$5::jsonb,$6)`,
+        [id('cbr'),row.id,revisionNo,activeRevision,JSON.stringify(afterDraft),turnId]);
+      activeRevision=revisionNo;
+    }
+    await client.query(`UPDATE creator_builder_session SET draft_snapshot=$2::jsonb,active_revision_no=$3,updated_at=now() WHERE id=$1`,
+      [row.id,JSON.stringify(afterDraft),activeRevision]);
+    result={turnId,...(activeRevision===null?{}:{activeRevisionNo:activeRevision})};
+  });
+  return result;
+}
+
+export async function undoCreatorBuilderDraft(ownerUserId: string, workerId: string, sourceMessage: string): Promise<{draft: CreatorWorkerDraft; turnId: string; activeRevisionNo: number}> {
+  let output:{draft:CreatorWorkerDraft;turnId:string;activeRevisionNo:number}|undefined;
+  await withTransaction(async(client)=>{
+    const session=await client.query<{id:string;active_revision_no:number|null;draft_snapshot:unknown}>(`SELECT s.id,s.active_revision_no,s.draft_snapshot FROM creator_builder_session s JOIN worker_definition d ON d.id=s.worker_definition_id WHERE s.owner_user_id=$1 AND s.worker_definition_id=$2 AND d.creator_user_id=$1 FOR UPDATE`,[ownerUserId,workerId]);
+    const row=session.rows[0];
+    if(!row)throw new Error('CREATOR_BUILDER_SESSION_NOT_FOUND');
+    if(row.active_revision_no===null)throw new Error('CREATOR_BUILDER_NOTHING_TO_UNDO');
+    const current=await client.query<{parent_revision_no:number|null}>(`SELECT parent_revision_no FROM creator_builder_revision WHERE session_id=$1 AND revision_no=$2`,[row.id,row.active_revision_no]);
+    const parentRevision=current.rows[0]?.parent_revision_no;
+    if(parentRevision===null||parentRevision===undefined)throw new Error('CREATOR_BUILDER_NOTHING_TO_UNDO');
+    const parent=await client.query<{draft_snapshot:unknown}>(`SELECT draft_snapshot FROM creator_builder_revision WHERE session_id=$1 AND revision_no=$2`,[row.id,parentRevision]);
+    const draft=validateCreatorWorkerDraft(parent.rows[0]?.draft_snapshot as CreatorWorkerDraft);
+    const turnOrdinalResult=await client.query<{next:number}>(`SELECT COALESCE(MAX(ordinal),-1)::int+1 AS next FROM creator_builder_turn WHERE session_id=$1`,[row.id]);
+    const turnId=id('cbt');
+    await client.query(`INSERT INTO creator_builder_turn(id,session_id,ordinal,source_message,intent,estimated_cost_usd,applied_operations,rejected_operations) VALUES($1,$2,$3,$4,'UNDO',0,'[]'::jsonb,'[]'::jsonb)`,
+      [turnId,row.id,turnOrdinalResult.rows[0]?.next??0,sourceMessage.trim().slice(0,4000)]);
+    await client.query(`UPDATE creator_builder_session SET draft_snapshot=$2::jsonb,active_revision_no=$3,updated_at=now() WHERE id=$1`,[row.id,JSON.stringify(draft),parentRevision]);
+    output={draft,turnId,activeRevisionNo:parentRevision};
+  });
+  if(!output)throw new Error('CREATOR_BUILDER_UNDO_FAILED');
+  return output;
 }
 
 export const moduleManifest={name:'marketplace',layer:'controlled-runtime',milestone:12,status:'production-discover-creator-supply'} as const;

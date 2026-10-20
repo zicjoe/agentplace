@@ -137,6 +137,174 @@ export function assertSafeRemoteHttpsUrl(raw: string): URL {
   return url;
 }
 
+
+export type CreatorBuilderIntent = 'DISCUSS' | 'MODIFY_DRAFT' | 'TEACH' | 'TEST' | 'SAVE_PRIVATE' | 'PUBLISH' | 'UNDO' | 'USE_EXISTING_EXPERTISE';
+
+export type CreatorBuilderOperationType =
+  | 'SET_NAME'
+  | 'SET_MISSION'
+  | 'SET_RESPONSIBILITIES'
+  | 'ADD_RESPONSIBILITY'
+  | 'REMOVE_RESPONSIBILITY'
+  | 'SET_ANTI_JOBS'
+  | 'ADD_ANTI_JOB'
+  | 'REMOVE_ANTI_JOB'
+  | 'SET_METHOD_RULES'
+  | 'ADD_METHOD_RULE'
+  | 'REMOVE_METHOD_RULE'
+  | 'SET_CAPABILITY_REQUIREMENTS'
+  | 'ADD_CAPABILITY_REQUIREMENT'
+  | 'REMOVE_CAPABILITY_REQUIREMENT'
+  | 'SET_NETWORKS'
+  | 'ADD_NETWORK'
+  | 'REMOVE_NETWORK'
+  | 'ADD_COLLABORATOR'
+  | 'REMOVE_COLLABORATOR';
+
+export interface CreatorBuilderOperation {
+  type: CreatorBuilderOperationType;
+  value: string;
+  values: string[];
+  target: string;
+  workerId: string;
+  workerName: string;
+  roleBased: boolean;
+  required: boolean;
+}
+
+export interface CreatorBuilderTurnProposal {
+  intent: CreatorBuilderIntent;
+  reply: string;
+  operations: CreatorBuilderOperation[];
+  testScenario: string;
+  testExpected: string;
+}
+
+export interface CreatorBuilderAllowedWorker {
+  id: string;
+  name: string;
+  tagline: string;
+}
+
+export interface CreatorBuilderApplyResult {
+  draft: CreatorWorkerDraft;
+  appliedOperations: CreatorBuilderOperation[];
+  rejectedOperations: Array<{operation: CreatorBuilderOperation; reason: string}>;
+}
+
+function creatorUniqueStrings(values: string[], max = 64): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const value = raw.trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value.slice(0,1000));
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function removeCreatorString(values: string[], target: string): string[] {
+  const normalized = target.trim().toLowerCase();
+  if (!normalized) return values;
+  const exact = values.findIndex((value) => value.trim().toLowerCase() === normalized);
+  if (exact >= 0) return values.filter((_, index) => index !== exact);
+  const contained = values.findIndex((value) => value.toLowerCase().includes(normalized) || normalized.includes(value.toLowerCase()));
+  return contained >= 0 ? values.filter((_, index) => index !== contained) : values;
+}
+
+export function applyCreatorBuilderOperations(args: {
+  draft: CreatorWorkerDraft;
+  operations: CreatorBuilderOperation[];
+  allowedReadCapabilities: string[];
+  allowedWorkers: CreatorBuilderAllowedWorker[];
+}): CreatorBuilderApplyResult {
+  let draft: CreatorWorkerDraft = validateCreatorWorkerDraft(args.draft);
+  const allowedCapabilities = new Set(args.allowedReadCapabilities);
+  const allowedWorkers = new Map(args.allowedWorkers.map((worker) => [worker.id, worker]));
+  const appliedOperations: CreatorBuilderOperation[] = [];
+  const rejectedOperations: Array<{operation: CreatorBuilderOperation; reason: string}> = [];
+
+  const reject = (operation: CreatorBuilderOperation, reason: string) => rejectedOperations.push({operation,reason});
+  const apply = (operation: CreatorBuilderOperation) => appliedOperations.push(operation);
+
+  for (const operation of args.operations.slice(0,32)) {
+    const value = operation.value.trim();
+    const target = operation.target.trim();
+    const values = creatorUniqueStrings(operation.values ?? [],64);
+    switch (operation.type) {
+      case 'SET_NAME': {
+        if (!value) { reject(operation,'Worker name cannot be empty.'); break; }
+        draft = {...draft,name:value.slice(0,120)}; apply(operation); break;
+      }
+      case 'SET_MISSION': {
+        if (!value) { reject(operation,'Job Contract cannot be empty.'); break; }
+        const mission=value.slice(0,2000);
+        draft = {...draft,mission,responsibility:mission,tagline:mission.slice(0,240)}; apply(operation); break;
+      }
+      case 'SET_RESPONSIBILITIES': draft={...draft,responsibilities:creatorUniqueStrings(values)}; apply(operation); break;
+      case 'ADD_RESPONSIBILITY': if(value){draft={...draft,responsibilities:creatorUniqueStrings([...draft.responsibilities,value])};apply(operation);}else reject(operation,'Responsibility cannot be empty.'); break;
+      case 'REMOVE_RESPONSIBILITY': draft={...draft,responsibilities:removeCreatorString(draft.responsibilities,target||value)}; apply(operation); break;
+      case 'SET_ANTI_JOBS': draft={...draft,antiJobs:creatorUniqueStrings(values)}; apply(operation); break;
+      case 'ADD_ANTI_JOB': if(value){draft={...draft,antiJobs:creatorUniqueStrings([...draft.antiJobs,value])};apply(operation);}else reject(operation,'Anti-job cannot be empty.'); break;
+      case 'REMOVE_ANTI_JOB': draft={...draft,antiJobs:removeCreatorString(draft.antiJobs,target||value)}; apply(operation); break;
+      case 'SET_METHOD_RULES': draft={...draft,method:creatorUniqueStrings(values)}; apply(operation); break;
+      case 'ADD_METHOD_RULE': if(value){draft={...draft,method:creatorUniqueStrings([...draft.method,value])};apply(operation);}else reject(operation,'Method rule cannot be empty.'); break;
+      case 'REMOVE_METHOD_RULE': draft={...draft,method:removeCreatorString(draft.method,target||value)}; apply(operation); break;
+      case 'SET_CAPABILITY_REQUIREMENTS': {
+        const accepted=values.filter((capability)=>allowedCapabilities.has(capability));
+        const rejected=values.filter((capability)=>!allowedCapabilities.has(capability));
+        if(rejected.length){reject(operation,`Only registered read capabilities can be added in M12: ${rejected.join(', ')}`);}
+        draft={...draft,capabilityRequirements:creatorUniqueStrings(accepted)};
+        if(accepted.length||values.length===0)apply(operation);
+        break;
+      }
+      case 'ADD_CAPABILITY_REQUIREMENT': {
+        if(!allowedCapabilities.has(value)){reject(operation,'Capability is not a registered read-only AgentPlace capability.');break;}
+        draft={...draft,capabilityRequirements:creatorUniqueStrings([...draft.capabilityRequirements,value])}; apply(operation); break;
+      }
+      case 'REMOVE_CAPABILITY_REQUIREMENT': draft={...draft,capabilityRequirements:removeCreatorString(draft.capabilityRequirements,target||value)}; apply(operation); break;
+      case 'SET_NETWORKS': draft={...draft,networks:creatorUniqueStrings(values,32)}; apply(operation); break;
+      case 'ADD_NETWORK': if(value){draft={...draft,networks:creatorUniqueStrings([...draft.networks,value],32)};apply(operation);}else reject(operation,'Network cannot be empty.'); break;
+      case 'REMOVE_NETWORK': draft={...draft,networks:removeCreatorString(draft.networks,target||value)}; apply(operation); break;
+      case 'ADD_COLLABORATOR': {
+        const worker=allowedWorkers.get(operation.workerId);
+        if(!worker){reject(operation,'Collaborator must resolve to an eligible AgentPlace Worker.');break;}
+        const collaborators=[...(draft.collaborators??[])];
+        if(!collaborators.some((item)=>item.pinnedWorkerId===worker.id)){
+          collaborators.push({
+            role:value||worker.tagline||worker.name,
+            pinnedWorkerId:worker.id,
+            roleBased:Boolean(operation.roleBased),
+            required:Boolean(operation.required),
+            whenUsed:'When specialist evidence materially improves the Job',
+            contextShared:'Only task-relevant context',
+            authorityBoundary:'Research only — collaborator authority never propagates',
+          });
+        }
+        draft={...draft,collaborators}; apply(operation); break;
+      }
+      case 'REMOVE_COLLABORATOR': {
+        const key=(operation.workerId||target||value).trim().toLowerCase();
+        draft={...draft,collaborators:(draft.collaborators??[]).filter((item)=>{
+          const id=(item.pinnedWorkerId??'').toLowerCase();
+          const role=item.role.toLowerCase();
+          return id!==key && role!==key && !role.includes(key);
+        })};
+        apply(operation); break;
+      }
+      default: reject(operation,'Unsupported Builder operation.');
+    }
+  }
+
+  // The creator conversation can shape responsibility and methodology, but it can never widen authority.
+  draft={...draft,authorityDefault:'Research & recommend only · No wallet authority'};
+  return {draft:validateCreatorWorkerDraft(draft),appliedOperations,rejectedOperations};
+}
+
 export const moduleManifest = {
   name: 'creator-sdk',
   layer: 'untrusted-boundary',

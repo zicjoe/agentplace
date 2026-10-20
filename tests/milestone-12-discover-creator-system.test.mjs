@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const migration=readFileSync('packages/db/migrations/0017_discover_creator_system.sql','utf8');
 const builderMigration=readFileSync('packages/db/migrations/0018_creator_builder_conversations.sql','utf8');
+const builderLlmMigration=readFileSync('packages/db/migrations/0019_creator_builder_llm_turns.sql','utf8');
 const marketplace=readFileSync('packages/marketplace/src/index.ts','utf8');
 const creatorSdk=readFileSync('packages/creator-sdk/src/index.ts','utf8');
 const workers=readFileSync('packages/workers/src/index.ts','utf8');
@@ -60,7 +61,8 @@ test('M12 Add Worker persists through backend and never grants authority',()=>{
 });
 
 test('M12 Agent Builder is generic and uses real sandbox Jobs',()=>{
-  assert.match(builder,/draftFromIntent/);
+  assert.match(builder,/interpretCreatorBuilderTurn/);
+  assert.match(builder,/seedDraftForBuilder/);
   assert.match(builder,/testCreatorWorker/);
   assert.match(builder,/Open real test Job/);
   assert.match(builder,/Teach Mode active/);
@@ -70,6 +72,7 @@ test('M12 Agent Builder is generic and uses real sandbox Jobs',()=>{
 
 test('M12 Agent Builder conversation choices and draft continuity are durable',()=>{
   for(const token of ['creator_builder_session','creator_builder_message','draft_snapshot']) assert.match(builderMigration,new RegExp(token));
+  for(const token of ['creator_builder_turn','creator_builder_revision','active_revision_no','parent_revision_no']) assert.match(builderLlmMigration,new RegExp(token));
   assert.match(marketplace,/getCreatorBuilderSession/);
   assert.match(marketplace,/saveCreatorBuilderSession/);
   assert.match(api,/builder-session/);
@@ -85,6 +88,23 @@ test('M12 Agent Builder conversation choices and draft continuity are durable',(
   const openIndex=createMenu.indexOf("SET_CREATOR_SURFACE', surface: 'agent-builder'");
   assert.ok(clearIndex>=0&&openIndex>clearIndex,'New Worker must clear the previous creation before opening Agent Builder');
   assert.match(creatorHome,/SET_ACTIVE_CREATION', id: null/);
+});
+
+
+test('M12 Agent Builder uses LLM structured interpretation behind a deterministic Creator validator',()=>{
+  assert.match(api,/generateStructured<CreatorBuilderTurnProposal>/);
+  assert.match(api,/agentplace_creator_builder_turn/);
+  assert.match(api,/creatorBuilderSystemPrompt/);
+  assert.match(api,/applyCreatorBuilderOperations/);
+  assert.match(api,/recordCreatorBuilderTurn/);
+  assert.match(api,/undoCreatorBuilderDraft/);
+  assert.match(creatorSdk,/CreatorBuilderOperationType/);
+  assert.match(creatorSdk,/applyCreatorBuilderOperations/);
+  assert.match(creatorSdk,/authorityDefault:'Research & recommend only · No wallet authority'/);
+  assert.match(creatorApi,/interpretCreatorBuilderTurn/);
+  assert.match(builder,/processBuilderTurn/);
+  assert.doesNotMatch(builder,/applyConversationalEdit/);
+  assert.doesNotMatch(builder,/draftFromIntent/);
 });
 
 test('M12 creator tests cannot self-certify safety or grant authority',()=>{

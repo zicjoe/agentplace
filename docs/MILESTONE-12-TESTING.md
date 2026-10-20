@@ -16,3 +16,12 @@ Do not freeze v0.15.0 until `pnpm check` passes and these production flows are m
 12. Discover an MCP endpoint. Confirm tools are discoverable but remain execution-sensitive/discovery-only in M12.
 13. Confirm paid Worker purchasing and creator earnings/payouts are not simulated.
 14. Confirm `MAINNET_EXECUTION_ENABLED=false` and `MAINNET_AUTONOMY_ENABLED=false` remain unchanged.
+
+## Agent Builder intelligence acceptance
+
+15. Reopen an existing creator Worker and type `Rename this Worker to Meme Launch Researcher.` Confirm Agent Builder changes the **Name** in the Live Draft and does not add the sentence to Method / Expertise. The already released Worker version must remain unchanged until an explicit save/version action.
+16. Ask a discussion-only question such as `Why did you add this capability?` Confirm the Builder answers conversationally without mutating the draft.
+17. Give a combined edit such as `Call it Meme Radar and never shortlist a token when holder concentration is unknown.` Confirm the name and Anti-jobs/decision boundary update as separate structured changes.
+18. Type `Test it on BONK using the current methodology.` Confirm the message launches a real bounded creator test rather than becoming Method / Expertise.
+19. Make a draft edit, then say `Undo that last change.` Confirm only the current draft rolls back. Released Worker versions and historical Jobs must not change.
+20. Temporarily remove all configured model-provider credentials in a non-production test environment and confirm Agent Builder fails truthfully with the draft unchanged rather than falling back to regex/keyword interpretation.

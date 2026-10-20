@@ -335,6 +335,8 @@
 - Added durable creator Workers, Workflows, imported capabilities, publication lifecycle, lineage and creator test records.
 - Added generic Agent Builder, real sandbox Worker tests, private install, versioned edits and public publication.
 - Added durable per-Worker Agent Builder conversations, user-turn quick actions, non-terminal private save, clean New Worker behavior, and reopen/continue continuity across refreshes.
+- Replaced the Agent Builder regex/keyword interpreter with AgentPlace Auto structured LLM turns, deterministic Creator-operation validation, durable turn metadata, parent-linked draft revisions and conversational undo.
+- Builder discussion, edit, Teach Mode, test, save/publish intent and undo are distinct; test scenarios no longer fall through into Method / Expertise.
 - Added Worker-version pinning through installations and Job assignments.
 - Added real server-side OpenAPI/MCP inspection with SSRF controls and bounded read-only OpenAPI sandbox invocation.
 - Kept creator imports isolated from trusted AgentPlace capability routing, with no new signer, custody, paid acquisition or Mainnet autonomy.

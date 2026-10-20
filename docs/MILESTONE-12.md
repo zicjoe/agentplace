@@ -33,3 +33,11 @@ Turn the approved Discover/Create experience into durable production supply with
 ## Deliberately deferred
 
 Paid subscriptions, creator payouts/revenue splits, arbitrary authenticated external tools, secret vaulting, creator-defined economic-write implementations, autonomous Mainnet execution, generated executable code, and a universal visual workflow engine.
+
+## Agent Builder intelligence correction
+
+Agent Builder conversation is LLM-backed in v0.15.0 rather than a regex/keyword wizard. Authenticated Builder turns use the existing AgentPlace model gateway (`AgentPlace Auto`) to return a strict structured proposal. The model may classify the turn as discussion, draft modification, Teach Mode guidance, test, private save, publication, undo, or reuse of existing expertise, and may propose only a bounded set of Creator operations.
+
+The LLM is not trusted to mutate production state directly. `@agent-place/creator-sdk` deterministically validates and applies the proposal. Capability additions are limited to registered read-only canonical capabilities, collaborators must resolve to eligible AgentPlace Workers, and the Creator core always restores the research/recommend-only authority default. Builder model calls, applied/rejected operations and draft revision lineage are durable through `creator_builder_turn` and `creator_builder_revision`.
+
+Draft undo follows parent revisions and changes only the current Builder draft. It never rewrites an immutable released Worker version or an historical Job.
