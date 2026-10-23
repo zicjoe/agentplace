@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAppState, useDispatch } from '../state/AppContext';
-import { publishCreatorAsset } from '../platform/creatorApi';
+import { fetchDiscoverSupply, publishCreatorAsset } from '../platform/creatorApi';
 import type { CreatorAsset } from '../state/types';
 
 type CreatorTab = 'my-creations' | 'performance' | 'earnings' | 'publishing';
@@ -128,7 +128,9 @@ function PublishingTab({ assets }: { assets: CreatorAsset[] }) {
   async function handlePublish(asset: CreatorAsset) {
     try{
       await publishCreatorAsset(asset.type,asset.id,'published');
+      const discoverSupply = await fetchDiscoverSupply();
       dispatch({type:'UPDATE_CREATOR_ASSET',assetId:asset.id,updates:{visibility:'public'}});
+      dispatch({type:'SET_DISCOVER_SUPPLY',items:discoverSupply});
       setReviewing(null);
     }catch(error){console.error('Creator publication failed',error);}
   }

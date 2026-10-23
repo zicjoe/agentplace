@@ -61,6 +61,12 @@ test('M12 Discover is a live durable projection with truthful readiness',()=>{
   assert.match(discover,/workerDefinitionId/);
 });
 
+
+test('M12 publishing refreshes Discover supply in the active client session',()=>{
+  assert.match(creatorHome,/fetchDiscoverSupply/);
+  assert.match(creatorHome,/SET_DISCOVER_SUPPLY/);
+});
+
 test('M12 Add Worker persists through backend and never grants authority',()=>{
   assert.match(detail,/installDurableWorker/);
   assert.match(detail,/No permission to move funds/);
