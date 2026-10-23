@@ -17,63 +17,63 @@ importers:
 
   apps/api:
     dependencies:
-      '@agent-place/marketplace':
-        specifier: workspace:*
-        version: link:../../packages/marketplace
-      '@agent-place/creator-sdk':
-        specifier: workspace:*
-        version: link:../../packages/creator-sdk
-      '@agent-place/verification':
-        specifier: workspace:*
-        version: link:../../packages/verification
-      '@agent-place/notifications':
-        specifier: workspace:*
-        version: link:../../packages/notifications
-      '@agent-place/routines':
-        specifier: workspace:*
-        version: link:../../packages/routines
-      '@agent-place/capabilities':
-        specifier: workspace:*
-        version: link:../../packages/capabilities
       '@agent-place/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@agent-place/authority':
+        specifier: workspace:*
+        version: link:../../packages/authority
+      '@agent-place/capabilities':
+        specifier: workspace:*
+        version: link:../../packages/capabilities
       '@agent-place/context':
         specifier: workspace:*
         version: link:../../packages/context
+      '@agent-place/creator-sdk':
+        specifier: workspace:*
+        version: link:../../packages/creator-sdk
       '@agent-place/db':
         specifier: workspace:*
         version: link:../../packages/db
       '@agent-place/execution':
         specifier: workspace:*
         version: link:../../packages/execution
-      '@agent-place/jobs':
-        specifier: workspace:*
-        version: link:../../packages/jobs
       '@agent-place/intelligence':
         specifier: workspace:*
         version: link:../../packages/intelligence
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
+      '@agent-place/marketplace':
+        specifier: workspace:*
+        version: link:../../packages/marketplace
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
-      '@agent-place/router':
+      '@agent-place/notifications':
         specifier: workspace:*
-        version: link:../../packages/router
-      '@agent-place/workers':
-        specifier: workspace:*
-        version: link:../../packages/workers
-      '@agent-place/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      '@agent-place/wallets':
-        specifier: workspace:*
-        version: link:../../packages/wallets
-      '@agent-place/authority':
-        specifier: workspace:*
-        version: link:../../packages/authority
+        version: link:../../packages/notifications
       '@agent-place/risk':
         specifier: workspace:*
         version: link:../../packages/risk
+      '@agent-place/router':
+        specifier: workspace:*
+        version: link:../../packages/router
+      '@agent-place/routines':
+        specifier: workspace:*
+        version: link:../../packages/routines
+      '@agent-place/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@agent-place/verification':
+        specifier: workspace:*
+        version: link:../../packages/verification
+      '@agent-place/wallets':
+        specifier: workspace:*
+        version: link:../../packages/wallets
+      '@agent-place/workers':
+        specifier: workspace:*
+        version: link:../../packages/workers
 
   apps/scheduler:
     dependencies:
@@ -94,23 +94,23 @@ importers:
         version: link:../../packages/shared
       better-auth:
         specifier: 1.7.5
-        version: 1.7.5(pg@8.23.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.7.5(pg@8.23.0)(react-dom@19.2.4(react@19.3.1))(react@19.3.1)
       react:
-        specifier: 19.2.4
-        version: 19.2.4
+        specifier: 19.3.1
+        version: 19.3.1
       react-dom:
         specifier: 19.2.4
-        version: 19.2.4(react@19.2.4)
+        version: 19.2.4(react@19.3.1)
     devDependencies:
       '@tailwindcss/vite':
         specifier: 4.2.2
         version: 4.2.2(vite@8.0.5(@types/node@22.19.17)(jiti@2.6.1))
       '@types/react':
-        specifier: 19.2.14
-        version: 19.2.14
+        specifier: 19.3.0
+        version: 19.3.0
       '@types/react-dom':
         specifier: 19.2.3
-        version: 19.2.3(@types/react@19.2.14)
+        version: 19.2.3(@types/react@19.3.0)
       '@vitejs/plugin-react':
         specifier: 6.0.1
         version: 6.0.1(vite@8.0.5(@types/node@22.19.17)(jiti@2.6.1))
@@ -123,9 +123,6 @@ importers:
 
   apps/worker:
     dependencies:
-      '@agent-place/verification':
-        specifier: workspace:*
-        version: link:../../packages/verification
       '@agent-place/capabilities':
         specifier: workspace:*
         version: link:../../packages/capabilities
@@ -138,12 +135,12 @@ importers:
       '@agent-place/execution':
         specifier: workspace:*
         version: link:../../packages/execution
-      '@agent-place/jobs':
-        specifier: workspace:*
-        version: link:../../packages/jobs
       '@agent-place/intelligence':
         specifier: workspace:*
         version: link:../../packages/intelligence
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
@@ -153,6 +150,9 @@ importers:
       '@agent-place/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@agent-place/verification':
+        specifier: workspace:*
+        version: link:../../packages/verification
       '@agent-place/workers':
         specifier: workspace:*
         version: link:../../packages/workers
@@ -164,7 +164,7 @@ importers:
         version: link:../db
       better-auth:
         specifier: 1.7.5
-        version: 1.7.5(pg@8.23.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.7.5(pg@8.23.0)(react-dom@19.2.4(react@19.3.1))(react@19.3.1)
       kysely:
         specifier: 0.28.17
         version: 0.28.17
@@ -230,12 +230,6 @@ importers:
         specifier: workspace:*
         version: link:../risk
 
-  packages/jobs:
-    dependencies:
-      '@agent-place/db':
-        specifier: workspace:*
-        version: link:../db
-
   packages/intelligence:
     dependencies:
       '@agent-place/db':
@@ -245,14 +239,20 @@ importers:
         specifier: workspace:*
         version: link:../telegraph
 
-  packages/marketplace:
+  packages/jobs:
     dependencies:
       '@agent-place/db':
         specifier: workspace:*
         version: link:../db
+
+  packages/marketplace:
+    dependencies:
       '@agent-place/creator-sdk':
         specifier: workspace:*
         version: link:../creator-sdk
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
 
   packages/models: {}
 
@@ -261,24 +261,6 @@ importers:
       '@agent-place/db':
         specifier: workspace:*
         version: link:../db
-
-  packages/routines:
-    dependencies:
-      '@agent-place/context':
-        specifier: workspace:*
-        version: link:../context
-      '@agent-place/db':
-        specifier: workspace:*
-        version: link:../db
-      '@agent-place/intelligence':
-        specifier: workspace:*
-        version: link:../intelligence
-      '@agent-place/jobs':
-        specifier: workspace:*
-        version: link:../jobs
-      '@agent-place/notifications':
-        specifier: workspace:*
-        version: link:../notifications
 
   packages/observability:
     dependencies:
@@ -302,6 +284,24 @@ importers:
       '@agent-place/workers':
         specifier: workspace:*
         version: link:../workers
+
+  packages/routines:
+    dependencies:
+      '@agent-place/context':
+        specifier: workspace:*
+        version: link:../context
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
+      '@agent-place/intelligence':
+        specifier: workspace:*
+        version: link:../intelligence
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../jobs
+      '@agent-place/notifications':
+        specifier: workspace:*
+        version: link:../notifications
 
   packages/shared: {}
 
@@ -685,8 +685,8 @@ packages:
     peerDependencies:
       '@types/react': ^19.2.0
 
-  '@types/react@19.2.14':
-    resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
+  '@types/react@19.3.0':
+    resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
 
   '@vitejs/plugin-react@6.0.1':
     resolution: {integrity: sha512-l9X/E3cDb+xY3SWzlG1MOGt2usfEHGMNIaegaUGFsLkb3RCn/k8/TOXBcab+OndDI4TBtktT8/9BwwW8Vi9KUQ==}
@@ -985,8 +985,8 @@ packages:
     peerDependencies:
       react: ^19.2.4
 
-  react@19.2.4:
-    resolution: {integrity: sha512-9nfp2hYpCwOjAN+8TZFGhtWEwgvWHXqESH8qT89AT/lWklpLON22Lc8pEtnpsZz7VmawabSU0gCjnj8aC0euHQ==}
+  react@19.3.1:
+    resolution: {integrity: sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==}
     engines: {node: '>=0.10.0'}
 
   rolldown@1.0.0-rc.12:
@@ -1369,11 +1369,11 @@ snapshots:
       pg-protocol: 1.16.0
       pg-types: 2.2.0
 
-  '@types/react-dom@19.2.3(@types/react@19.2.14)':
+  '@types/react-dom@19.2.3(@types/react@19.3.0)':
     dependencies:
-      '@types/react': 19.2.14
+      '@types/react': 19.3.0
 
-  '@types/react@19.2.14':
+  '@types/react@19.3.0':
     dependencies:
       csstype: 3.2.3
 
@@ -1387,7 +1387,7 @@ snapshots:
       typescript: 5.9.3
       zod: 4.6.5
 
-  better-auth@1.7.5(pg@8.23.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+  better-auth@1.7.5(pg@8.23.0)(react-dom@19.2.4(react@19.3.1))(react@19.3.1):
     dependencies:
       '@better-auth/core': 1.7.5(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-call@1.4.0(zod@4.6.5))(jose@6.2.12)(kysely@0.28.17)(nanostores@1.5.3)
       '@better-auth/drizzle-adapter': 1.7.5(@better-auth/core@1.7.5(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-call@1.4.0(zod@4.6.5))(jose@6.2.12)(kysely@0.28.17)(nanostores@1.5.3))(@better-auth/utils@0.4.2)
@@ -1408,8 +1408,8 @@ snapshots:
       zod: 4.6.5
     optionalDependencies:
       pg: 8.23.0
-      react: 19.2.4
-      react-dom: 19.2.4(react@19.2.4)
+      react: 19.3.1
+      react-dom: 19.2.4(react@19.3.1)
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
@@ -1581,12 +1581,12 @@ snapshots:
     dependencies:
       xtend: 4.0.2
 
-  react-dom@19.2.4(react@19.2.4):
+  react-dom@19.2.4(react@19.3.1):
     dependencies:
-      react: 19.2.4
+      react: 19.3.1
       scheduler: 0.27.0
 
-  react@19.2.4: {}
+  react@19.3.1: {}
 
   rolldown@1.0.0-rc.12:
     dependencies:
