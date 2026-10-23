@@ -1,16 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAppState, useDispatch, uid } from '../state/AppContext';
-import { createCreatorWorkflow, createCreatorWorkflowVersion, publishCreatorAsset } from '../platform/creatorApi';
+import { createCreatorWorkflow, createCreatorWorkflowVersion, interpretCreatorWorkflowTurn, publishCreatorAsset } from '../platform/creatorApi';
 import type { WorkflowDraftData } from '../state/types';
 import { ResearchMarkdown } from './ResearchMarkdown';
 import { scrollConversationToEnd } from '../platform/scroll';
 
 
-
-function workflowFromIntent(text:string):WorkflowDraftData {
-  const name=text.split(/\s+/).slice(0,5).join(' ').replace(/\b\w/g,(c)=>c.toUpperCase()).slice(0,70)||'Custom Workflow';
-  return {name,purpose:text,inputs:['User goal / subject','Relevant live data'],steps:['Gather required evidence','Apply the described method','Check conditions and safety boundaries','Produce the requested output'],conditions:['Stop or surface limitations when required evidence is unavailable'],outputs:['Evidence-backed result'],requiredCapabilities:['research.web.search','research.web.read'],safetyBoundaries:['No financial authority is created by a Workflow','Any financial Action still passes risk, authority and approval'],compatibleWorkers:[],pricing:{type:'free'}};
-}
 
 interface StudioMessage {
   id: string;
@@ -74,7 +69,7 @@ export function WorkflowStudio() {
   const [messages, setMessages] = useState<StudioMessage[]>([]);
   const existingAsset=state.activeCreationId?(state.creatorAssets??[]).find((asset)=>asset.id===state.activeCreationId):undefined;
   const [draft, setDraft] = useState<WorkflowDraftData>(existingAsset?.workflowDraft??{ name: '', purpose: '', inputs: [], steps: [], conditions: [], outputs: [], requiredCapabilities: [], safetyBoundaries: [], compatibleWorkers: [], pricing: { type: 'free' } });
-  const [step, setStep] = useState<StudioStep>('idle');
+  const [step, setStep] = useState<StudioStep>(existingAsset?.workflowDraft?.name ? 'draft-formed' : 'idle');
   const [mobileTab, setMobileTab] = useState<'chat' | 'draft'>('chat');
   const messageScrollRef = useRef<HTMLDivElement>(null);
   const [streaming, setStreaming] = useState(false);
@@ -97,21 +92,30 @@ export function WorkflowStudio() {
     }
   }
 
-  function handleSend() {
+  async function handleSend() {
     if (!input.trim() || streaming) return;
     const text = input.trim();
     setInput('');
     addMsg('user', text);
-
-    if (step === 'idle') {
-      const formed=workflowFromIntent(text);
-      setDraft(formed);
-      setStep('draft-formed');
-      setTimeout(() => {
-        addMsg('studio', `I've formed **${formed.name}** as a typed, read-only Workflow draft. The Workflow defines how work is done; it does not create a Routine or financial authority.\n\nReview the steps and safety boundaries, then save it privately.`);
-      }, 300);
+    setStreaming(true);
+    try {
+      const result = await interpretCreatorWorkflowTurn({ message: text, draft });
+      if (result.intent === 'MODIFY_DRAFT') {
+        setDraft(result.draft);
+        setStep('draft-formed');
+        setMobileTab('draft');
+      }
+      const id = uid();
+      setMessages((prev) => [...prev, { id, role: 'studio', content: result.reply }]);
+    } catch (value) {
+      const id = uid();
+      const content = value instanceof Error ? `Could not update Workflow draft: ${value.message}` : 'Could not update Workflow draft.';
+      setMessages((prev) => [...prev, { id, role: 'studio', content }]);
+    } finally {
+      setStreaming(false);
     }
   }
+
 
   function handleTest() {
     setStep('tested');
@@ -180,6 +184,11 @@ export function WorkflowStudio() {
                 </div>
               </div>
             ))}
+            {draft.name && !streaming && (
+              <div className="md:hidden flex gap-2 pl-1 pt-1">
+                <button onClick={() => setMobileTab('draft')} className="px-4 py-2 text-xs font-medium border border-border text-text-sub rounded-lg hover:bg-panel-raised transition-colors">View Workflow Draft</button>
+              </div>
+            )}
             {step === 'draft-formed' && !streaming && (
               <div className="flex gap-2 pl-1 pt-1">
                 <button onClick={handleTest} className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors">Test Workflow</button>
@@ -206,9 +215,9 @@ export function WorkflowStudio() {
                   placeholder="Describe your workflow…"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void handleSend(); }}
                 />
-                <button onClick={handleSend} disabled={!input.trim() || streaming} className="px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover disabled:opacity-40 transition-colors">
+                <button onClick={() => { void handleSend(); }} disabled={!input.trim() || streaming} className="px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover disabled:opacity-40 transition-colors">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                   </svg>

@@ -108,6 +108,60 @@ export function validateWorkflowDraft(input: CreatorWorkflowDraft): CreatorWorkf
   };
 }
 
+export type CreatorWorkflowBuilderIntent = 'DISCUSS' | 'MODIFY_DRAFT';
+
+export interface CreatorWorkflowBuilderTurnProposal {
+  intent: CreatorWorkflowBuilderIntent;
+  reply: string;
+  draft: CreatorWorkflowDraft;
+}
+
+export interface CreatorWorkflowBuilderAllowedWorker {
+  id: string;
+  name: string;
+}
+
+const REQUIRED_WORKFLOW_SAFETY_BOUNDARIES = [
+  'No financial authority is created by a Workflow',
+  'Any financial Action still passes risk, authority and approval',
+] as const;
+
+export function applyCreatorWorkflowBuilderProposal(args: {
+  currentDraft: CreatorWorkflowDraft;
+  proposal: CreatorWorkflowBuilderTurnProposal;
+  allowedReadCapabilities: string[];
+  allowedWorkers: CreatorWorkflowBuilderAllowedWorker[];
+}): CreatorWorkflowDraft {
+  if (args.proposal.intent === 'DISCUSS') return args.currentDraft;
+
+  const allowedCapabilities = new Set(args.allowedReadCapabilities);
+  const allowedWorkers = new Map<string,string>();
+  for (const worker of args.allowedWorkers) {
+    allowedWorkers.set(worker.id.toLowerCase(), worker.name);
+    allowedWorkers.set(worker.name.toLowerCase(), worker.name);
+  }
+
+  const proposed = args.proposal.draft;
+  const requiredCapabilities = creatorUniqueStrings(proposed.requiredCapabilities ?? [])
+    .filter((capability) => allowedCapabilities.has(capability));
+  const compatibleWorkers = creatorUniqueStrings(proposed.compatibleWorkers ?? [])
+    .flatMap((worker) => {
+      const matched = allowedWorkers.get(worker.trim().toLowerCase());
+      return matched ? [matched] : [];
+    });
+  const safetyBoundaries = creatorUniqueStrings([
+    ...(proposed.safetyBoundaries ?? []),
+    ...REQUIRED_WORKFLOW_SAFETY_BOUNDARIES,
+  ]);
+
+  return validateWorkflowDraft({
+    ...proposed,
+    requiredCapabilities,
+    compatibleWorkers,
+    safetyBoundaries,
+  });
+}
+
 export function validateCapabilityImport(input: CapabilityImportDraft): CapabilityImportDraft {
   if (input.importType !== 'mcp' && input.importType !== 'openapi') throw new Error('INVALID_IMPORT_TYPE');
   if (!Array.isArray(input.operations) || input.operations.length > 128) throw new Error('INVALID_IMPORTED_OPERATIONS');

@@ -141,6 +141,21 @@ test('M12 Workflow Studio persists and versions real Workflow drafts',()=>{
   assert.doesNotMatch(workflow,/>Publish<\/button>/);
 });
 
+
+test('M12 Workflow Studio forms and edits structured drafts through the Model Gateway',()=>{
+  assert.match(api,/generateStructured<CreatorWorkflowBuilderTurnProposal>/);
+  assert.match(api,/agentplace_creator_workflow_turn/);
+  assert.match(api,/creatorWorkflowBuilderSystemPrompt/);
+  assert.match(api,/applyCreatorWorkflowBuilderProposal/);
+  assert.match(creatorSdk,/CreatorWorkflowBuilderTurnProposal/);
+  assert.match(creatorSdk,/applyCreatorWorkflowBuilderProposal/);
+  assert.match(creatorSdk,/No financial authority is created by a Workflow/);
+  assert.match(creatorApi,/interpretCreatorWorkflowTurn/);
+  assert.match(workflow,/interpretCreatorWorkflowTurn/);
+  assert.match(workflow,/View Workflow Draft/);
+  assert.doesNotMatch(workflow,/workflowFromIntent/);
+});
+
 test('M12 OpenAPI and MCP imports are real inspection paths, not fixture discovery',()=>{
   assert.match(api,/inspectMcpEndpoint/);
   assert.match(api,/parseOpenApiOperations/);
