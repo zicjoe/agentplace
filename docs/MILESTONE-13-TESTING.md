@@ -2,7 +2,7 @@
 
 1. Set Creator Worker to a monthly price and publish it.
 2. Discover displays the exact price and empirical evidence without changing Router priority.
-3. Fund service balance through the explicitly configured Arbitrum Sepolia USDC test rail.
+3. Fund service balance through the explicitly configured Arbitrum Sepolia USDC test rail. The treasury must differ from the funding Connected Wallet, and one transaction hash must never be reusable for a second service-balance credit.
 4. Acquire the paid Worker: quote, balance debit, entitlement and optional subscription persist; no wallet authority is created.
 5. Verify an unentitled user cannot install, Try, or create a Job with the paid Worker.
 6. Run an entitled Job and inspect Job cost details; transferred capital must not be presented as a service fee.

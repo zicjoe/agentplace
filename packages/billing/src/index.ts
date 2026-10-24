@@ -300,7 +300,9 @@ export async function createTestnetTopupIntent(ownerUserId:string,walletId:strin
   const amount=cents(amountCents);if(amount<100||amount>100_000)throw new Error('BILLING_TOPUP_AMOUNT_OUT_OF_RANGE');
   const wallet=await getDatabasePool().query<{address:string|null;mode:string;namespace:string;status:string}>(`SELECT address,mode,namespace,status FROM wallet_resource WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,walletId]);const w=wallet.rows[0];
   if(!w||w.mode!=='connected'||w.namespace!=='eip155'||w.status!=='active'||!w.address)throw new Error('BILLING_CONNECTED_EVM_WALLET_REQUIRED');
-  const from=normalizeAddress(w.address),amountAtomic=BigInt(amount)*10_000n,paymentId=id('spay');
+  const from=normalizeAddress(w.address);
+  if(from===cfg.treasuryAddress)throw new Error('BILLING_TOPUP_SELF_PAYMENT_FORBIDDEN');
+  const amountAtomic=BigInt(amount)*10_000n,paymentId=id('spay');
   await getDatabasePool().query(`INSERT INTO billing_service_payment(id,owner_user_id,wallet_id,asset_address,treasury_address,amount_cents,amount_atomic) VALUES($1,$2,$3,$4,$5,$6,$7)`,[paymentId,ownerUserId,walletId,cfg.assetAddress,cfg.treasuryAddress,amount,amountAtomic.toString()]);
   return {paymentId,walletRequest:{from,to:cfg.assetAddress,chainId:`0x${(421614).toString(16)}`,data:transferCalldata(cfg.treasuryAddress,amountAtomic),value:'0x0'},amountCents:amount,notice:'This is an explicit Arbitrum Sepolia USDC payment for AgentPlace service balance. It does not fund or authorize an Agent Account.'};
 }
@@ -312,16 +314,24 @@ const TRANSFER_TOPIC='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4d
 
 export async function confirmTestnetTopup(ownerUserId:string,paymentId:string,transactionHash:string):Promise<BillingState>{
   if(!/^0x[0-9a-fA-F]{64}$/.test(transactionHash))throw new Error('BILLING_INVALID_TRANSACTION_HASH');const cfg=requiredTopupConfig();if(!cfg.enabled)throw new Error('BILLING_TESTNET_TOPUP_DISABLED');
-  await withTransaction(async(db)=>{
-    const result=await db.query<any>(`SELECT p.*,w.address FROM billing_service_payment p JOIN wallet_resource w ON w.id=p.wallet_id AND w.owner_user_id=p.owner_user_id WHERE p.owner_user_id=$1 AND p.id=$2 FOR UPDATE`,[ownerUserId,paymentId]);const p=result.rows[0];if(!p)throw new Error('BILLING_TOPUP_NOT_FOUND');if(p.status==='confirmed')return;
-    const receipt=await rpc(cfg.rpcUrl,'eth_getTransactionReceipt',[transactionHash]);if(!receipt)throw new Error('BILLING_TOPUP_NOT_CONFIRMED');if(receipt.status!=='0x1')throw new Error('BILLING_TOPUP_TRANSACTION_FAILED');
-    const fromTopic=topicAddress(normalizeAddress(p.address));const toTopic=topicAddress(cfg.treasuryAddress);const minimum=BigInt(p.amount_atomic);
-    const matched=Array.isArray(receipt.logs)&&receipt.logs.some((log:any)=>typeof log?.address==='string'&&log.address.toLowerCase()===cfg.assetAddress&&Array.isArray(log.topics)&&log.topics[0]?.toLowerCase()===TRANSFER_TOPIC&&log.topics[1]?.toLowerCase()===fromTopic&&log.topics[2]?.toLowerCase()===toTopic&&typeof log.data==='string'&&BigInt(log.data)>=minimum);
-    if(!matched)throw new Error('BILLING_TOPUP_TRANSFER_MISMATCH');
-    await db.query(`UPDATE billing_service_payment SET status='confirmed',transaction_hash=$3,confirmed_at=now() WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,paymentId,transactionHash.toLowerCase()]);
-    await db.query(`INSERT INTO billing_ledger_entry(id,owner_user_id,direction,category,amount_cents,description,paid_by,source_type,source_id,idempotency_key,metadata) VALUES($1,$2,'credit','service-topup',$3,'Arbitrum Sepolia USDC service balance top-up','user-wallet','service-payment',$4,$5,$6::jsonb) ON CONFLICT(owner_user_id,idempotency_key) DO NOTHING`,[id('ble'),ownerUserId,Number(p.amount_cents),paymentId,`service-payment:${paymentId}`,JSON.stringify({transactionHash:transactionHash.toLowerCase(),networkId:'arbitrum-sepolia',asset:'USDC'})]);
-    await db.query(`INSERT INTO domain_event(id,owner_user_id,event_type,object_type,object_id,title,summary,effect,status,origin_type,metadata) VALUES($1,$2,'billing.service_balance.funded','service-payment',$3,'Service balance funded',$4,'Service balance is separate from wallet and Agent Account capital.','confirmed','user',$5::jsonb)`,[id('evt'),ownerUserId,paymentId,`$${(Number(p.amount_cents)/100).toFixed(2)} USDC payment confirmed on Arbitrum Sepolia.`,JSON.stringify({transactionHash:transactionHash.toLowerCase()})]);
-  });
+  const normalizedHash=transactionHash.toLowerCase();
+  try{
+    await withTransaction(async(db)=>{
+      const result=await db.query<any>(`SELECT p.*,w.address FROM billing_service_payment p JOIN wallet_resource w ON w.id=p.wallet_id AND w.owner_user_id=p.owner_user_id WHERE p.owner_user_id=$1 AND p.id=$2 FOR UPDATE`,[ownerUserId,paymentId]);const p=result.rows[0];if(!p)throw new Error('BILLING_TOPUP_NOT_FOUND');if(p.status==='confirmed')return;
+      const prior=await db.query<{id:string}>(`SELECT id FROM billing_service_payment WHERE transaction_hash=$1 AND id<>$2 LIMIT 1`,[normalizedHash,paymentId]);if(prior.rows[0])throw new Error('BILLING_TOPUP_TRANSACTION_ALREADY_USED');
+      const receipt=await rpc(cfg.rpcUrl,'eth_getTransactionReceipt',[normalizedHash]);if(!receipt)throw new Error('BILLING_TOPUP_NOT_CONFIRMED');if(receipt.status!=='0x1')throw new Error('BILLING_TOPUP_TRANSACTION_FAILED');
+      const fromTopic=topicAddress(normalizeAddress(p.address));const toTopic=topicAddress(cfg.treasuryAddress);const minimum=BigInt(p.amount_atomic);
+      const matched=Array.isArray(receipt.logs)&&receipt.logs.some((log:any)=>typeof log?.address==='string'&&log.address.toLowerCase()===cfg.assetAddress&&Array.isArray(log.topics)&&log.topics[0]?.toLowerCase()===TRANSFER_TOPIC&&log.topics[1]?.toLowerCase()===fromTopic&&log.topics[2]?.toLowerCase()===toTopic&&typeof log.data==='string'&&BigInt(log.data)>=minimum);
+      if(!matched)throw new Error('BILLING_TOPUP_TRANSFER_MISMATCH');
+      await db.query(`UPDATE billing_service_payment SET status='confirmed',transaction_hash=$3,confirmed_at=now() WHERE owner_user_id=$1 AND id=$2`,[ownerUserId,paymentId,normalizedHash]);
+      await db.query(`INSERT INTO billing_ledger_entry(id,owner_user_id,direction,category,amount_cents,description,paid_by,source_type,source_id,idempotency_key,metadata) VALUES($1,$2,'credit','service-topup',$3,'Arbitrum Sepolia USDC service balance top-up','user-wallet','service-payment',$4,$5,$6::jsonb) ON CONFLICT(owner_user_id,idempotency_key) DO NOTHING`,[id('ble'),ownerUserId,Number(p.amount_cents),paymentId,`service-payment:${paymentId}`,JSON.stringify({transactionHash:normalizedHash,networkId:'arbitrum-sepolia',asset:'USDC'})]);
+      await db.query(`INSERT INTO domain_event(id,owner_user_id,event_type,object_type,object_id,title,summary,effect,status,origin_type,metadata) VALUES($1,$2,'billing.service_balance.funded','service-payment',$3,'Service balance funded',$4,'Service balance is separate from wallet and Agent Account capital.','confirmed','user',$5::jsonb)`,[id('evt'),ownerUserId,paymentId,`$${(Number(p.amount_cents)/100).toFixed(2)} USDC payment confirmed on Arbitrum Sepolia.`,JSON.stringify({transactionHash:normalizedHash})]);
+    });
+  }catch(error){
+    const dbError=error as {code?:string;constraint?:string};
+    if(dbError.code==='23505'&&dbError.constraint==='billing_service_payment_transaction_hash_unique_idx')throw new Error('BILLING_TOPUP_TRANSACTION_ALREADY_USED');
+    throw error;
+  }
   return getBillingState(ownerUserId);
 }
 

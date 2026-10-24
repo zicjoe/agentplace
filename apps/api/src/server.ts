@@ -2079,6 +2079,8 @@ const server = createServer((req, res) => {
       BILLING_TOPUP_NOT_CONFIRMED:'The testnet payment has not been confirmed yet. AgentPlace did not credit the service balance.',
       BILLING_TOPUP_TRANSACTION_FAILED:'The testnet payment transaction failed. AgentPlace did not credit the service balance.',
       BILLING_TOPUP_TRANSFER_MISMATCH:'The transaction did not contain the exact USDC transfer expected for this service-balance top-up. No credit was applied.',
+      BILLING_TOPUP_SELF_PAYMENT_FORBIDDEN:'The service treasury must be different from the Connected Wallet funding this top-up. No payment request was created.',
+      BILLING_TOPUP_TRANSACTION_ALREADY_USED:'That transaction hash has already been used for a service-balance credit. No additional credit was applied.',
       BILLING_TOPUP_RPC_UNAVAILABLE:'AgentPlace could not verify the testnet service payment from the configured RPC. No credit was applied.',
       BILLING_TOPUP_RPC_ERROR:'The testnet RPC returned an error while verifying the service payment. No credit was applied.',
     };

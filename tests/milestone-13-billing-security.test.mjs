@@ -141,3 +141,15 @@ test('M13 Security history hydrates durable occurredAt timestamps',()=>{
   assert.match(securityApi,/occurredAt:string/);
   assert.match(securityView,/event\.occurredAt/);
 });
+
+
+test('M13 testnet service funding rejects self-payment and transaction-hash replay',()=>{
+  const integrity=readFileSync('packages/db/migrations/0022_billing_topup_integrity.sql','utf8');
+  assert.match(integrity,/billing_service_payment_transaction_hash_unique_idx/);
+  assert.match(integrity,/WHERE transaction_hash IS NOT NULL/);
+  token(billing,"if(from===cfg.treasuryAddress)throw new Error('BILLING_TOPUP_SELF_PAYMENT_FORBIDDEN')");
+  token(billing,"BILLING_TOPUP_TRANSACTION_ALREADY_USED");
+  token(billing,"constraint==='billing_service_payment_transaction_hash_unique_idx'");
+  token(api,"BILLING_TOPUP_SELF_PAYMENT_FORBIDDEN");
+  token(api,"BILLING_TOPUP_TRANSACTION_ALREADY_USED");
+});

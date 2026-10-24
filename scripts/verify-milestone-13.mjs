@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const required = [
   'packages/db/migrations/0021_billing_security_completion.sql',
+  'packages/db/migrations/0022_billing_topup_integrity.sql',
   'packages/billing/src/index.ts',
   'packages/security/src/index.ts',
   'apps/web/src/platform/billingApi.ts',
@@ -15,6 +16,8 @@ const required = [
 for (const file of required) if (!existsSync(file)) throw new Error(`M13 missing ${file}`);
 
 const migration = readFileSync(required[0], 'utf8');
+const topupIntegrityMigration = readFileSync('packages/db/migrations/0022_billing_topup_integrity.sql','utf8');
+if (!topupIntegrityMigration.includes('billing_service_payment_transaction_hash_unique_idx') || !topupIntegrityMigration.includes('WHERE transaction_hash IS NOT NULL')) throw new Error('M13 top-up integrity must globally de-duplicate confirmed transaction hashes.');
 for (const token of [
   'CREATE TABLE IF NOT EXISTS billing_account',
   'CREATE TABLE IF NOT EXISTS billing_ledger_entry',
@@ -40,6 +43,7 @@ for (const token of [
   "worker:['free','monthly']","workflow:['free','one-time']","capability:['free','per-invocation']",
   'BILLING_TESTNET_TOPUP_ENABLED','421614','BILLING_SERVICE_TREASURY_ADDRESS','BILLING_TESTNET_USDC_ADDRESS',
   "if(asset.quarantined)throw new Error('MARKETPLACE_ASSET_QUARANTINED')",
+  "BILLING_TOPUP_SELF_PAYMENT_FORBIDDEN",'billing_service_payment_transaction_hash_unique_idx','BILLING_TOPUP_TRANSACTION_ALREADY_USED',
 ]) if (!billing.includes(token)) throw new Error(`M13 billing core missing ${token}`);
 if (/MAINNET_EXECUTION_ENABLED\s*=\s*true|MAINNET_AUTONOMY_ENABLED\s*=\s*true/.test(billing)) throw new Error('M13 billing must not enable Mainnet execution/autonomy.');
 if (/PRIVATE_KEY|MNEMONIC|SEED_PHRASE/.test(billing)) throw new Error('M13 service funding must not introduce custody/private signing secrets.');
