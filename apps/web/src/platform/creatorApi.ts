@@ -60,7 +60,7 @@ interface ApiCreatorWorkflowBuilderSession {
   messages:Array<{id:string;role:'user'|'studio';content:string}>;
   updatedAt:string;
 }
-interface ApiCapabilityDraft { name:string;importType:'mcp'|'openapi';endpoint?:string;provider?:string;version?:string;operations:Array<{original:string;canonical?:string;classification:'read'|'prepare'|'execution-sensitive';description:string}>; }
+interface ApiCapabilityDraft { name:string;importType:'mcp'|'openapi';endpoint?:string;provider?:string;version?:string;operations:Array<{original:string;canonical?:string;classification:'read'|'prepare'|'execution-sensitive';description:string;sandboxEligible?:boolean}>; }
 
 function endpoint(path:string):string{return `${WEB_RUNTIME_SETTINGS.apiBaseUrl}${path}`;}
 async function request<T>(path:string,init?:RequestInit):Promise<T>{
@@ -80,7 +80,7 @@ function fromAsset(value:ApiCreatorAsset):CreatorAsset{
   const out:CreatorAsset={id:value.id,type:value.type,visibility:creatorVisibility(value.visibility),version:value.version,...(value.versionHistory?{versionHistory:value.versionHistory.map((item)=>({versionId:item.versionId,version:item.version,releasedAt:new Date(item.releasedAt)}))}:{}),createdAt:new Date(value.createdAt),updatedAt:new Date(value.updatedAt)};
   if(value.worker)out.workerDraft=workerDraft(value.worker);
   if(value.workflow)out.workflowDraft={...value.workflow,pricing:{type:'free'}} as WorkflowDraftData;
-  if(value.capability)out.capabilityDraft={name:value.capability.name,importType:value.capability.importType,...(value.capability.endpoint?{endpoint:value.capability.endpoint}:{}),operations:value.capability.operations.map((op)=>({original:op.original,canonical:op.canonical??'',classification:op.classification,description:op.description})),...(value.capability.provider?{provider:value.capability.provider}:{}),...(value.capability.version?{version:value.capability.version}:{}),pricing:{type:'free'}} as CapabilityDraftData;
+  if(value.capability)out.capabilityDraft={name:value.capability.name,importType:value.capability.importType,...(value.capability.endpoint?{endpoint:value.capability.endpoint}:{}),operations:value.capability.operations.map((op)=>({original:op.original,canonical:op.canonical??'',classification:op.classification,description:op.description,...(op.sandboxEligible===undefined?{}:{sandboxEligible:op.sandboxEligible})})),...(value.capability.provider?{provider:value.capability.provider}:{}),...(value.capability.version?{version:value.capability.version}:{}),pricing:{type:'free'}} as CapabilityDraftData;
   return out;
 }
 
@@ -128,8 +128,8 @@ export async function createCreatorWorkerVersion(workerId:string,draft:WorkerDra
 }
 
 export async function inspectCreatorCapability(input:{importType:'mcp'|'openapi';endpoint?:string;sourceText?:string}):Promise<{operations:CapabilityDraftData['operations'];endpoint?:string;notice:string}>{
-  const data=await request<{operations:Array<{original:string;classification:'read'|'prepare'|'execution-sensitive';description:string;canonical?:string}>;endpoint:string|null;notice:string}>('/api/v1/creator/capabilities/inspect',{method:'POST',body:JSON.stringify(input)});
-  return {operations:data.operations.map((operation)=>({original:operation.original,canonical:operation.canonical??'',classification:operation.classification,description:operation.description})),...(data.endpoint?{endpoint:data.endpoint}:{}),notice:data.notice};
+  const data=await request<{operations:Array<{original:string;classification:'read'|'prepare'|'execution-sensitive';description:string;canonical?:string;sandboxEligible?:boolean}>;endpoint:string|null;notice:string}>('/api/v1/creator/capabilities/inspect',{method:'POST',body:JSON.stringify(input)});
+  return {operations:data.operations.map((operation)=>({original:operation.original,canonical:operation.canonical??'',classification:operation.classification,description:operation.description,...(operation.sandboxEligible===undefined?{}:{sandboxEligible:operation.sandboxEligible})})),...(data.endpoint?{endpoint:data.endpoint}:{}),notice:data.notice};
 }
 
 export async function testCreatorCapabilityRead(input:{importType:'openapi';endpoint:string;operation:string}):Promise<{status:number;url:string;preview:string;notice:string}>{return request('/api/v1/creator/capabilities/sandbox-test',{method:'POST',body:JSON.stringify(input)});}

@@ -71,13 +71,13 @@ export function CapabilityStudio() {
   async function handleTest() {
     setTesting(true);setError(null);
     try {
-      const safeRead=ops.find((op)=>op.classification==='read' && /^GET\s+\/[^{}\s]*$/i.test(op.original));
+      const safeRead=ops.find((op)=>op.classification==='read' && op.sandboxEligible===true && /^GET\s+\/[^{}\s]*$/i.test(op.original));
       if(importType==='openapi' && openapiUrl && safeRead){
         const result=await testCreatorCapabilityRead({importType:'openapi',endpoint:openapiUrl,operation:safeRead.original});
         setNotice(`${result.notice} HTTP ${result.status}.`);setTestPassed(true);setStep('tested');return;
       }
       setTestPassed(false);setStep('tested');
-      setError(importType==='mcp'?'MCP tools remain execution-sensitive in M12 and are discovery-only until a stronger runtime trust gate exists.':'No parameter-free read-only GET operation is eligible for live sandbox invocation. The import can still be saved as metadata.');
+      setError(importType==='mcp'?'MCP tools remain execution-sensitive in M12 and are discovery-only until a stronger runtime trust gate exists.':'No parameter-free read-only GET operation is eligible for live sandbox invocation. Required path/query inputs are never invented by the sandbox; the import can still be saved as metadata.');
     } catch(value){setTestPassed(false);setError(value instanceof Error?value.message:'Sandbox test failed');}
     finally{setTesting(false);}
   }
@@ -184,7 +184,7 @@ export function CapabilityStudio() {
                 <p className="text-[10px] text-text-dim mt-1">Authenticated imports can be described, but AgentPlace will not ask for or persist provider secrets until the credential-vault security milestone.</p>
               </div>
             </div>
-            <p className="text-xs text-text-dim">AgentPlace performs server-side inspection. Remote URLs must use public HTTPS; private-network destinations and embedded credentials are rejected.</p>
+            <p className="text-xs text-text-dim">AgentPlace performs server-side inspection and resolves the API runtime base from the OpenAPI server declaration when available. Remote URLs must use public HTTPS; private-network destinations and embedded credentials are rejected.</p>
             <button onClick={handleInspect} disabled={inspecting} className="w-full py-2.5 bg-primary text-white text-sm rounded-lg font-medium hover:bg-primary-hover disabled:opacity-60 transition-colors">
               {inspecting ? 'Inspecting…' : 'Inspect server'}
             </button>
@@ -200,7 +200,7 @@ export function CapabilityStudio() {
             <h2 className="text-base font-semibold text-text">OpenAPI Import</h2>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1">Paste OpenAPI URL</label>
+                <label className="text-xs font-medium text-text-muted uppercase tracking-wider block mb-1">Paste OpenAPI specification URL</label>
                 <input className="w-full bg-panel-raised border border-border rounded-lg px-3 py-2 text-sm text-text font-mono focus:outline-none focus:border-primary/50" placeholder="https://api.example.com/openapi.json" value={openapiUrl} onChange={(e) => setOpenapiUrl(e.target.value)} />
               </div>
               <div className="text-center text-xs text-text-dim">or</div>
@@ -210,7 +210,7 @@ export function CapabilityStudio() {
                 <input type="file" className="hidden" accept=".json,.yaml,.yml" onChange={(e)=>{const file=e.target.files?.[0];if(file)void file.text().then(setSourceText);}} />
               </label>
             </div>
-            <p className="text-xs text-text-dim">AgentPlace performs server-side inspection. Remote URLs must use public HTTPS; private-network destinations and embedded credentials are rejected.</p>
+            <p className="text-xs text-text-dim">AgentPlace performs server-side inspection and resolves the API runtime base from the OpenAPI server declaration when available. Remote URLs must use public HTTPS; private-network destinations and embedded credentials are rejected.</p>
             <button onClick={handleInspect} disabled={inspecting} className="w-full py-2.5 bg-primary text-white text-sm rounded-lg font-medium hover:bg-primary-hover disabled:opacity-60 transition-colors">
               {inspecting ? 'Inspecting…' : 'Inspect specification'}
             </button>
@@ -223,7 +223,7 @@ export function CapabilityStudio() {
               <h2 className="text-base font-semibold text-text">Discovered operations</h2>
               <span className="text-xs text-text-muted font-mono">{ops.length} operations</span>
             </div>
-            <p className="text-xs text-text-dim mb-2">Operations are reviewed and normalised into canonical AgentPlace capabilities. Imported operations are not inherently trusted.</p>
+            <p className="text-xs text-text-dim mb-2">Operations are reviewed and classified for creator-scoped use. Canonical mapping may remain unset until a trusted AgentPlace mapping is approved; imported operations are not inherently trusted.</p>
             {notice&&<p className="text-xs text-text-muted">{notice}</p>}
             {error&&<p className="text-xs text-danger">{error}</p>}
             <div className="space-y-2">

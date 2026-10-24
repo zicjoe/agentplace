@@ -679,6 +679,7 @@ export interface CapabilityOperation {
   canonical: string;
   classification: 'read' | 'prepare' | 'execution-sensitive';
   description: string;
+  sandboxEligible?: boolean;
 }
 
 export interface CapabilityDraftData {

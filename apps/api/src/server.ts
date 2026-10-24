@@ -40,7 +40,7 @@ import {
   recordCreatorBuilderTurn,
   undoCreatorBuilderDraft,
 } from '@agent-place/marketplace';
-import { applyCreatorBuilderOperations, applyCreatorWorkflowBuilderProposal, assertSafeRemoteHttpsUrl, parseOpenApiOperations, validateCreatorWorkerDraft } from '@agent-place/creator-sdk';
+import { applyCreatorBuilderOperations, applyCreatorWorkflowBuilderProposal, assertSafeRemoteHttpsUrl, joinOpenApiRuntimeUrl, parseOpenApiOperations, resolveOpenApiRuntimeEndpoint, validateCreatorWorkerDraft } from '@agent-place/creator-sdk';
 import type { CapabilityImportDraft, CreatorBuilderOperation, CreatorBuilderTurnProposal, CreatorWorkerDraft, CreatorWorkflowBuilderTurnProposal, CreatorWorkflowDraft, ImportedOperationDraft } from '@agent-place/creator-sdk';
 import { generateStructured, getModelCatalog, ModelGatewayError } from '@agent-place/models';
 import {
@@ -927,9 +927,10 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     const endpoint=body.endpoint===undefined?undefined:requiredString(body.endpoint,'INVALID_IMPORT_ENDPOINT',2000);
     let operations:ImportedOperationDraft[]; let resolvedEndpoint=endpoint;
     if(importType==='openapi'){
-      let text=sourceText;
-      if(!text){if(!endpoint)throw new Error('OPENAPI_SOURCE_REQUIRED');const fetched=await safeFetchText(endpoint);text=fetched.text;resolvedEndpoint=fetched.url;}
+      let text=sourceText; let sourceUrl:string|undefined;
+      if(!text){if(!endpoint)throw new Error('OPENAPI_SOURCE_REQUIRED');const fetched=await safeFetchText(endpoint);text=fetched.text;sourceUrl=fetched.url;}
       operations=parseOpenApiOperations(text);
+      resolvedEndpoint=resolveOpenApiRuntimeEndpoint(text,sourceUrl);
     } else {
       if(!endpoint)throw new Error('MCP_ENDPOINT_REQUIRED');operations=await inspectMcpEndpoint(endpoint);
     }
@@ -945,9 +946,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     const operation=requiredString(body.operation,'INVALID_IMPORT_OPERATION',600);
     const match=operation.match(/^GET\s+(\/[^\s]*)$/i);
     if(!match||match[1]!.includes('{')) return writeJson(res,400,{error:'unsupported',message:'Only parameter-free read-only GET operations can be invoked in the M12 sandbox.',requestId});
-    const specUrl=assertSafeRemoteHttpsUrl(endpoint);
-    const target=new URL(match[1]!,specUrl.origin);
-    if(target.origin!==specUrl.origin) throw new Error('IMPORT_SANDBOX_ORIGIN_MISMATCH');
+    const target=joinOpenApiRuntimeUrl(endpoint,match[1]!);
     const fetched=await safeFetchText(target.toString(),{method:'GET'});
     writeJson(res,200,{status:fetched.status,url:fetched.url,preview:fetched.text.slice(0,2000),notice:'Read-only creator sandbox request completed. This capability remains isolated from trusted AgentPlace routing.'});
     return;

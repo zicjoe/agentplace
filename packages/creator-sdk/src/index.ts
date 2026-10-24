@@ -47,6 +47,7 @@ export interface ImportedOperationDraft {
   description: string;
   inputSchema?: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
+  sandboxEligible?: boolean;
 }
 
 export interface CapabilityImportDraft {
@@ -366,6 +367,55 @@ export const moduleManifest = {
   status: 'production-creator-contracts',
 } as const;
 
+export function resolveOpenApiRuntimeEndpoint(source: string, sourceUrl?: string): string | undefined {
+  const trimmed=source.trim();
+  if(!trimmed) throw new Error('OPENAPI_EMPTY_DOCUMENT');
+  let value: unknown;
+  try { value=JSON.parse(trimmed) as unknown; } catch { value=undefined; }
+
+  if(value&&typeof value==='object'&&!Array.isArray(value)){
+    const root=value as Record<string,unknown>;
+    const servers=Array.isArray(root.servers)?root.servers:[];
+    for(const server of servers){
+      if(!server||typeof server!=='object'||Array.isArray(server))continue;
+      const raw=(server as Record<string,unknown>).url;
+      if(typeof raw!=='string'||!raw.trim()||raw.includes('{'))continue;
+      try {
+        const resolved=sourceUrl?new URL(raw,sourceUrl):new URL(raw);
+        return assertSafeRemoteHttpsUrl(resolved.toString()).toString().replace(/\/$/,'');
+      } catch { /* Try another declared server. */ }
+    }
+
+    const host=typeof root.host==='string'?root.host.trim():'';
+    if(host){
+      const schemes=Array.isArray(root.schemes)?root.schemes.filter((item):item is string=>typeof item==='string'):[];
+      const scheme=schemes.map((item)=>item.toLowerCase()).includes('https')?'https':schemes[0]?.toLowerCase();
+      if(scheme==='https'){
+        const basePath=typeof root.basePath==='string'?root.basePath.trim():'';
+        return assertSafeRemoteHttpsUrl(`https://${host}${basePath.startsWith('/')?basePath:basePath?`/${basePath}`:''}`).toString().replace(/\/$/,'');
+      }
+    }
+  }
+
+  if(sourceUrl){
+    const source=assertSafeRemoteHttpsUrl(sourceUrl);
+    return source.origin;
+  }
+  return undefined;
+}
+
+export function joinOpenApiRuntimeUrl(runtimeEndpoint: string, operationPath: string): URL {
+  const base=assertSafeRemoteHttpsUrl(runtimeEndpoint);
+  if(!operationPath.startsWith('/')||operationPath.includes('{')) throw new Error('INVALID_IMPORT_OPERATION');
+  const basePath=base.pathname==='/'?'':base.pathname.replace(/\/$/,'');
+  const target=new URL(base.toString());
+  target.pathname=`${basePath}${operationPath}`.replace(/\/{2,}/g,'/');
+  target.search='';
+  target.hash='';
+  if(target.origin!==base.origin) throw new Error('IMPORT_SANDBOX_ORIGIN_MISMATCH');
+  return target;
+}
+
 export function parseOpenApiOperations(source: string): ImportedOperationDraft[] {
   const trimmed=source.trim();
   if(!trimmed) throw new Error('OPENAPI_EMPTY_DOCUMENT');
@@ -382,8 +432,21 @@ export function parseOpenApiOperations(source: string): ImportedOperationDraft[]
         if(!methods.has(method.toLowerCase()))continue;
         const op=opValue&&typeof opValue==='object'&&!Array.isArray(opValue)?opValue as Record<string,unknown>:{};
         const description=typeof op.summary==='string'?op.summary:typeof op.description==='string'?op.description:`${method.toUpperCase()} ${pathName}`;
-        const classification:ImportedCapabilityClassification=method.toLowerCase()==='get'||method.toLowerCase()==='head'?'read':'execution-sensitive';
-        operations.push({original:`${method.toUpperCase()} ${pathName}`,classification,description});
+        const lowerMethod=method.toLowerCase();
+        const classification:ImportedCapabilityClassification=lowerMethod==='get'||lowerMethod==='head'?'read':'execution-sensitive';
+        const pathParameters=Array.isArray((pathValue as Record<string,unknown>).parameters)?(pathValue as Record<string,unknown>).parameters as unknown[]:[];
+        const operationParameters=Array.isArray(op.parameters)?op.parameters as unknown[]:[];
+        const requiredParameters=[...pathParameters,...operationParameters].flatMap((parameter)=>{
+          if(!parameter||typeof parameter!=='object'||Array.isArray(parameter))return[];
+          const row=parameter as Record<string,unknown>;
+          const required=row.required===true||row.in==='path';
+          if(!required)return[];
+          const name=typeof row.name==='string'?row.name:'required parameter';
+          return [name];
+        });
+        const requestBodyRequired=Boolean(op.requestBody&&typeof op.requestBody==='object'&&!Array.isArray(op.requestBody)&&(op.requestBody as Record<string,unknown>).required===true);
+        const sandboxEligible=lowerMethod==='get'&&!pathName.includes('{')&&requiredParameters.length===0&&!requestBodyRequired;
+        operations.push({original:`${method.toUpperCase()} ${pathName}`,classification,description,sandboxEligible,...(requiredParameters.length?{inputSchema:{requiredParameters}}:{})});
       }
     }
   } else {
@@ -392,7 +455,7 @@ export function parseOpenApiOperations(source: string): ImportedOperationDraft[]
     for(const raw of lines){const line=raw.replace(/\t/g,'  ');const trimmedLine=line.trim();if(!trimmedLine||trimmedLine.startsWith('#'))continue;const indent=line.length-line.trimStart().length;
       if(trimmedLine==='paths:'){inPaths=true;pathIndent=indent;continue;} if(inPaths&&indent<=pathIndent&&/^[A-Za-z0-9_-]+:/.test(trimmedLine)){break;} if(!inPaths)continue;
       if(/^\/[^:]+:\s*$/.test(trimmedLine)){currentPath=trimmedLine.slice(0,-1);continue;}
-      const methodMatch=trimmedLine.match(/^(get|post|put|patch|delete|head|options):\s*$/i); if(methodMatch&&currentPath){const method=methodMatch[1]!.toUpperCase();const classification:ImportedCapabilityClassification=method==='GET'||method==='HEAD'?'read':'execution-sensitive';operations.push({original:`${method} ${currentPath}`,classification,description:`${method} ${currentPath}`});}
+      const methodMatch=trimmedLine.match(/^(get|post|put|patch|delete|head|options):\s*$/i); if(methodMatch&&currentPath){const method=methodMatch[1]!.toUpperCase();const classification:ImportedCapabilityClassification=method==='GET'||method==='HEAD'?'read':'execution-sensitive';operations.push({original:`${method} ${currentPath}`,classification,description:`${method} ${currentPath}`,sandboxEligible:false});}
     }
   }
   if(operations.length===0) throw new Error('OPENAPI_NO_OPERATIONS');

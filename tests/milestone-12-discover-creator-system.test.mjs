@@ -175,12 +175,31 @@ test('M12 Workflow Studio forms and edits structured drafts through the Model Ga
 test('M12 OpenAPI and MCP imports are real inspection paths, not fixture discovery',()=>{
   assert.match(api,/inspectMcpEndpoint/);
   assert.match(api,/parseOpenApiOperations/);
+  assert.match(api,/resolveOpenApiRuntimeEndpoint/);
+  assert.match(api,/joinOpenApiRuntimeUrl/);
   assert.match(api,/notifications\/initialized/);
   assert.match(api,/text\/event-stream/);
   assert.match(creatorSdk,/parseOpenApiOperations/);
+  assert.match(creatorSdk,/resolveOpenApiRuntimeEndpoint/);
+  assert.match(creatorSdk,/joinOpenApiRuntimeUrl/);
   assert.match(capability,/inspectCreatorCapability/);
   assert.doesNotMatch(capability,/MCP_DISCOVERED_OPS|OPENAPI_DISCOVERED_OPS/);
   assert.match(capability,/Publish after saving/);
+});
+
+test('M12 OpenAPI sandbox honors declared runtime base paths instead of the spec-file origin',()=>{
+  assert.match(creatorSdk,/root\.servers/);
+  assert.match(creatorSdk,/root\.basePath/);
+  assert.match(creatorSdk,/basePath.*operationPath/s);
+  assert.match(api,/resolvedEndpoint=resolveOpenApiRuntimeEndpoint\(text,sourceUrl\)/);
+  assert.doesNotMatch(api,/new URL\(match\[1\]!,specUrl\.origin\)/);
+});
+
+test('M12 OpenAPI sandbox selects only genuinely parameter-free GET operations',()=>{
+  assert.match(creatorSdk,/requiredParameters/);
+  assert.match(creatorSdk,/sandboxEligible/);
+  assert.match(capability,/op\.sandboxEligible===true/);
+  assert.match(capability,/Required path\/query inputs are never invented by the sandbox/);
 });
 
 test('M12 remote imports fail closed against SSRF and embedded credentials',()=>{

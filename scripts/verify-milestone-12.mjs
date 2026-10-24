@@ -66,10 +66,11 @@ const router = readFileSync('packages/router/src/index.ts', 'utf8');
 for (const token of ['forcedWorkerVersionIds','getWorkerCatalogVersions','worker_version_id']) if (!router.includes(token)) throw new Error(`M12 Router version reproducibility missing ${token}`);
 
 const creatorSdk = readFileSync('packages/creator-sdk/src/index.ts', 'utf8');
-for (const token of ['assertSafeRemoteHttpsUrl','parseOpenApiOperations','runtimeEligibilityForImportedOperation','CREATOR_WORKER_FINANCIAL_AUTHORITY_NOT_ALLOWED','CreatorBuilderOperationType','applyCreatorBuilderOperations']) if (!creatorSdk.includes(token)) throw new Error(`M12 creator boundary missing ${token}`);
+for (const token of ['assertSafeRemoteHttpsUrl','parseOpenApiOperations','resolveOpenApiRuntimeEndpoint','joinOpenApiRuntimeUrl','runtimeEligibilityForImportedOperation','CREATOR_WORKER_FINANCIAL_AUTHORITY_NOT_ALLOWED','CreatorBuilderOperationType','applyCreatorBuilderOperations']) if (!creatorSdk.includes(token)) throw new Error(`M12 creator boundary missing ${token}`);
 
 const api = readFileSync('apps/api/src/server.ts', 'utf8');
 for (const token of ['/api/v1/discover','/api/v1/creator/assets','/api/v1/creator/workers','/api/v1/creator/workflows','/api/v1/creator/capabilities/inspect','/api/v1/creator/capabilities/sandbox-test','builder-session','builder-turn','generateStructured<CreatorBuilderTurnProposal>','applyCreatorBuilderOperations','IMPORT_URL_PRIVATE_HOST_FORBIDDEN']) if (!api.includes(token)) throw new Error(`M12 API missing ${token}`);
+for (const token of ['resolveOpenApiRuntimeEndpoint','joinOpenApiRuntimeUrl']) if (!api.includes(token)) throw new Error(`M12 OpenAPI runtime-base handling missing ${token}`);
 if (/PRIVATE_KEY|MNEMONIC|SEED_PHRASE/.test(api)) throw new Error('M12 creator API must not introduce signing secrets.');
 
 
