@@ -673,7 +673,13 @@ async function safeFetchText(rawUrl:string,init?:RequestInit):Promise<{url:strin
   let current=assertSafeRemoteHttpsUrl(rawUrl);
   for(let redirect=0;redirect<4;redirect+=1){
     await assertPublicResolvedHost(current);
-    const response=await fetch(current,{...init,redirect:'manual',signal:AbortSignal.timeout(10000),headers:{accept:'application/json, application/yaml, text/yaml, text/plain;q=0.8',...(init?.headers??{})}});
+    let response:Response;
+    try {
+      response=await fetch(current,{...init,redirect:'manual',signal:AbortSignal.timeout(10000),headers:{accept:'application/json, application/yaml, text/yaml, text/plain;q=0.8',...(init?.headers??{})}});
+    } catch (error) {
+      const name=error instanceof Error?error.name:'';
+      throw new Error(name==='TimeoutError'||name==='AbortError'?'IMPORT_NETWORK_TIMEOUT':'IMPORT_NETWORK_UNAVAILABLE');
+    }
     if(response.status>=300&&response.status<400){const location=response.headers.get('location');if(!location)throw new Error('IMPORT_REDIRECT_INVALID');current=assertSafeRemoteHttpsUrl(new URL(location,current).toString());continue;}
     if(!response.ok)throw new Error(`IMPORT_HTTP_${response.status}`);
     const contentType=response.headers.get('content-type')?.toLowerCase()??'';
@@ -1948,6 +1954,16 @@ const server = createServer((req, res) => {
       writeJson(res, 409, { error: 'execution_conflict', message: executionConflicts[code] ?? `AgentPlace could not reach a usable execution RPC${rpcDetail ? `: ${rpcDetail}` : ''}. Nothing was submitted.`, requestId });
       return;
     }
+    const importHttpMatch=code.match(/^IMPORT_HTTP_(\d{3})$/);
+    if(importHttpMatch){
+      writeJson(res,502,{error:'import_upstream_error',message:`The imported API returned HTTP ${importHttpMatch[1]} during the read-only sandbox test. No capability was promoted and no authority was granted. Try again later or use another eligible public read operation.`,requestId});
+      return;
+    }
+    if(code==='IMPORT_NETWORK_TIMEOUT'||code==='IMPORT_NETWORK_UNAVAILABLE'){
+      writeJson(res,502,{error:'import_upstream_unavailable',message:code==='IMPORT_NETWORK_TIMEOUT'?'The imported API did not respond before the sandbox timeout. No capability was promoted and no authority was granted.':'AgentPlace could not reach the imported API from the server-side sandbox. No capability was promoted and no authority was granted.',requestId});
+      return;
+    }
+
     const routineConflicts: Record<string,string> = {
       M11_AUTONOMOUS_EXECUTION_UNAVAILABLE: 'Background Routines cannot sign or autonomously execute financial actions in v0.14.0. Keep the Routine recommendation-only.',
       ROUTINE_STOPPED: 'This Routine is stopped. Historical work remains, but it cannot be edited or reactivated.',

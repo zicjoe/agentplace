@@ -1,3 +1,4 @@
+- M12 OpenAPI sandbox eligibility now excludes auth-required and obvious session-mutating GET operations, and surfaces upstream provider/network failures truthfully instead of reporting them as internal AgentPlace errors.
 # Changelog
 
 ## 0.14.0 — M11 Routines + Background Work (candidate)

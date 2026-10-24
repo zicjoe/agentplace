@@ -445,7 +445,13 @@ export function parseOpenApiOperations(source: string): ImportedOperationDraft[]
           return [name];
         });
         const requestBodyRequired=Boolean(op.requestBody&&typeof op.requestBody==='object'&&!Array.isArray(op.requestBody)&&(op.requestBody as Record<string,unknown>).required===true);
-        const sandboxEligible=lowerMethod==='get'&&!pathName.includes('{')&&requiredParameters.length===0&&!requestBodyRequired;
+        const rootSecurity=Array.isArray(root.security)?root.security:undefined;
+        const effectiveSecurity=Object.prototype.hasOwnProperty.call(op,'security')?(Array.isArray(op.security)?op.security:undefined):rootSecurity;
+        const requiresAuthentication=Boolean(effectiveSecurity&&effectiveSecurity.length>0&&!effectiveSecurity.some((requirement)=>requirement&&typeof requirement==='object'&&!Array.isArray(requirement)&&Object.keys(requirement as Record<string,unknown>).length===0));
+        const operationId=typeof op.operationId==='string'?op.operationId:'';
+        const semanticText=`${pathName} ${operationId} ${description}`.toLowerCase();
+        const obviousSessionMutation=/(^|[\/_\s-])(login|logout|sign[ -]?in|sign[ -]?out|authorize|oauth|token|refresh|session)([\/_\s-]|$)/i.test(semanticText);
+        const sandboxEligible=lowerMethod==='get'&&!pathName.includes('{')&&requiredParameters.length===0&&!requestBodyRequired&&!requiresAuthentication&&!obviousSessionMutation;
         operations.push({original:`${method.toUpperCase()} ${pathName}`,classification,description,sandboxEligible,...(requiredParameters.length?{inputSchema:{requiredParameters}}:{})});
       }
     }

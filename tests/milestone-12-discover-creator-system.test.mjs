@@ -262,3 +262,19 @@ test('M12 keeps Mainnet financial execution and autonomy disabled',()=>{
   assert.match(env,/MAINNET_AUTONOMY_ENABLED=false/);
   assert.doesNotMatch(marketplace,/privateKey|mnemonic|walletClient|sendTransaction/i);
 });
+
+
+test('M12 OpenAPI sandbox excludes auth-required and obvious session-mutating GET operations',()=>{
+  assert.match(creatorSdk,/requiresAuthentication/);
+  assert.match(creatorSdk,/effectiveSecurity/);
+  assert.match(creatorSdk,/obviousSessionMutation/);
+  assert.match(creatorSdk,/!requiresAuthentication&&!obviousSessionMutation/);
+});
+
+test('M12 OpenAPI sandbox reports upstream provider failures truthfully',()=>{
+  assert.match(api,/import_upstream_error/);
+  assert.match(api,/The imported API returned HTTP/);
+  assert.match(api,/IMPORT_NETWORK_TIMEOUT/);
+  assert.match(api,/IMPORT_NETWORK_UNAVAILABLE/);
+  assert.match(api,/No capability was promoted and no authority was granted/);
+});
