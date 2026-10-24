@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAppState, useDispatch, uid } from '../state/AppContext';
-import { createCreatorWorkflow, createCreatorWorkflowVersion, interpretCreatorWorkflowTurn, publishCreatorAsset } from '../platform/creatorApi';
+import { createCreatorWorkflow, createCreatorWorkflowVersion, fetchCreatorWorkflowBuilderSession, interpretCreatorWorkflowTurn, publishCreatorAsset, saveCreatorWorkflowBuilderSession } from '../platform/creatorApi';
 import type { WorkflowDraftData } from '../state/types';
 import { ResearchMarkdown } from './ResearchMarkdown';
 import { scrollConversationToEnd } from '../platform/scroll';
@@ -67,16 +67,78 @@ export function WorkflowStudio() {
   const dispatch = useDispatch();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<StudioMessage[]>([]);
-  const existingAsset=state.activeCreationId?(state.creatorAssets??[]).find((asset)=>asset.id===state.activeCreationId):undefined;
-  const [draft, setDraft] = useState<WorkflowDraftData>(existingAsset?.workflowDraft??{ name: '', purpose: '', inputs: [], steps: [], conditions: [], outputs: [], requiredCapabilities: [], safetyBoundaries: [], compatibleWorkers: [], pricing: { type: 'free' } });
+  const existingAsset = state.activeCreationId ? (state.creatorAssets ?? []).find((asset) => asset.id === state.activeCreationId) : undefined;
+  const [draft, setDraft] = useState<WorkflowDraftData>(existingAsset?.workflowDraft ?? { name: '', purpose: '', inputs: [], steps: [], conditions: [], outputs: [], requiredCapabilities: [], safetyBoundaries: [], compatibleWorkers: [], pricing: { type: 'free' } });
+  const [savedAssetId, setSavedAssetId] = useState<string | undefined>(existingAsset?.id);
   const [step, setStep] = useState<StudioStep>(existingAsset?.workflowDraft?.name ? 'draft-formed' : 'idle');
   const [mobileTab, setMobileTab] = useState<'chat' | 'draft'>('chat');
   const messageScrollRef = useRef<HTMLDivElement>(null);
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const [streaming, setStreaming] = useState(false);
+  const [sessionReady, setSessionReady] = useState(!state.activeCreationId);
 
   useEffect(() => {
     scrollConversationToEnd(messageScrollRef.current);
   }, [messages]);
+
+  useEffect(() => {
+    const assetId = state.activeCreationId;
+    if (!assetId) {
+      setSavedAssetId(undefined);
+      setSessionReady(true);
+      return;
+    }
+    const asset = (state.creatorAssets ?? []).find((item) => item.id === assetId);
+    if (!asset?.workflowDraft) {
+      setSessionReady(false);
+      return;
+    }
+    let cancelled = false;
+    setSessionReady(false);
+    setSavedAssetId(asset.id);
+    setDraft(asset.workflowDraft);
+    setStep('draft-formed');
+    void fetchCreatorWorkflowBuilderSession(asset.id).then((session) => {
+      if (cancelled) return;
+      if (session) {
+        setMessages(session.messages);
+        setDraft(session.draft);
+        setStep(session.step === 'saved' ? 'draft-formed' : session.step as StudioStep);
+      } else {
+        setMessages([{
+          id: uid(),
+          role: 'studio',
+          content: `Reopened **${asset.workflowDraft?.name ?? 'your Workflow'}**. The saved structured draft is intact. You can continue editing or validate it again.`,
+        }]);
+        setStep('draft-formed');
+      }
+    }).catch((error) => {
+      if (cancelled) return;
+      console.error('Could not restore Workflow Studio conversation', error);
+      setMessages([{
+        id: uid(),
+        role: 'studio',
+        content: `Reopened **${asset.workflowDraft?.name ?? 'your Workflow'}**. The saved structured draft is available, but the earlier Workflow Studio transcript could not be restored.`,
+      }]);
+      setStep('draft-formed');
+    }).finally(() => {
+      if (!cancelled) setSessionReady(true);
+    });
+    return () => { cancelled = true; };
+  }, [state.activeCreationId, existingAsset?.id]);
+
+  useEffect(() => {
+    if (!sessionReady || !savedAssetId || !state.user || streaming) return;
+    if (messages.some((message) => !message.content.trim())) return;
+    const timer = window.setTimeout(() => {
+      const snapshot = { step, draft, messages };
+      saveQueueRef.current = saveQueueRef.current
+        .catch(() => undefined)
+        .then(() => saveCreatorWorkflowBuilderSession(savedAssetId, snapshot))
+        .catch((error) => { console.error('Could not persist Workflow Studio conversation', error); });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [sessionReady, savedAssetId, state.user, streaming, messages, draft, step]);
 
   function addMsg(role: 'user' | 'studio', content: string) {
     const id = uid();
@@ -116,7 +178,6 @@ export function WorkflowStudio() {
     }
   }
 
-
   function handleTest() {
     setStep('tested');
     addMsg('studio','Workflow structure validated. Runtime behavior is still determined by the eligible Worker and capability routes used when a Job executes; this structural check does not self-certify safety.');
@@ -141,7 +202,26 @@ export function WorkflowStudio() {
   }
 
   async function doSave() {
-    try{const asset=existingAsset?.type==='workflow'?await createCreatorWorkflowVersion(existingAsset.id,draft):await createCreatorWorkflow(draft);await publishCreatorAsset('workflow',asset.id,'private');if(existingAsset?.type==='workflow')dispatch({type:'UPDATE_CREATOR_ASSET',assetId:asset.id,updates:{...asset,visibility:'private'}});else dispatch({type:'ADD_CREATOR_ASSET',asset:{...asset,visibility:'private'}});setStep('saved');addMsg('studio',`**${draft.name}** saved privately as version ${asset.version ?? '0.1.0'}. No Worker, Routine, or authority was created.`);}catch(value){addMsg('studio',value instanceof Error?`Could not save Workflow: ${value.message}`:'Could not save Workflow.');}
+    try {
+      const asset = savedAssetId ? await createCreatorWorkflowVersion(savedAssetId, draft) : await createCreatorWorkflow(draft);
+      await publishCreatorAsset('workflow', asset.id, 'private');
+      const savedAsset = { ...asset, visibility: 'private' as const };
+      if (savedAssetId) dispatch({ type: 'UPDATE_CREATOR_ASSET', assetId: asset.id, updates: savedAsset });
+      else dispatch({ type: 'ADD_CREATOR_ASSET', asset: savedAsset });
+      const confirmation: StudioMessage = {
+        id: uid(),
+        role: 'studio',
+        content: `**${draft.name}** saved privately as version ${asset.version ?? '0.1.0'}. No Worker, Routine, or authority was created.`,
+      };
+      const persistedMessages = [...messages, confirmation];
+      await saveCreatorWorkflowBuilderSession(asset.id, { step: 'saved', draft, messages: persistedMessages });
+      setSavedAssetId(asset.id);
+      setMessages(persistedMessages);
+      setStep('saved');
+      dispatch({ type: 'SET_ACTIVE_CREATION', id: asset.id });
+    } catch (value) {
+      addMsg('studio', value instanceof Error ? `Could not save Workflow: ${value.message}` : 'Could not save Workflow.');
+    }
   }
 
   function close() {

@@ -46,6 +46,20 @@ interface ApiCreatorBuilderSession {
   updatedAt:string;
 }
 interface ApiWorkflowDraft { name:string;purpose:string;inputs:string[];steps:string[];conditions:string[];outputs:string[];requiredCapabilities:string[];safetyBoundaries:string[];compatibleWorkers:string[]; }
+export interface CreatorWorkflowBuilderSessionSnapshot {
+  workflowId:string;
+  step:string;
+  draft:WorkflowDraftData;
+  messages:Array<{id:string;role:'user'|'studio';content:string}>;
+  updatedAt:Date;
+}
+interface ApiCreatorWorkflowBuilderSession {
+  workflowId:string;
+  step:string;
+  draft:ApiWorkflowDraft;
+  messages:Array<{id:string;role:'user'|'studio';content:string}>;
+  updatedAt:string;
+}
 interface ApiCapabilityDraft { name:string;importType:'mcp'|'openapi';endpoint?:string;provider?:string;version?:string;operations:Array<{original:string;canonical?:string;classification:'read'|'prepare'|'execution-sensitive';description:string}>; }
 
 function endpoint(path:string):string{return `${WEB_RUNTIME_SETTINGS.apiBaseUrl}${path}`;}
@@ -82,6 +96,17 @@ export async function createCreatorWorkflowVersion(workflowId:string,draft:Workf
 export async function interpretCreatorWorkflowTurn(input:{message:string;draft:WorkflowDraftData}):Promise<{intent:'DISCUSS'|'MODIFY_DRAFT';reply:string;draft:WorkflowDraftData;model:{label:string;provider:string;model:string}}>{
   const data=await request<{intent:'DISCUSS'|'MODIFY_DRAFT';reply:string;draft:Omit<WorkflowDraftData,'pricing'>;model:{label:string;provider:string;model:string}}>('/api/v1/creator/workflows/builder-turn',{method:'POST',body:JSON.stringify({message:input.message,draft:{name:input.draft.name,purpose:input.draft.purpose,inputs:input.draft.inputs,steps:input.draft.steps,conditions:input.draft.conditions,outputs:input.draft.outputs,requiredCapabilities:input.draft.requiredCapabilities,safetyBoundaries:input.draft.safetyBoundaries,compatibleWorkers:input.draft.compatibleWorkers}})});
   return {...data,draft:{...data.draft,pricing:{type:'free'}}};
+}
+
+export async function fetchCreatorWorkflowBuilderSession(workflowId:string):Promise<CreatorWorkflowBuilderSessionSnapshot|null>{
+  const data=await request<{session:ApiCreatorWorkflowBuilderSession|null}>(`/api/v1/creator/workflows/${encodeURIComponent(workflowId)}/builder-session`);
+  if(!data.session)return null;
+  return {workflowId:data.session.workflowId,step:data.session.step,draft:{...data.session.draft,pricing:{type:'free'}},messages:data.session.messages,updatedAt:new Date(data.session.updatedAt)};
+}
+
+export async function saveCreatorWorkflowBuilderSession(workflowId:string,snapshot:{step:string;draft:WorkflowDraftData;messages:Array<{id:string;role:'user'|'studio';content:string}>}):Promise<CreatorWorkflowBuilderSessionSnapshot>{
+  const data=await request<{session:ApiCreatorWorkflowBuilderSession}>(`/api/v1/creator/workflows/${encodeURIComponent(workflowId)}/builder-session`,{method:'PUT',body:JSON.stringify({step:snapshot.step,draft:{name:snapshot.draft.name,purpose:snapshot.draft.purpose,inputs:snapshot.draft.inputs,steps:snapshot.draft.steps,conditions:snapshot.draft.conditions,outputs:snapshot.draft.outputs,requiredCapabilities:snapshot.draft.requiredCapabilities,safetyBoundaries:snapshot.draft.safetyBoundaries,compatibleWorkers:snapshot.draft.compatibleWorkers},messages:snapshot.messages})});
+  return {workflowId:data.session.workflowId,step:data.session.step,draft:{...data.session.draft,pricing:{type:'free'}},messages:data.session.messages,updatedAt:new Date(data.session.updatedAt)};
 }
 export async function createCreatorCapability(draft:CapabilityDraftData):Promise<CreatorAsset>{const data=await request<{asset:ApiCreatorAsset}>('/api/v1/creator/capabilities',{method:'POST',body:JSON.stringify({draft:{name:draft.name,importType:draft.importType,endpoint:draft.endpoint,provider:draft.provider,version:draft.version,operations:draft.operations}})});return fromAsset(data.asset);}
 export async function forkCreatorWorker(sourceDefinitionId:string):Promise<CreatorAsset>{const data=await request<{asset:ApiCreatorAsset}>(`/api/v1/creator/workers/${encodeURIComponent(sourceDefinitionId)}/fork`,{method:'POST'});return fromAsset(data.asset);}

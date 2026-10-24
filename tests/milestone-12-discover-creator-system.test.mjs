@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const migration=readFileSync('packages/db/migrations/0017_discover_creator_system.sql','utf8');
 const builderMigration=readFileSync('packages/db/migrations/0018_creator_builder_conversations.sql','utf8');
 const builderLlmMigration=readFileSync('packages/db/migrations/0019_creator_builder_llm_turns.sql','utf8');
+const workflowBuilderMigration=readFileSync('packages/db/migrations/0020_creator_workflow_builder_conversations.sql','utf8');
 const marketplace=readFileSync('packages/marketplace/src/index.ts','utf8');
 const creatorSdk=readFileSync('packages/creator-sdk/src/index.ts','utf8');
 const workers=readFileSync('packages/workers/src/index.ts','utf8');
@@ -141,6 +142,21 @@ test('M12 Workflow Studio persists and versions real Workflow drafts',()=>{
   assert.doesNotMatch(workflow,/>Publish<\/button>/);
 });
 
+
+test('M12 Workflow Studio conversation and active draft survive reopen and hard refresh',()=>{
+  for(const token of ['creator_workflow_builder_session','creator_workflow_builder_message','draft_snapshot']) assert.match(workflowBuilderMigration,new RegExp(token));
+  assert.match(marketplace,/getCreatorWorkflowBuilderSession/);
+  assert.match(marketplace,/saveCreatorWorkflowBuilderSession/);
+  assert.match(api,/creatorWorkflowBuilderSessionMatch/);
+  assert.match(creatorApi,/fetchCreatorWorkflowBuilderSession/);
+  assert.match(creatorApi,/saveCreatorWorkflowBuilderSession/);
+  assert.match(workflow,/Could not restore Workflow Studio conversation/);
+  assert.match(workflow,/Could not persist Workflow Studio conversation/);
+  const routing=readFileSync('apps/web/src/platform/routing.ts','utf8');
+  assert.match(routing,/segments\[0\] === 'create' && segments\.length === 3/);
+  assert.match(routing,/activeCreationId: id/);
+  assert.match(routing,/\$\{base\}\/\$\{encoded\(state\.activeCreationId\)\}/);
+});
 
 test('M12 Workflow Studio forms and edits structured drafts through the Model Gateway',()=>{
   assert.match(api,/generateStructured<CreatorWorkflowBuilderTurnProposal>/);

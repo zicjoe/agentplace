@@ -394,6 +394,92 @@ export async function saveCreatorBuilderSession(ownerUserId: string, workerId: s
 
 
 
+export interface CreatorWorkflowBuilderMessageRecord {
+  id: string;
+  role: 'user' | 'studio';
+  content: string;
+}
+
+export interface SaveCreatorWorkflowBuilderSessionInput {
+  step: string;
+  draft: CreatorWorkflowDraft;
+  messages: CreatorWorkflowBuilderMessageRecord[];
+}
+
+export interface CreatorWorkflowBuilderSessionRecord {
+  workflowId: string;
+  step: string;
+  draft: CreatorWorkflowDraft;
+  messages: CreatorWorkflowBuilderMessageRecord[];
+  updatedAt: string;
+}
+
+const CREATOR_WORKFLOW_BUILDER_STEPS = new Set(['idle','draft-formed','tested','saved']);
+
+function validateWorkflowBuilderStep(value: string): string {
+  if (!CREATOR_WORKFLOW_BUILDER_STEPS.has(value)) throw new Error('INVALID_CREATOR_WORKFLOW_BUILDER_STEP');
+  return value;
+}
+
+function validateWorkflowBuilderMessages(messages: CreatorWorkflowBuilderMessageRecord[]): CreatorWorkflowBuilderMessageRecord[] {
+  if (!Array.isArray(messages) || messages.length > 500) throw new Error('INVALID_CREATOR_WORKFLOW_BUILDER_MESSAGES');
+  return messages.map((message) => {
+    if (!message || (message.role !== 'user' && message.role !== 'studio')) throw new Error('INVALID_CREATOR_WORKFLOW_BUILDER_MESSAGE_ROLE');
+    const content = typeof message.content === 'string' ? message.content.trim() : '';
+    if (!content || content.length > 12000) throw new Error('INVALID_CREATOR_WORKFLOW_BUILDER_MESSAGE_CONTENT');
+    const messageId = typeof message.id === 'string' && message.id.length > 0 && message.id.length <= 160 ? message.id : id('cwm');
+    return { id: messageId, role: message.role, content };
+  });
+}
+
+export async function getCreatorWorkflowBuilderSession(ownerUserId: string, workflowId: string): Promise<CreatorWorkflowBuilderSessionRecord | null> {
+  const session = await getDatabasePool().query<{id:string;step:string;draft_snapshot:unknown;updated_at:Date}>(`
+    SELECT s.id,s.step,s.draft_snapshot,s.updated_at
+    FROM creator_workflow_builder_session s
+    JOIN workflow_definition d ON d.id=s.workflow_definition_id
+    WHERE s.owner_user_id=$1 AND s.workflow_definition_id=$2 AND d.creator_user_id=$1
+    LIMIT 1`, [ownerUserId, workflowId]);
+  const row = session.rows[0];
+  if (!row) return null;
+  const draft = validateWorkflowDraft(row.draft_snapshot as CreatorWorkflowDraft);
+  const messages = await getDatabasePool().query<{id:string;role:'user'|'studio';content:string}>(`
+    SELECT id,role,content FROM creator_workflow_builder_message WHERE session_id=$1 ORDER BY ordinal ASC`, [row.id]);
+  return {
+    workflowId,
+    step: validateWorkflowBuilderStep(row.step),
+    draft,
+    messages: messages.rows,
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+export async function saveCreatorWorkflowBuilderSession(ownerUserId: string, workflowId: string, input: SaveCreatorWorkflowBuilderSessionInput): Promise<CreatorWorkflowBuilderSessionRecord> {
+  const draft = validateWorkflowDraft(input.draft);
+  const step = validateWorkflowBuilderStep(input.step);
+  const messages = validateWorkflowBuilderMessages(input.messages);
+  const sessionId = `cwbs_${createHash('sha256').update(`${ownerUserId}:${workflowId}`).digest('hex').slice(0,32)}`;
+  await withTransaction(async (client) => {
+    const owner = await client.query(`SELECT id FROM workflow_definition WHERE id=$1 AND creator_user_id=$2`, [workflowId, ownerUserId]);
+    if (!owner.rowCount) throw new Error('CREATOR_WORKFLOW_NOT_FOUND');
+    const savedSession = await client.query<{id:string}>(`INSERT INTO creator_workflow_builder_session(id,owner_user_id,workflow_definition_id,step,draft_snapshot)
+      VALUES($1,$2,$3,$4,$5::jsonb)
+      ON CONFLICT(owner_user_id,workflow_definition_id) DO UPDATE SET step=EXCLUDED.step,draft_snapshot=EXCLUDED.draft_snapshot,updated_at=now()
+      RETURNING id`, [sessionId, ownerUserId, workflowId, step, JSON.stringify(draft)]);
+    const actualSessionId = savedSession.rows[0]?.id;
+    if (!actualSessionId) throw new Error('CREATOR_WORKFLOW_BUILDER_SESSION_SAVE_FAILED');
+    await client.query(`DELETE FROM creator_workflow_builder_message WHERE session_id=$1`, [actualSessionId]);
+    for (let ordinal = 0; ordinal < messages.length; ordinal += 1) {
+      const message = messages[ordinal]!;
+      await client.query(`INSERT INTO creator_workflow_builder_message(id,session_id,ordinal,role,content) VALUES($1,$2,$3,$4,$5)`,
+        [message.id, actualSessionId, ordinal, message.role, message.content]);
+    }
+  });
+  const saved = await getCreatorWorkflowBuilderSession(ownerUserId, workflowId);
+  if (!saved) throw new Error('CREATOR_WORKFLOW_BUILDER_SESSION_SAVE_FAILED');
+  return saved;
+}
+
+
 export interface RecordCreatorBuilderTurnInput {
   sourceMessage: string;
   intent: CreatorBuilderIntent;

@@ -4,6 +4,7 @@ const required = [
   'packages/db/migrations/0017_discover_creator_system.sql',
   'packages/db/migrations/0018_creator_builder_conversations.sql',
   'packages/db/migrations/0019_creator_builder_llm_turns.sql',
+  'packages/db/migrations/0020_creator_workflow_builder_conversations.sql',
   'packages/creator-sdk/src/index.ts',
   'packages/marketplace/src/index.ts',
   'apps/web/src/platform/creatorApi.ts',
@@ -42,9 +43,13 @@ const builderLlmMigration = readFileSync('packages/db/migrations/0019_creator_bu
 for (const token of ['creator_builder_turn','creator_builder_revision','active_revision_no','parent_revision_no']) {
   if (!builderLlmMigration.includes(token)) throw new Error(`M12 Builder LLM/revision persistence missing ${token}`);
 }
+const workflowBuilderMigration = readFileSync('packages/db/migrations/0020_creator_workflow_builder_conversations.sql', 'utf8');
+for (const token of ['creator_workflow_builder_session','creator_workflow_builder_message','draft_snapshot']) {
+  if (!workflowBuilderMigration.includes(token)) throw new Error(`M12 Workflow Studio continuity missing ${token}`);
+}
 
 const marketplace = readFileSync('packages/marketplace/src/index.ts', 'utf8');
-for (const token of ['listDiscoverSupply','workerReadiness','createCreatorWorker','createNewWorkerVersion','createCreatorWorkflow','createNewWorkflowVersion','createCapabilityImport','forkWorker','publishCreatorAsset','getCreatorBuilderSession','saveCreatorBuilderSession','recordCreatorBuilderTurn','undoCreatorBuilderDraft','withTransaction']) {
+for (const token of ['listDiscoverSupply','workerReadiness','createCreatorWorker','createNewWorkerVersion','createCreatorWorkflow','createNewWorkflowVersion','createCapabilityImport','forkWorker','publishCreatorAsset','getCreatorBuilderSession','saveCreatorBuilderSession','getCreatorWorkflowBuilderSession','saveCreatorWorkflowBuilderSession','recordCreatorBuilderTurn','undoCreatorBuilderDraft','withTransaction']) {
   if (!marketplace.includes(token)) throw new Error(`M12 marketplace/creator core missing ${token}`);
 }
 if (/INSERT INTO capability_implementation[\s\S]{0,120}creator/i.test(marketplace)) throw new Error('M12 creator imports must not auto-promote into trusted capability implementations.');
@@ -83,6 +88,13 @@ if (!creatorHome.includes('Creator earnings are not enabled yet')) throw new Err
 if (!creatorHome.includes('immutable versions') || !creatorHome.includes('History:')) throw new Error('M12 My creations must expose immutable Worker version history.');
 const workerWorkspace = readFileSync('apps/web/src/components/WorkerWorkspace.tsx', 'utf8');
 if (!workerWorkspace.includes('updateDurableWorkerVersion') || !workerWorkspace.includes('Installed v') || !workerWorkspace.includes('Update to v')) throw new Error('M12 Worker Workspace must expose exact installed version and an explicit update action.');
+
+const workflowStudio = readFileSync('apps/web/src/components/WorkflowStudio.tsx', 'utf8');
+for (const token of ['fetchCreatorWorkflowBuilderSession','saveCreatorWorkflowBuilderSession','Could not restore Workflow Studio conversation','Could not persist Workflow Studio conversation']) {
+  if (!workflowStudio.includes(token)) throw new Error(`M12 Workflow Studio continuity missing ${token}`);
+}
+const routing = readFileSync('apps/web/src/platform/routing.ts', 'utf8');
+if (!routing.includes("segments[0] === 'create' && segments.length === 3") || !routing.includes('activeCreationId: id') || !routing.includes('${base}/${encoded(state.activeCreationId)}')) throw new Error('M12 creator asset routes must preserve the active creation across hard refresh.');
 
 const capabilityStudio = readFileSync('apps/web/src/components/CapabilityStudio.tsx', 'utf8');
 for (const token of ['inspectCreatorCapability','testCreatorCapabilityRead','public endpoint only in M12']) if (!capabilityStudio.includes(token)) throw new Error(`M12 Capability Studio missing ${token}`);

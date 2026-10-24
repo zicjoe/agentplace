@@ -31,10 +31,12 @@ import {
   createNewWorkflowVersion,
   forkWorker,
   getCreatorBuilderSession,
+  getCreatorWorkflowBuilderSession,
   listCreatorAssets,
   listDiscoverSupply,
   publishCreatorAsset,
   saveCreatorBuilderSession,
+  saveCreatorWorkflowBuilderSession,
   recordCreatorBuilderTurn,
   undoCreatorBuilderDraft,
 } from '@agent-place/marketplace';
@@ -986,6 +988,38 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
       if(error instanceof ModelGatewayError) return writeJson(res,502,{error:'model_unavailable',message:error.message,requestId});
       throw error;
     }
+    return;
+  }
+
+  const creatorWorkflowBuilderSessionMatch = url.pathname.match(/^\/api\/v1\/creator\/workflows\/([^/]+)\/builder-session$/);
+  if (creatorWorkflowBuilderSessionMatch && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    const workflowId = decodeURIComponent(creatorWorkflowBuilderSessionMatch[1] ?? '');
+    writeJson(res, 200, { session: await getCreatorWorkflowBuilderSession(identity.appUserId, workflowId) });
+    return;
+  }
+  if (creatorWorkflowBuilderSessionMatch && req.method === 'PUT') {
+    const identity = await requireIdentity(req);
+    const workflowId = decodeURIComponent(creatorWorkflowBuilderSessionMatch[1] ?? '');
+    const body = asRecord(await readJson(req));
+    const rawMessages = Array.isArray(body.messages) ? body.messages : [];
+    const messages = rawMessages.map((value) => {
+      const row = asRecord(value);
+      let role: 'user' | 'studio';
+      if (row.role === 'user' || row.role === 'studio') role = row.role;
+      else throw new Error('INVALID_CREATOR_WORKFLOW_BUILDER_MESSAGE_ROLE');
+      return {
+        id: requiredString(row.id, 'INVALID_CREATOR_WORKFLOW_BUILDER_MESSAGE_ID', 160),
+        role,
+        content: requiredString(row.content, 'INVALID_CREATOR_WORKFLOW_BUILDER_MESSAGE_CONTENT', 12000),
+      };
+    });
+    const session = await saveCreatorWorkflowBuilderSession(identity.appUserId, workflowId, {
+      step: requiredString(body.step, 'INVALID_CREATOR_WORKFLOW_BUILDER_STEP', 80),
+      draft: body.draft as unknown as CreatorWorkflowDraft,
+      messages,
+    });
+    writeJson(res, 200, { session });
     return;
   }
 

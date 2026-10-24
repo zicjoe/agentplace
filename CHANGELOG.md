@@ -337,6 +337,7 @@
 - Added durable per-Worker Agent Builder conversations, user-turn quick actions, non-terminal private save, clean New Worker behavior, and reopen/continue continuity across refreshes.
 - Replaced the Agent Builder regex/keyword interpreter with AgentPlace Auto structured LLM turns, deterministic Creator-operation validation, durable turn metadata, parent-linked draft revisions and conversational undo.
 - Replaced Workflow Studio's one-shot local intent template with AgentPlace Auto structured Workflow turns plus deterministic capability/Worker eligibility and mandatory no-authority safety validation; compact layouts now surface the live Draft explicitly and later conversational edits are processed rather than ignored.
+- Added durable Workflow Studio creator sessions/messages and refresh-safe creator asset routes so saved Workflow transcript + Draft restore together from My creations and survive hard refresh.
 - Builder discussion, edit, Teach Mode, test, save/publish intent and undo are distinct; test scenarios no longer fall through into Method / Expertise.
 - Added Worker-version pinning through installations and Job assignments.
 - Added real server-side OpenAPI/MCP inspection with SSRF controls and bounded read-only OpenAPI sandbox invocation.

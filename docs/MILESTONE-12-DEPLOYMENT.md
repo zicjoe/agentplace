@@ -2,7 +2,7 @@
 
 ## Order
 
-1. Railway API — apply additive migrations `0017_discover_creator_system.sql`, `0018_creator_builder_conversations.sql`, and `0019_creator_builder_llm_turns.sql`.
+1. Railway API — apply additive migrations `0017_discover_creator_system.sql`, `0018_creator_builder_conversations.sql`, `0019_creator_builder_llm_turns.sql`, and `0020_creator_workflow_builder_conversations.sql`.
 2. Railway Worker — redeploy so Job routing/execution honors exact Worker-version assignments.
 3. Railway Scheduler — normal redeploy; M12 does not change its signer/custody posture.
 4. Vercel Web.

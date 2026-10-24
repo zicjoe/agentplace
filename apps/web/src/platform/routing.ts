@@ -8,6 +8,7 @@ export interface RouteSelection {
   activeWalletId: string | null;
   activeRoutineId: string | null;
   activeCreatorSurface: ActiveCreatorSurface;
+  activeCreationId: string | null;
   activeDiscoverItemId: string | null;
   showCreateMenu: boolean;
   routeNotFound: string | null;
@@ -22,6 +23,7 @@ function baseSelection(activeView: NavView): RouteSelection {
     activeWalletId: null,
     activeRoutineId: null,
     activeCreatorSurface: null,
+    activeCreationId: null,
     activeDiscoverItemId: null,
     showCreateMenu: false,
     routeNotFound: null,
@@ -88,6 +90,16 @@ export function routeSelectionFromPath(pathname: string): RouteSelection {
     const surface = surfaceByPath[segments[1] ?? ''];
     if (surface) return { ...baseSelection('home'), activeCreatorSurface: surface };
   }
+  if (segments[0] === 'create' && segments.length === 3) {
+    const surfaceByPath: Record<string, ActiveCreatorSurface> = {
+      worker: 'agent-builder',
+      workflow: 'workflow-studio',
+      capability: 'capability-studio',
+    };
+    const surface = surfaceByPath[segments[1] ?? ''];
+    const id = decoded(segments[2]);
+    if (surface && id) return { ...baseSelection('home'), activeCreatorSurface: surface, activeCreationId: id };
+  }
 
   return { ...baseSelection('home'), routeNotFound: pathname };
 }
@@ -121,7 +133,9 @@ export function pathForState(state: AppState): string {
       'capability-studio': '/create/capability',
       'creator-home': '/create/creations',
     };
-    return pathBySurface[state.activeCreatorSurface];
+    const base = pathBySurface[state.activeCreatorSurface];
+    if (state.activeCreationId && state.activeCreatorSurface !== 'creator-home') return `${base}/${encoded(state.activeCreationId)}`;
+    return base;
   }
   if (state.activeDiscoverItemId) return `/discover/${encoded(state.activeDiscoverItemId)}`;
   if (state.activeWorkerId) return `/workers/${encoded(state.activeWorkerId)}`;
@@ -156,6 +170,7 @@ export function isNavigationAction(type: string): boolean {
     'SET_ACTIVE_ROUTINE',
     'SET_ACTIVE_DISCOVER_ITEM',
     'SET_CREATOR_SURFACE',
+    'SET_ACTIVE_CREATION',
     'SET_SHOW_CREATE',
     'RESET_GUEST',
     'RESET_ACTIVE',
