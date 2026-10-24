@@ -18,8 +18,8 @@ The repository follows the approved production sequence while preserving the Mas
 - **Milestone 9 — Connected Wallet Execution + Transaction Observation** — v0.12.0 frozen; approved product-boundary update replaces the older testnet-only wording. Exact user-approved Connected Wallet actions may execute on Mainnet only when the explicit production gate is enabled; signing remains in the user's wallet, transaction attempts are idempotent/durable, and deterministic RPC observation never automatically resubmits an uncertain action. Confirmation is not verified completion.
 - **Milestone 10 — Settlement Verification + Verified Outcomes + Verified Receipts** — v0.13.0 frozen; deterministic direct EVM transfer outcome verification, immutable receipts, exact gas accounting, historical M9 backfill and a durable pending Arbitrum proof queue with no production anchor signer.
 - **Milestone 11 — Routines + Background Work** — v0.14.0 frozen; durable scheduled/condition/event triggers, exactly-once RoutineRuns, Routine → Job orchestration, service budgets, Limited/Needs-you and in-app notifications. No autonomous signing.
-- **Milestone 12 — Discover + Creator System**
-- **Milestone 13 — Billing + Security Completion**
+- **Milestone 12 — Discover + Creator System** — v0.15.0 accepted; durable Discover, Creator Workers/Workflows, versioning/publication/fork lineage, Workflow Studio and isolated OpenAPI/MCP imports.
+- **Milestone 13 — Billing + Security Completion** — v0.16.0 candidate; durable service ledger, marketplace commerce/entitlements, creator gross-revenue attribution, Job cost truth, testnet service funding and durable security/quarantine controls.
 - **Milestone 14 — Production Reconciliation + Launch Readiness**
 
 Milestone boundaries may be refined only through the project discussion gate when a product, provider, authority, custody, security, cost, network or other material architectural decision is involved.
@@ -35,4 +35,8 @@ Milestone boundaries may be refined only through the project discussion gate whe
 
 ### v0.15.0 / M12 — Discover + Creator System
 
-Candidate scope: real Discover supply/readiness, durable creator Workers/Workflows/capability imports, generic Agent Builder + Teach Mode, real creator tests, version pinning, publication/fork lineage, and safe OpenAPI/MCP discovery. Paid subscriptions/earnings and arbitrary authenticated/economic creator tools remain deferred.
+Accepted scope: real Discover supply/readiness, durable creator Workers/Workflows/capability imports, generic Agent Builder + Teach Mode, real creator tests, version pinning, publication/fork lineage, and safe OpenAPI/MCP discovery. Imported capabilities remain isolated from trusted production routing unless separately approved.
+
+### v0.16.0 / M13 — Billing + Security Completion
+
+Candidate scope: ledger-derived AgentPlace service balance, real marketplace offers/quotes/entitlements, monthly Worker subscriptions with deterministic service-balance renewal, Workflow one-time licenses, Capability per-invocation commercial metadata, creator gross-revenue attribution, Job-level cost evidence, disabled-by-default Arbitrum Sepolia USDC service funding, durable Security history, exact emergency-stop semantics and Creator supply quarantine. Mainnet execution/autonomy remain disabled.

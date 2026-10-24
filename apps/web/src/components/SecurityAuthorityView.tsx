@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppState, useDispatch, uid } from '../state/AppContext';
 import type { AuthorityGrant } from '../state/types';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { applyAuthorityState, fetchAuthorityState, revokeAllDurableAuthority, setAuthorityControl, setDurableMandateStatus } from '../platform/authorityApi';
+import { emergencyStopFutureExecution, fetchSecurityState, quarantineCreatorSupply, releaseCreatorSupplyQuarantine, type SecurityStateSnapshot } from '../platform/securityApi';
+import { fetchDiscoverSupply } from '../platform/creatorApi';
 
 type EnvFilter = 'all' | 'mainnet' | 'testnet';
 
@@ -151,40 +153,15 @@ function RevokeAllModal({ onClose, environment }: { onClose: () => void; environ
   );
 }
 
-function StopExecutionModal({ onClose }: { onClose: () => void }) {
-  const dispatch = useDispatch();
-
-  function confirm() {
-    dispatch({
-      type: 'ADD_ACTIVITY_EVENT',
-      event: {
-        id: uid(),
-        eventType: 'security',
-        title: 'Future execution steps stop requested',
-        summary: 'Emergency control · Cancellable future steps stopped where possible',
-        effect: 'Already-submitted blockchain transactions cannot be reversed.',
-        timestamp: new Date(),
-        status: 'complete',
-      },
-    });
-    onClose();
+function StopExecutionModal({ onClose, onCompleted }: { onClose: () => void; onCompleted: () => void }) {
+  const dispatch = useDispatch();const [busy,setBusy]=useState(false);const [error,setError]=useState<string|null>(null);const [result,setResult]=useState<{actionsStopped:number;walletPromptsStopped:number;submittedUntouched:number}|null>(null);
+  async function confirm() {
+    if(WEB_RUNTIME_SETTINGS.dataMode==='api'){
+      setBusy(true);setError(null);try{const next=await emergencyStopFutureExecution();setResult(next);onCompleted();}catch(value){setError(value instanceof Error?value.message:'Emergency stop could not be completed.');}finally{setBusy(false);}return;
+    }
+    dispatch({type:'ADD_ACTIVITY_EVENT',event:{id:uid(),eventType:'security',title:'Future execution steps stop requested',summary:'Emergency control · Cancellable future steps stopped where possible',effect:'Already-submitted blockchain transactions cannot be reversed.',timestamp:new Date(),status:'complete'}});onClose();
   }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-bg/80 backdrop-blur-sm px-4 py-4 sm:py-6">
-      <div className="w-full max-w-sm my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto bg-panel border border-border rounded-xl p-5 shadow-2xl">
-        <h3 className="text-sm font-semibold text-text mb-3">Stop safely cancellable future execution steps?</h3>
-        <div className="space-y-2 mb-4 text-xs text-text-sub leading-relaxed">
-          <p>AgentPlace will stop unsubmitted or cancellable future steps in in-progress Jobs where possible.</p>
-          <p className="text-text-muted">Already-submitted blockchain transactions cannot be reversed. This does not stop research or monitoring unless you also pause them.</p>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 py-2 text-sm text-text-muted border border-border rounded hover:bg-panel transition-colors">Cancel</button>
-          <button onClick={confirm} className="flex-1 py-2 text-sm font-medium bg-warn text-white rounded hover:opacity-90 transition-opacity">Stop future steps</button>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-bg/80 backdrop-blur-sm px-4 py-4 sm:py-6"><div className="w-full max-w-sm my-auto bg-panel border border-border rounded-xl p-5 shadow-2xl"><h3 className="text-sm font-semibold text-text mb-3">Stop safely cancellable future execution steps?</h3>{result?<div className="space-y-3"><div className="border border-accent/20 bg-accent-dim/10 rounded-lg px-3 py-2"><p className="text-xs text-text-sub">Stopped {result.actionsStopped} unsubmitted action{result.actionsStopped===1?'':'s'} and {result.walletPromptsStopped} pending wallet prompt{result.walletPromptsStopped===1?'':'s'}.</p><p className="text-xs text-text-muted mt-1">Left {result.submittedUntouched} submitted, confirming, confirmed or unknown transaction attempt{result.submittedUntouched===1?'':'s'} untouched.</p></div><button onClick={onClose} className="w-full py-2 bg-primary text-white text-sm rounded">Done</button></div>:<><div className="space-y-2 mb-4 text-xs text-text-sub leading-relaxed"><p>AgentPlace will invalidate prepared/unsubmitted financial actions and pending wallet prompts where safe.</p><p className="text-text-muted">Already-submitted, confirming or unknown blockchain transactions cannot be reversed and will be left untouched. Research and monitoring continue.</p></div>{error&&<p className="text-xs text-danger mb-3">{error}</p>}<div className="flex gap-2"><button onClick={onClose} className="flex-1 py-2 text-sm text-text-muted border border-border rounded">Cancel</button><button disabled={busy} onClick={()=>void confirm()} className="flex-1 py-2 text-sm font-medium bg-warn disabled:opacity-40 text-white rounded">{busy?'Stopping…':'Stop future steps'}</button></div></>}</div></div>;
 }
 
 function GrantCard({ grant, isPausedGlobally }: { grant: AuthorityGrant; isPausedGlobally: boolean }) {
@@ -295,6 +272,12 @@ export function SecurityAuthorityView() {
   const [envFilter, setEnvFilter] = useState<EnvFilter>('all');
   const [controlBusy, setControlBusy] = useState(false);
   const [controlError, setControlError] = useState<string | null>(null);
+  const [securityState,setSecurityState]=useState<SecurityStateSnapshot>({history:[],quarantines:[]});
+  const [securityLoadError,setSecurityLoadError]=useState<string|null>(null);
+  const [quarantineBusy,setQuarantineBusy]=useState<string|null>(null);
+
+  async function refreshSecurity(){if(WEB_RUNTIME_SETTINGS.dataMode!=='api'||!state.user)return;try{setSecurityState(await fetchSecurityState());setSecurityLoadError(null);}catch(value){setSecurityLoadError(value instanceof Error?value.message:'Security history could not be loaded.');}}
+  useEffect(()=>{void refreshSecurity();},[state.user?.id]);
 
   if (!state.user) {
     return (
@@ -332,10 +315,9 @@ export function SecurityAuthorityView() {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 3);
 
-  const securityEvents = (state.activityEvents ?? [])
-    .filter((e) => e.eventType === 'security' || e.eventType === 'authority')
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    .slice(0, 8);
+  const securityEvents = WEB_RUNTIME_SETTINGS.dataMode==='api'
+    ? securityState.history.slice(0,12).map((event)=>({...event,timestamp:new Date(event.occurredAt)}))
+    : (state.activityEvents ?? []).filter((e)=>e.eventType==='security'||e.eventType==='authority').sort((a,b)=>new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime()).slice(0,8);
 
   function timeAgo(d: Date) {
     const diff = Date.now() - new Date(d).getTime();
@@ -643,6 +625,17 @@ export function SecurityAuthorityView() {
             </div>
           )}
 
+          {/* Creator supply quarantine */}
+          {WEB_RUNTIME_SETTINGS.dataMode==='api' && state.creatorAssets.some((asset)=>asset.type==='worker'||asset.type==='capability') && (
+            <div>
+              <h2 className="text-xs font-mono uppercase tracking-wider text-text-dim mb-3">Creator supply quarantine</h2>
+              <div className="border border-border rounded-lg bg-panel divide-y divide-border-dim">
+                {state.creatorAssets.filter((asset)=>asset.type==='worker'||asset.type==='capability').map((asset)=>{const name=asset.workerDraft?.name??asset.capabilityDraft?.name??'Creator asset';const active=securityState.quarantines.find((item)=>item.targetType===asset.type&&item.targetId===asset.id&&item.status==='active');return <div key={asset.id} className="px-4 py-3 flex items-start justify-between gap-3"><div><p className="text-xs font-medium text-text">{name}</p><p className="text-[10px] text-text-dim mt-1">{asset.type} · {active?'Quarantined: new acquisition/routing blocked':'Not quarantined'}</p>{active&&<p className="text-xs text-text-muted mt-1">{active.reason}</p>}</div>{active?<button disabled={quarantineBusy===asset.id} onClick={async()=>{setQuarantineBusy(asset.id);try{await releaseCreatorSupplyQuarantine(active.id);await refreshSecurity();dispatch({type:'SET_DISCOVER_SUPPLY',items:await fetchDiscoverSupply()});}finally{setQuarantineBusy(null);}}} className="text-xs border border-border text-text-sub rounded px-3 py-1.5">Release</button>:<button disabled={quarantineBusy===asset.id} onClick={async()=>{const reason=window.prompt('Why are you quarantining this supply? This will block new acquisition/routing but preserve history.');if(!reason)return;setQuarantineBusy(asset.id);try{await quarantineCreatorSupply(asset.type as 'worker'|'capability',asset.id,reason);await refreshSecurity();dispatch({type:'SET_DISCOVER_SUPPLY',items:await fetchDiscoverSupply()});}finally{setQuarantineBusy(null);}}} className="text-xs text-warn border border-warn/30 rounded px-3 py-1.5">Quarantine</button>}</div>;})}
+              </div>
+              <p className="text-[10px] text-text-dim mt-2">Quarantine changes trusted eligibility only. It does not delete historical Jobs, receipts, versions or creator evidence.</p>
+            </div>
+          )}
+
           {/* Emergency controls */}
           <div>
             <h2 className="text-xs font-mono uppercase tracking-wider text-text-dim mb-3">Emergency controls</h2>
@@ -676,6 +669,7 @@ export function SecurityAuthorityView() {
           </div>
 
           {/* Security history */}
+          {securityLoadError&&<p className="text-xs text-danger">{securityLoadError}</p>}
           {securityEvents.length > 0 && (
             <div>
               <h2 className="text-xs font-mono uppercase tracking-wider text-text-dim mb-3">Security history</h2>
@@ -690,26 +684,6 @@ export function SecurityAuthorityView() {
                       </div>
                       <span className="text-[10px] text-text-dim shrink-0">{timeAgo(e.timestamp)}</span>
                     </div>
-                    {(e.workerId || e.jobId) && (
-                      <div className="flex gap-2 mt-2">
-                        {e.workerId && (
-                          <button
-                            onClick={() => dispatch({ type: 'SET_ACTIVE_WORKER', id: e.workerId! })}
-                            className="text-[10px] text-primary hover:underline"
-                          >
-                            Open Worker →
-                          </button>
-                        )}
-                        {e.jobId && (
-                          <button
-                            onClick={() => dispatch({ type: 'SET_ACTIVE_JOB', id: e.jobId! })}
-                            className="text-[10px] text-primary hover:underline"
-                          >
-                            Open Job →
-                          </button>
-                        )}
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>
@@ -719,7 +693,7 @@ export function SecurityAuthorityView() {
       </div>
 
       {showRevokeAll && <RevokeAllModal environment={envFilter === 'all' ? undefined : envFilter} onClose={() => setShowRevokeAll(false)} />}
-      {showStopExecution && <StopExecutionModal onClose={() => setShowStopExecution(false)} />}
+      {showStopExecution && <StopExecutionModal onClose={() => setShowStopExecution(false)} onCompleted={()=>void refreshSecurity()} />}
     </div>
   );
 }

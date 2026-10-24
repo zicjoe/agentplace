@@ -20,6 +20,12 @@ importers:
       '@agent-place/marketplace':
         specifier: workspace:*
         version: link:../../packages/marketplace
+      '@agent-place/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
+      '@agent-place/security':
+        specifier: workspace:*
+        version: link:../../packages/security
       '@agent-place/creator-sdk':
         specifier: workspace:*
         version: link:../../packages/creator-sdk
@@ -77,6 +83,9 @@ importers:
 
   apps/scheduler:
     dependencies:
+      '@agent-place/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@agent-place/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -185,7 +194,12 @@ importers:
         specifier: workspace:*
         version: link:../db
 
-  packages/billing: {}
+  packages/billing:
+    dependencies:
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
+
 
   packages/capabilities:
     dependencies:
@@ -253,6 +267,9 @@ importers:
       '@agent-place/creator-sdk':
         specifier: workspace:*
         version: link:../creator-sdk
+      '@agent-place/billing':
+        specifier: workspace:*
+        version: link:../billing
 
   packages/models: {}
 
@@ -302,6 +319,12 @@ importers:
       '@agent-place/workers':
         specifier: workspace:*
         version: link:../workers
+
+  packages/security:
+    dependencies:
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
 
   packages/shared: {}
 

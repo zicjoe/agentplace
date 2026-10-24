@@ -81,11 +81,9 @@ for (const token of ['fetchCreatorBuilderSession','saveCreatorBuilderSession','i
 if (agentBuilder.includes('applyConversationalEdit') || agentBuilder.includes('draftFromIntent')) throw new Error('M12 Agent Builder must not fall back to regex/keyword conversational interpretation.');
 
 const discoverDetail = readFileSync('apps/web/src/components/DiscoverDetail.tsx', 'utf8');
-if (!discoverDetail.includes('Paid · not yet enabled')) throw new Error('M12 paid acquisition must remain truthfully disabled.');
 if (!discoverDetail.includes('forkCreatorWorker')) throw new Error('M12 Customize a copy must preserve durable fork lineage.');
 
 const creatorHome = readFileSync('apps/web/src/components/CreatorHome.tsx', 'utf8');
-if (!creatorHome.includes('Creator earnings are not enabled yet')) throw new Error('M12 must not show fixture creator earnings as production truth.');
 if (!creatorHome.includes('immutable versions') || !creatorHome.includes('History:')) throw new Error('M12 My creations must expose immutable Worker version history.');
 const workerWorkspace = readFileSync('apps/web/src/components/WorkerWorkspace.tsx', 'utf8');
 if (!workerWorkspace.includes('updateDurableWorkerVersion') || !workerWorkspace.includes('Installed v') || !workerWorkspace.includes('Update to v')) throw new Error('M12 Worker Workspace must expose exact installed version and an explicit update action.');

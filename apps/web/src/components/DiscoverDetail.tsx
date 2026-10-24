@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppState, useDispatch } from '../state/AppContext';
 import { installDurableWorker } from '../platform/workApi';
-import { forkCreatorWorker, tryDiscoverWorker } from '../platform/creatorApi';
+import { fetchDiscoverSupply, forkCreatorWorker, tryDiscoverWorker } from '../platform/creatorApi';
+import { acquireMarketplaceAsset, fetchMarketplaceQuote, money, type MarketplaceQuote } from '../platform/billingApi';
 
 function SandboxTryPanel({ workerDefinitionId, itemName, readiness, onClose, onOpenJob }: { workerDefinitionId: string; itemName: string; readiness?: 'available'|'limited'|'preview'|'unavailable'; onClose: () => void; onOpenJob: (jobId:string) => void }) {
   const [prompt,setPrompt]=useState('Give me a bounded read-only analysis using your published Worker definition.');
@@ -33,6 +34,19 @@ function SandboxTryPanel({ workerDefinitionId, itemName, readiness, onClose, onO
   );
 }
 
+
+function CheckoutModal({item,onClose,onAcquired}:{item:{type:'worker'|'workflow'|'capability';assetId:string;name:string};onClose:()=>void;onAcquired:()=>Promise<void>}){
+  const [quote,setQuote]=useState<MarketplaceQuote|null>(null);const [error,setError]=useState<string|null>(null);const [busy,setBusy]=useState(false);
+  useEffect(()=>{
+    let cancelled=false;
+    setQuote(null);setError(null);
+    void fetchMarketplaceQuote(item.type,item.assetId).then((value)=>{if(!cancelled)setQuote(value);}).catch((value)=>{if(!cancelled)setError(value instanceof Error?value.message:'Quote unavailable');});
+    return ()=>{cancelled=true;};
+  },[item.type,item.assetId]);
+  async function acquire(){setBusy(true);setError(null);try{await acquireMarketplaceAsset(item.type,item.assetId);await onAcquired();onClose();}catch(value){setError(value instanceof Error?value.message:'Marketplace acquisition failed');}finally{setBusy(false);}}
+  return <div className="fixed inset-0 z-70 flex items-start justify-center overflow-y-auto bg-bg/80 backdrop-blur-sm px-4 py-4 sm:py-6"><div className="w-full max-w-md my-auto bg-panel border border-border rounded-xl p-5 shadow-2xl"><div className="flex justify-between gap-3 mb-4"><div><h3 className="text-sm font-semibold text-text">Confirm marketplace access</h3><p className="text-xs text-text-muted mt-1">{item.name}</p></div><button onClick={onClose} className="text-text-muted">×</button></div>{!quote&&!error&&<p className="text-sm text-text-muted">Loading commercial quote…</p>}{quote&&<div className="space-y-3"><div className="border border-border rounded-lg px-4 py-3"><div className="flex justify-between text-sm"><span className="text-text-sub">Price</span><span className="font-semibold text-text">{quote.offer.pricingModel==='free'?'Free':quote.offer.pricingModel==='monthly'?`${money(quote.offer.priceCents)}/month`:quote.offer.pricingModel==='one-time'?`${money(quote.offer.priceCents)} one-time`:`${money(quote.offer.priceCents)}/invocation`}</span></div><div className="flex justify-between text-xs mt-2"><span className="text-text-muted">Service balance</span><span className="text-text">{money(quote.serviceBalanceCents)}</span></div><div className="flex justify-between text-xs mt-1"><span className="text-text-muted">Monthly service limit remaining</span><span className="text-text">{money(quote.monthlyRemainingCents)}</span></div></div><div className="border border-primary/20 bg-primary-dim/10 rounded-lg px-3 py-2"><p className="text-xs text-text-sub">{quote.authorityNotice}</p></div>{quote.entitled&&<p className="text-xs text-accent">You already have active access.</p>}<button disabled={busy} onClick={()=>void acquire()} className="w-full py-2.5 bg-primary text-white text-sm rounded font-medium disabled:opacity-50">{busy?'Confirming…':quote.entitled?'Continue':quote.offer.pricingModel==='per-invocation'?'Activate metered access':'Confirm purchase'}</button></div>}{error&&<div><p className="text-xs text-danger mb-3">{error}</p><button onClick={onClose} className="w-full py-2 border border-border text-text-sub text-sm rounded">Close</button></div>}</div></div>;
+}
+
 export function DiscoverDetail() {
   const state = useAppState();
   const dispatch = useDispatch();
@@ -40,6 +54,7 @@ export function DiscoverDetail() {
   const [addedConfirm, setAddedConfirm] = useState(false);
   const [acquiring, setAcquiring] = useState(false);
   const [actionError,setActionError]=useState<string|null>(null);
+  const [showCheckout,setShowCheckout]=useState(false);
 
   const item = (state.discoverSupply ?? []).find((s) => s.id === state.activeDiscoverItemId);
 
@@ -72,10 +87,7 @@ export function DiscoverDetail() {
 
   function doAdd() {
     if (!item) return;
-    if (item.pricing.type === 'paid') {
-      setActionError('Paid Worker purchasing is not enabled yet. Billing is a later production milestone.');
-      return;
-    }
+    if (item.pricing.type === 'paid') { setShowCheckout(true); return; }
     void finalAdd();
   }
 
@@ -123,6 +135,7 @@ export function DiscoverDetail() {
       {showTry && (
         <SandboxTryPanel workerDefinitionId={installedWorkerId ?? ''} itemName={item.name} readiness={item.readiness} onClose={() => setShowTry(false)} onOpenJob={(jobId)=>dispatch({type:'SET_ACTIVE_JOB',id:jobId})} />
       )}
+      {showCheckout && item.creatorAssetId && <CheckoutModal item={{type:item.type,assetId:item.creatorAssetId,name:item.name}} onClose={()=>setShowCheckout(false)} onAcquired={async()=>{if(item.type==='worker')await finalAdd();const supply=await fetchDiscoverSupply();dispatch({type:'SET_DISCOVER_SUPPLY',items:supply});setAddedConfirm(true);}}/>}
 
       {/* Header */}
       <div className="px-6 pt-6 pb-4 border-b border-border shrink-0">
@@ -350,8 +363,8 @@ export function DiscoverDetail() {
         {addedConfirm ? (
           <div className="space-y-2">
             <div className="bg-accent-dim/20 border border-accent/20 rounded-lg px-4 py-3">
-              <p className="text-sm font-medium text-accent mb-0.5">Worker added</p>
-              <p className="text-xs text-text-sub">Authority: Research & recommend only · No permission to move funds.</p>
+              <p className="text-sm font-medium text-accent mb-0.5">{item.type === 'worker' ? 'Worker added' : 'Marketplace access acquired'}</p>
+              <p className="text-xs text-text-sub">{item.type === 'worker' ? 'Authority: Research & recommend only · No permission to move funds.' : 'Commercial access is separate from execution authority.'}</p>
               <p className="text-xs text-text-dim mt-0.5">Financial authority is configured separately in Security & Authority.</p>
             </div>
             <button onClick={goBack} className="w-full py-2 text-sm text-text-sub border border-border rounded hover:bg-panel-raised transition-colors">
@@ -381,17 +394,13 @@ export function DiscoverDetail() {
                     disabled={acquiring}
                     className="flex-1 py-2.5 text-sm bg-primary text-white rounded-lg font-medium hover:bg-primary-hover transition-colors disabled:opacity-60"
                   >
-                    {acquiring ? 'Adding…' : item.pricing.type === 'paid' ? 'Paid · not yet enabled' : 'Add Worker'}
+                    {acquiring ? 'Adding…' : item.pricing.type === 'paid' ? (item.pricing.label ?? 'Buy access') : 'Add Worker'}
                   </button>
                 )}
               </>
             )}
-            {item.type === 'workflow' && (
-              <div className="flex-1 rounded-lg border border-border px-3 py-2 text-xs text-text-muted">Published Workflow · reusable runtime wiring remains limited to eligible AgentPlace capability paths.</div>
-            )}
-            {item.type === 'capability' && (
-              <div className="flex-1 rounded-lg border border-border px-3 py-2 text-xs text-text-muted">Builder capability · creator imports remain isolated from trusted production routing.</div>
-            )}
+            {item.type === 'workflow' && (item.pricing.type==='paid'?<button onClick={handleAdd} className="flex-1 py-2.5 text-sm bg-primary text-white rounded-lg font-medium">{item.pricing.label ?? 'Buy Workflow access'}</button>:<div className="flex-1 rounded-lg border border-border px-3 py-2 text-xs text-text-muted">Published Workflow · reusable runtime wiring remains limited to eligible AgentPlace capability paths.</div>)}
+            {item.type === 'capability' && (item.pricing.type==='paid'?<button onClick={handleAdd} className="flex-1 py-2.5 text-sm bg-primary text-white rounded-lg font-medium">{item.pricing.label ?? 'Buy Capability access'}</button>:<div className="flex-1 rounded-lg border border-border px-3 py-2 text-xs text-text-muted">Builder capability · creator imports remain isolated from trusted production routing.</div>)}
             {item.allowsCustomization && item.type === 'worker' && (
               <button
                 onClick={handleCustomize}

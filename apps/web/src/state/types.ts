@@ -580,7 +580,7 @@ export interface DiscoverSupplyItem {
   isOriginal: boolean;
   category: string;
   networks: string[];
-  pricing: { type: 'free' | 'paid'; label?: string };
+  pricing: { type: 'free' | 'paid'; label?: string; model?: 'free' | 'monthly' | 'one-time' | 'per-invocation'; amountCents?: number };
   visibility: 'public' | 'unlisted';
   authorityDefault?: string;
   sponsored: boolean;
@@ -655,7 +655,7 @@ export interface WorkerDraftData {
   testCases: CreatorTestCase[];
   testResults: CreatorTestResult[];
   networks: string[];
-  pricing: { type: 'free' | 'paid'; label?: string };
+  pricing: { type: 'free' | 'paid'; label?: string; model?: 'free' | 'monthly' | 'one-time' | 'per-invocation'; amountCents?: number };
   lineageSourceId?: string;
   lineageSourceName?: string;
   lineageSourceCreator?: string;
@@ -671,7 +671,7 @@ export interface WorkflowDraftData {
   requiredCapabilities: string[];
   safetyBoundaries: string[];
   compatibleWorkers: string[];
-  pricing: { type: 'free' | 'paid'; label?: string };
+  pricing: { type: 'free' | 'paid'; label?: string; model?: 'free' | 'monthly' | 'one-time' | 'per-invocation'; amountCents?: number };
 }
 
 export interface CapabilityOperation {
@@ -689,7 +689,7 @@ export interface CapabilityDraftData {
   operations: CapabilityOperation[];
   provider?: string;
   version?: string;
-  pricing: { type: 'free' | 'paid'; label?: string };
+  pricing: { type: 'free' | 'paid'; label?: string; model?: 'free' | 'monthly' | 'one-time' | 'per-invocation'; amountCents?: number };
   networks?: string[];
 }
 

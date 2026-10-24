@@ -1,11 +1,16 @@
 {
   "name": "@agent-place/marketplace",
-  "version": "0.6.0",
+  "version": "0.16.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -13,6 +18,7 @@
   },
   "dependencies": {
     "@agent-place/db": "workspace:*",
-    "@agent-place/creator-sdk": "workspace:*"
+    "@agent-place/creator-sdk": "workspace:*",
+    "@agent-place/billing": "workspace:*"
   }
 }

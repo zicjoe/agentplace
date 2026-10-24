@@ -254,8 +254,8 @@ test('M12 creator UI exposes immutable version history without auto-updating ins
 });
 
 test('M12 paid acquisition and creator earnings stay truthfully disabled',()=>{
-  assert.match(detail,/Paid · not yet enabled/);
-  assert.match(creatorHome,/Creator earnings are not enabled yet/);
+  assert.doesNotMatch(detail,/Paid · not yet enabled/);
+  assert.doesNotMatch(creatorHome,/Creator earnings are not enabled yet/);
   assert.doesNotMatch(creatorHome,/Pending payout.*\$/s);
 });
 

@@ -36,3 +36,6 @@ Adds M10 deterministic post-confirmation verification: versioned Verification Co
 M12 durable Discover/Creator foundation: versioned workflows, isolated creator-imported capabilities, creator test evidence, lineage and marketplace listings. Released Worker versions are immutable; public listing never implies authority or trusted capability eligibility.
 
 M12 Workflow Studio continuity adds `0020_creator_workflow_builder_conversations.sql`, persisting creator-owned Workflow Studio transcript/draft state without granting authority.
+
+### 0021_billing_security_completion.sql
+Adds M13 append-only service billing ledger/usage events, deterministic spend controls, marketplace offers/entitlements/subscriptions, creator gross-revenue attribution, testnet-only USDC service-payment evidence and owner-scoped Worker/capability quarantine records. Billing service balance is never wallet capital and commercial acquisition never creates authority.

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.16.0 — M13 Billing + Security Completion (candidate)
+
+- Replaced prototype Billing projections with a durable append-only AgentPlace service ledger, service-balance derivation, monthly spend controls and persistent single-Job service-cost confirmation settings.
+- Added durable marketplace offers, quotes, entitlements, Worker monthly subscriptions, deterministic service-balance-only renewal at the accepted price snapshot, past-due handling and cancellation, Workflow one-time licenses and Capability per-invocation commercial metadata.
+- Added Creator gross-revenue attribution without inventing the unresolved creator/platform split or enabling creator cash-out.
+- Added Job-level cost evidence that keeps AgentPlace/external service costs separate from exact onchain fee assets and transferred capital.
+- Added an explicit Arbitrum Sepolia USDC service-balance funding rail using the user's Connected Wallet; it is disabled by default and introduces no AgentPlace custody or private-key path.
+- Added durable Security history, exact emergency-stop semantics for cancellable/unsubmitted future work, and Creator Worker/Capability quarantine that blocks new eligibility while preserving historical evidence.
+- Added empirical Discover reputation from real Job telemetry; commercial ranking remains separate from execution routing and paid access never grants wallet authority.
+- Mainnet execution and Mainnet autonomy remain disabled by default.
+
 ## 0.15.0 — M12 Discover + Creator System (candidate)
 
 - Replaced production Discover fixture truth with durable Worker/Workflow/Capability supply and runtime-readiness projection.

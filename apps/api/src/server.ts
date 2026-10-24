@@ -41,6 +41,8 @@ import {
   undoCreatorBuilderDraft,
 } from '@agent-place/marketplace';
 import { applyCreatorBuilderOperations, applyCreatorWorkflowBuilderProposal, assertSafeRemoteHttpsUrl, joinOpenApiRuntimeUrl, parseOpenApiOperations, resolveOpenApiRuntimeEndpoint, validateCreatorWorkerDraft } from '@agent-place/creator-sdk';
+import { acquireMarketplaceAsset, assertMarketplaceAccess, cancelSubscription, confirmTestnetTopup, createTestnetTopupIntent, getBillingState, getMarketplaceQuote, listCreatorRevenue, listJobCosts, setMarketplaceOffer, updateSpendControls, type AssetType, type PricingModel } from '@agent-place/billing';
+import { emergencyStopFutureExecution, listQuarantines, listSecurityHistory, quarantineCreatorAsset, releaseCreatorAssetQuarantine } from '@agent-place/security';
 import type { CapabilityImportDraft, CreatorBuilderOperation, CreatorBuilderTurnProposal, CreatorWorkerDraft, CreatorWorkflowBuilderTurnProposal, CreatorWorkflowDraft, ImportedOperationDraft } from '@agent-place/creator-sdk';
 import { generateStructured, getModelCatalog, ModelGatewayError } from '@agent-place/models';
 import {
@@ -892,6 +894,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     const workerId = decodeURIComponent(discoverTryMatch[1] ?? '');
     const body = asRecord(await readJson(req));
     const prompt = requiredString(body.prompt, 'INVALID_TRY_PROMPT', 4000);
+    await assertMarketplaceAccess(identity.appUserId,'worker',workerId);
     const catalog = await listWorkerCatalog();
     const worker = catalog.find((item) => item.id === workerId);
     if (!worker) return writeJson(res, 404, { error: 'not_found', message: 'Worker is not publicly available.', requestId });
@@ -1196,6 +1199,83 @@ This is a sandbox creator test. Do not claim that passing self-certifies safety.
     return;
   }
 
+
+  if (url.pathname === '/api/v1/billing' && req.method === 'GET') {
+    const identity = await requireIdentity(req);
+    writeJson(res, 200, await getBillingState(identity.appUserId));
+    return;
+  }
+
+  if (url.pathname === '/api/v1/billing/spend-controls' && req.method === 'PATCH') {
+    const identity = await requireIdentity(req);
+    const body = asRecord(await readJson(req));
+    if (!Number.isInteger(body.monthlyVariableLimitCents) || !Number.isInteger(body.singleJobThresholdCents)) throw new Error('INVALID_BILLING_SPEND_CONTROLS');
+    const account = await updateSpendControls(identity.appUserId,{monthlyVariableLimitCents:body.monthlyVariableLimitCents as number,singleJobThresholdCents:body.singleJobThresholdCents as number});
+    writeJson(res,200,{account}); return;
+  }
+
+  if (url.pathname === '/api/v1/billing/topups' && req.method === 'POST') {
+    const identity=await requireIdentity(req); const body=asRecord(await readJson(req));
+    if(typeof body.walletId!=='string'||!Number.isInteger(body.amountCents))throw new Error('INVALID_BILLING_TOPUP');
+    const payment=await createTestnetTopupIntent(identity.appUserId,body.walletId,body.amountCents as number); writeJson(res,201,{payment}); return;
+  }
+
+  const topupConfirmMatch=url.pathname.match(/^\/api\/v1\/billing\/topups\/([^/]+)\/confirm$/);
+  if(topupConfirmMatch&&req.method==='POST'){
+    const identity=await requireIdentity(req); const body=asRecord(await readJson(req));
+    if(typeof body.transactionHash!=='string')throw new Error('BILLING_INVALID_TRANSACTION_HASH');
+    const state=await confirmTestnetTopup(identity.appUserId,decodeURIComponent(topupConfirmMatch[1]??''),body.transactionHash); writeJson(res,200,state); return;
+  }
+
+  const subscriptionCancelMatch=url.pathname.match(/^\/api\/v1\/billing\/subscriptions\/([^/]+)\/cancel$/);
+  if(subscriptionCancelMatch&&req.method==='POST'){
+    const identity=await requireIdentity(req); await cancelSubscription(identity.appUserId,decodeURIComponent(subscriptionCancelMatch[1]??'')); writeJson(res,200,{ok:true}); return;
+  }
+
+  const marketplaceQuoteMatch=url.pathname.match(/^\/api\/v1\/marketplace\/(worker|workflow|capability)\/([^/]+)\/quote$/);
+  if(marketplaceQuoteMatch&&req.method==='GET'){
+    const identity=await requireIdentity(req); const quote=await getMarketplaceQuote(identity.appUserId,marketplaceQuoteMatch[1] as AssetType,decodeURIComponent(marketplaceQuoteMatch[2]??'')); writeJson(res,200,{quote}); return;
+  }
+
+  const marketplaceAcquireMatch=url.pathname.match(/^\/api\/v1\/marketplace\/(worker|workflow|capability)\/([^/]+)\/acquire$/);
+  if(marketplaceAcquireMatch&&req.method==='POST'){
+    const identity=await requireIdentity(req); const acquisition=await acquireMarketplaceAsset(identity.appUserId,marketplaceAcquireMatch[1] as AssetType,decodeURIComponent(marketplaceAcquireMatch[2]??'')); writeJson(res,201,{acquisition}); return;
+  }
+
+  const creatorPricingMatch=url.pathname.match(/^\/api\/v1\/creator\/(worker|workflow|capability)s\/([^/]+)\/pricing$/);
+  if(creatorPricingMatch&&req.method==='PUT'){
+    const identity=await requireIdentity(req); const body=asRecord(await readJson(req));
+    if(!['free','monthly','one-time','per-invocation'].includes(String(body.pricingModel))||!Number.isInteger(body.priceCents))throw new Error('INVALID_CREATOR_PRICING');
+    const offer=await setMarketplaceOffer(identity.appUserId,creatorPricingMatch[1] as AssetType,decodeURIComponent(creatorPricingMatch[2]??''),{pricingModel:body.pricingModel as PricingModel,priceCents:body.priceCents as number});
+    writeJson(res,200,{offer}); return;
+  }
+
+  if(url.pathname==='/api/v1/creator/earnings'&&req.method==='GET'){
+    const identity=await requireIdentity(req); writeJson(res,200,await listCreatorRevenue(identity.appUserId)); return;
+  }
+
+  const jobCostsMatch=url.pathname.match(/^\/api\/v1\/jobs\/([^/]+)\/costs$/);
+  if(jobCostsMatch&&req.method==='GET'){
+    const identity=await requireIdentity(req); const jobId=decodeURIComponent(jobCostsMatch[1]??''); const job=await getJob(identity.appUserId,jobId); if(!job)return writeJson(res,404,{error:'not_found',message:'Job not found.',requestId}); writeJson(res,200,await listJobCosts(identity.appUserId,jobId)); return;
+  }
+
+  if(url.pathname==='/api/v1/security'&&req.method==='GET'){
+    const identity=await requireIdentity(req); const [history,quarantines]=await Promise.all([listSecurityHistory(identity.appUserId),listQuarantines(identity.appUserId)]); writeJson(res,200,{history,quarantines}); return;
+  }
+
+  if(url.pathname==='/api/v1/security/emergency-stop'&&req.method==='POST'){
+    const identity=await requireIdentity(req); writeJson(res,200,{result:await emergencyStopFutureExecution(identity.appUserId)}); return;
+  }
+
+  if(url.pathname==='/api/v1/security/quarantines'&&req.method==='POST'){
+    const identity=await requireIdentity(req); const body=asRecord(await readJson(req)); if((body.targetType!=='worker'&&body.targetType!=='capability')||typeof body.targetId!=='string'||typeof body.reason!=='string')throw new Error('INVALID_QUARANTINE_REQUEST'); const quarantine=await quarantineCreatorAsset(identity.appUserId,body.targetType,body.targetId,body.reason); writeJson(res,201,{quarantine}); return;
+  }
+
+  const quarantineReleaseMatch=url.pathname.match(/^\/api\/v1\/security\/quarantines\/([^/]+)\/release$/);
+  if(quarantineReleaseMatch&&req.method==='POST'){
+    const identity=await requireIdentity(req); await releaseCreatorAssetQuarantine(identity.appUserId,decodeURIComponent(quarantineReleaseMatch[1]??'')); writeJson(res,200,{ok:true}); return;
+  }
+
   if (url.pathname === '/api/v1/capabilities' && req.method === 'GET') {
     await requireIdentity(req);
     const [capabilities, implementations] = await Promise.all([listCanonicalCapabilities(), listCapabilityImplementations()]);
@@ -1313,6 +1393,7 @@ This is a sandbox creator test. Do not claim that passing self-certifies safety.
     const identity = await requireIdentity(req);
     const body = asRecord(await readJson(req));
     if (typeof body.definitionId !== 'string' || !body.definitionId || body.definitionId.length > 128) throw new Error('INVALID_WORKER_DEFINITION');
+    await assertMarketplaceAccess(identity.appUserId,'worker',body.definitionId);
     let worker = await installWorker(identity.appUserId, body.definitionId);
     const conversationId = scopedId('workerconv', identity.appUserId, worker.id);
     await createConversation(identity.appUserId, {
@@ -1751,6 +1832,8 @@ This is a sandbox creator test. Do not claim that passing self-certifies safety.
     const identity = await requireIdentity(req);
     const body = asRecord(await readJson(req));
     if (!isJobDraft(body.job)) throw new Error('INVALID_JOB');
+    await assertMarketplaceAccess(identity.appUserId,'worker',body.job.leadWorkerId);
+    for (const supportingWorkerId of body.job.supportingWorkerIds) await assertMarketplaceAccess(identity.appUserId,'worker',supportingWorkerId);
     let job = await createJob(identity.appUserId, body.job);
     const conversationId = job.jobConversationId ?? `job-${job.id}`;
     await createConversation(identity.appUserId, {
@@ -1977,6 +2060,31 @@ const server = createServer((req, res) => {
       return;
     }
 
+    const billingConflicts:Record<string,string>={
+      BILLING_INSUFFICIENT_SERVICE_BALANCE:'Your AgentPlace service balance is too low for this purchase. Add service balance and try again.',
+      BILLING_MONTHLY_LIMIT_EXCEEDED:'This purchase would exceed your monthly variable-service limit. Raise the service-spend limit or choose a lower-cost option.',
+      BILLING_SPEND_CONTROL_TOO_LARGE:'That service-spend control is above AgentPlace’s supported limit. Choose a smaller amount.',
+      BILLING_CONNECTED_EVM_WALLET_REQUIRED:'Connect an active EVM wallet before creating a testnet service-balance payment.',
+      BILLING_TOPUP_AMOUNT_OUT_OF_RANGE:'Testnet service-balance funding must be between $1 and $1,000 per payment.',
+      BILLING_INVALID_TRANSACTION_HASH:'The wallet did not return a valid EVM transaction hash, so no service balance was credited.',
+      BILLING_MARKETPLACE_ENTITLEMENT_REQUIRED:'This paid Worker requires an active marketplace entitlement. Buying access never grants wallet authority.',
+      MARKETPLACE_ASSET_QUARANTINED:'This marketplace asset is quarantined and cannot be acquired or routed right now.',
+      BILLING_TESTNET_TOPUP_DISABLED:'Testnet USDC service-balance funding is not configured in this deployment.',
+      BILLING_TESTNET_TOPUP_CONFIG_INCOMPLETE:'Testnet service-balance funding is enabled but its treasury, token or RPC configuration is incomplete. No payment request was created.',
+      BILLING_SUBSCRIPTION_NOT_ACTIVE:'This subscription is already cancelled or is no longer active.',
+      BILLING_TOPUP_NOT_FOUND:'This service-balance top-up intent was not found.',
+      BILLING_ACQUISITION_FAILED:'AgentPlace could not establish the requested marketplace entitlement. No wallet authority was created.',
+      MARKETPLACE_ASSET_NOT_PUBLIC:'This asset is not currently published for marketplace acquisition.',
+      MARKETPLACE_ASSET_NOT_FOUND:'This marketplace asset was not found.',
+      BILLING_TOPUP_NOT_CONFIRMED:'The testnet payment has not been confirmed yet. AgentPlace did not credit the service balance.',
+      BILLING_TOPUP_TRANSACTION_FAILED:'The testnet payment transaction failed. AgentPlace did not credit the service balance.',
+      BILLING_TOPUP_TRANSFER_MISMATCH:'The transaction did not contain the exact USDC transfer expected for this service-balance top-up. No credit was applied.',
+      BILLING_TOPUP_RPC_UNAVAILABLE:'AgentPlace could not verify the testnet service payment from the configured RPC. No credit was applied.',
+      BILLING_TOPUP_RPC_ERROR:'The testnet RPC returned an error while verifying the service payment. No credit was applied.',
+    };
+    if(billingConflicts[code]){writeJson(res,409,{error:'billing_conflict',message:billingConflicts[code],requestId});return;}
+    const securityConflicts:Record<string,string>={SECURITY_TARGET_NOT_OWNED:'Only your own creator Worker or imported Capability can be quarantined from this user surface.',SECURITY_QUARANTINE_NOT_FOUND:'This quarantine is no longer active.'};
+    if(securityConflicts[code]){writeJson(res,409,{error:'security_conflict',message:securityConflicts[code],requestId});return;}
     const routineConflicts: Record<string,string> = {
       M11_AUTONOMOUS_EXECUTION_UNAVAILABLE: 'Background Routines cannot sign or autonomously execute financial actions in v0.14.0. Keep the Routine recommendation-only.',
       ROUTINE_STOPPED: 'This Routine is stopped. Historical work remains, but it cannot be edited or reactivated.',
@@ -1994,7 +2102,7 @@ const server = createServer((req, res) => {
       writeJson(res, 409, { error: 'routine_conflict', message: routineConflicts[code], requestId });
       return;
     }
-    if (['INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE','INVALID_WORKER_DEFINITION','INVALID_WORKER_STATUS','INVALID_JOB','INVALID_STRING','INVALID_MODEL_SELECTION','MODEL_PROVIDER_NOT_CONFIGURED','JOB_LEAD_REQUIRED','JOB_WORKER_NOT_AVAILABLE','WORKER_DEFINITION_NOT_FOUND','INVALID_WALLET_INPUT','INVALID_WALLET_NAMESPACE','INVALID_WALLET_NETWORK','INVALID_WALLET_NAME','INVALID_EVM_ADDRESS','INVALID_SOLANA_ADDRESS','INVALID_NATIVE_BALANCE','WALLET_ADDRESS_MISMATCH','INVALID_WALLET_STATUS','INVALID_AGENT_ACCOUNT_INPUT','CONNECTED_OWNER_WALLET_REQUIRED','AGENT_ACCOUNT_EVM_OWNER_REQUIRED','AGENT_ACCOUNT_NETWORK_REQUIRED','UNSUPPORTED_CONNECTED_WALLET_NAMESPACE','INVALID_MANDATE_WORKER','INVALID_MANDATE_ACCOUNT','INVALID_MANDATE_ENVIRONMENT','INVALID_MANDATE_STATUS','INVALID_MANDATE_REVISION','INVALID_MANDATE_TITLE','INVALID_MANDATE_PURPOSE','INVALID_AUTHORITY_LEVEL','INVALID_MANDATE_SCOPE','INVALID_MANDATE_POLICY','INVALID_MANDATE_CAPABILITIES','MANDATE_CAPABILITY_REQUIRED','INVALID_MANDATE_NETWORKS','INVALID_MANDATE_ASSETS','INVALID_MANDATE_PROTOCOLS','INVALID_MANDATE_DESTINATIONS','ACT_MANDATE_ASSET_ALLOWLIST_REQUIRED','ACT_MANDATE_REQUIRES_AGENT_ACCOUNT','INVALID_CAPITAL_LIMIT','INVALID_PER_ACTION_LIMIT','INVALID_PERIOD_BUDGET','INVALID_SERVICE_BUDGET','ACT_MANDATE_HARD_LIMITS_REQUIRED','INVALID_APPROVAL_POLICY','INVALID_APPROVAL_THRESHOLD','INVALID_MANDATE_VALIDITY','ACT_MANDATE_EXPIRY_REQUIRED','INVALID_MANDATE_CHANGE_SUMMARY','MANDATE_WORKER_NOT_OWNED','MANDATE_ACCOUNT_NOT_OWNED','MANDATE_ACCOUNT_NOT_AVAILABLE','UNKNOWN_MANDATE_CAPABILITY','INVALID_AUTHORITY_ENVELOPE','INVALID_AUTHORITY_VALUE','INVALID_AUTHORITY_LEVERAGE','INVALID_AUTHORITY_CONTROL','INVALID_MANDATE_INTENT','INVALID_EXECUTION_OUTCOME','INVALID_EXECUTION_PROMPT_TOKEN','INVALID_EXECUTION_TRANSACTION_HASH','INVALID_EXECUTION_MESSAGE','EXECUTION_TRANSACTION_HASH_INVALID','EXECUTION_PROVIDER_PAYLOAD_INVALID','EXECUTION_PROVIDER_CHAIN_MISMATCH','EXECUTION_DESTINATION_INVALID','EXECUTION_AMOUNT_ATOMIC_REQUIRED','EXECUTION_ASSET_ADDRESS_INVALID','EXECUTION_CHAIN_UNSUPPORTED','EXECUTION_EVM_WALLET_REQUIRED','EXECUTION_WALLET_ADDRESS_INVALID','EXECUTION_INVALID_QUANTITY','INVALID_ROUTINE_ENVIRONMENT','INVALID_ROUTINE_NOTIFICATION_POLICY','INVALID_ROUTINE_TRIGGER','INVALID_ROUTINE_TIME_ZONE','INVALID_ROUTINE_LOCAL_TIME','INVALID_ROUTINE_WEEKDAYS','INVALID_ROUTINE_CONDITION_METRIC','INVALID_ROUTINE_CONDITION','INVALID_ROUTINE_CONDITION_SUBJECT','INVALID_ROUTINE_NETWORK','INVALID_ROUTINE_ADDRESS','INVALID_ROUTINE_EVENT_TYPES','INVALID_ROUTINE_EVENT_WORKER','INVALID_ROUTINE_TITLE','INVALID_ROUTINE_WORKER','INVALID_ROUTINE_INSTRUCTION','INVALID_ROUTINE_AUTHORITY','INVALID_ROUTINE_EXPIRY','INVALID_ROUTINE_INTERVAL','INVALID_ROUTINE_CONDITION_POLL','INVALID_ROUTINE_COOLDOWN','ROUTINE_TRIGGER_MISMATCH','INVALID_ROUTINE_INPUT','INVALID_ROUTINE_SERVICE_BUDGET','INVALID_ROUTINE_RUN_BUDGET','INVALID_ROUTINE_BUDGET_PERIOD','INVALID_ROUTINE_EXECUTION_BEHAVIOR','INVALID_NOTIFICATION_PREFERENCE','INVALID_QUIET_HOURS_TIME','INVALID_TIME_ZONE','INVALID_NOTIFICATION_PREVIEW','ROUTINE_WORKER_NOT_INSTALLED'].includes(code)) {
+    if (['INVALID_BILLING_SPEND_CONTROLS','BILLING_SPEND_CONTROL_TOO_LARGE','INVALID_BILLING_TOPUP','BILLING_INVALID_TRANSACTION_HASH','BILLING_INVALID_EVM_ADDRESS','BILLING_TOPUP_AMOUNT_OUT_OF_RANGE','BILLING_CONNECTED_EVM_WALLET_REQUIRED','BILLING_PRICING_MODEL_NOT_ALLOWED','BILLING_FREE_PRICE_MUST_BE_ZERO','BILLING_INVALID_PRICE','BILLING_ASSET_NOT_OWNED','INVALID_CREATOR_PRICING','INVALID_QUARANTINE_REQUEST','INVALID_QUARANTINE_REASON','INVALID_JSON','INVALID_BODY','INVALID_CONVERSATION','INVALID_CONVERSATION_IMPORT','INVALID_TITLE','INVALID_TITLE_SOURCE','INVALID_PIN','INVALID_ARCHIVE','INVALID_MESSAGE','INVALID_MESSAGE_UPDATE','INVALID_WORKER_DEFINITION','INVALID_WORKER_STATUS','INVALID_JOB','INVALID_STRING','INVALID_MODEL_SELECTION','MODEL_PROVIDER_NOT_CONFIGURED','JOB_LEAD_REQUIRED','JOB_WORKER_NOT_AVAILABLE','WORKER_DEFINITION_NOT_FOUND','INVALID_WALLET_INPUT','INVALID_WALLET_NAMESPACE','INVALID_WALLET_NETWORK','INVALID_WALLET_NAME','INVALID_EVM_ADDRESS','INVALID_SOLANA_ADDRESS','INVALID_NATIVE_BALANCE','WALLET_ADDRESS_MISMATCH','INVALID_WALLET_STATUS','INVALID_AGENT_ACCOUNT_INPUT','CONNECTED_OWNER_WALLET_REQUIRED','AGENT_ACCOUNT_EVM_OWNER_REQUIRED','AGENT_ACCOUNT_NETWORK_REQUIRED','UNSUPPORTED_CONNECTED_WALLET_NAMESPACE','INVALID_MANDATE_WORKER','INVALID_MANDATE_ACCOUNT','INVALID_MANDATE_ENVIRONMENT','INVALID_MANDATE_STATUS','INVALID_MANDATE_REVISION','INVALID_MANDATE_TITLE','INVALID_MANDATE_PURPOSE','INVALID_AUTHORITY_LEVEL','INVALID_MANDATE_SCOPE','INVALID_MANDATE_POLICY','INVALID_MANDATE_CAPABILITIES','MANDATE_CAPABILITY_REQUIRED','INVALID_MANDATE_NETWORKS','INVALID_MANDATE_ASSETS','INVALID_MANDATE_PROTOCOLS','INVALID_MANDATE_DESTINATIONS','ACT_MANDATE_ASSET_ALLOWLIST_REQUIRED','ACT_MANDATE_REQUIRES_AGENT_ACCOUNT','INVALID_CAPITAL_LIMIT','INVALID_PER_ACTION_LIMIT','INVALID_PERIOD_BUDGET','INVALID_SERVICE_BUDGET','ACT_MANDATE_HARD_LIMITS_REQUIRED','INVALID_APPROVAL_POLICY','INVALID_APPROVAL_THRESHOLD','INVALID_MANDATE_VALIDITY','ACT_MANDATE_EXPIRY_REQUIRED','INVALID_MANDATE_CHANGE_SUMMARY','MANDATE_WORKER_NOT_OWNED','MANDATE_ACCOUNT_NOT_OWNED','MANDATE_ACCOUNT_NOT_AVAILABLE','UNKNOWN_MANDATE_CAPABILITY','INVALID_AUTHORITY_ENVELOPE','INVALID_AUTHORITY_VALUE','INVALID_AUTHORITY_LEVERAGE','INVALID_AUTHORITY_CONTROL','INVALID_MANDATE_INTENT','INVALID_EXECUTION_OUTCOME','INVALID_EXECUTION_PROMPT_TOKEN','INVALID_EXECUTION_TRANSACTION_HASH','INVALID_EXECUTION_MESSAGE','EXECUTION_TRANSACTION_HASH_INVALID','EXECUTION_PROVIDER_PAYLOAD_INVALID','EXECUTION_PROVIDER_CHAIN_MISMATCH','EXECUTION_DESTINATION_INVALID','EXECUTION_AMOUNT_ATOMIC_REQUIRED','EXECUTION_ASSET_ADDRESS_INVALID','EXECUTION_CHAIN_UNSUPPORTED','EXECUTION_EVM_WALLET_REQUIRED','EXECUTION_WALLET_ADDRESS_INVALID','EXECUTION_INVALID_QUANTITY','INVALID_ROUTINE_ENVIRONMENT','INVALID_ROUTINE_NOTIFICATION_POLICY','INVALID_ROUTINE_TRIGGER','INVALID_ROUTINE_TIME_ZONE','INVALID_ROUTINE_LOCAL_TIME','INVALID_ROUTINE_WEEKDAYS','INVALID_ROUTINE_CONDITION_METRIC','INVALID_ROUTINE_CONDITION','INVALID_ROUTINE_CONDITION_SUBJECT','INVALID_ROUTINE_NETWORK','INVALID_ROUTINE_ADDRESS','INVALID_ROUTINE_EVENT_TYPES','INVALID_ROUTINE_EVENT_WORKER','INVALID_ROUTINE_TITLE','INVALID_ROUTINE_WORKER','INVALID_ROUTINE_INSTRUCTION','INVALID_ROUTINE_AUTHORITY','INVALID_ROUTINE_EXPIRY','INVALID_ROUTINE_INTERVAL','INVALID_ROUTINE_CONDITION_POLL','INVALID_ROUTINE_COOLDOWN','ROUTINE_TRIGGER_MISMATCH','INVALID_ROUTINE_INPUT','INVALID_ROUTINE_SERVICE_BUDGET','INVALID_ROUTINE_RUN_BUDGET','INVALID_ROUTINE_BUDGET_PERIOD','INVALID_ROUTINE_EXECUTION_BEHAVIOR','INVALID_NOTIFICATION_PREFERENCE','INVALID_QUIET_HOURS_TIME','INVALID_TIME_ZONE','INVALID_NOTIFICATION_PREVIEW','ROUTINE_WORKER_NOT_INSTALLED'].includes(code)) {
       writeJson(res, 400, { error: 'invalid_request', message: code, requestId });
       return;
     }

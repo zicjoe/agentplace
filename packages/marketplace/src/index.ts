@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getDatabasePool, withTransaction } from '@agent-place/db';
+import { getMarketplaceOffer, priceLabel } from '@agent-place/billing';
 import {
   validateCapabilityImport,
   validateCreatorWorkerDraft,
@@ -28,7 +29,7 @@ export interface DiscoverItem {
   isOriginal: boolean;
   category: string;
   networks: string[];
-  pricing: { type: 'free' | 'paid'; label?: string };
+  pricing: { type: 'free' | 'paid'; label?: string; model?: 'free'|'monthly'|'one-time'|'per-invocation'; amountCents?: number };
   visibility: 'public' | 'unlisted';
   authorityDefault?: string;
   sponsored: boolean;
@@ -41,6 +42,10 @@ export interface DiscoverItem {
   forkSourceName?: string;
   forkSourceCreator?: string;
   allowsCustomization: boolean;
+  jobsCompleted?: number;
+  completionRate?: number;
+  medianResponse?: string;
+  costAccuracy?: number;
 }
 
 export interface CreatorAssetRecord {
@@ -57,6 +62,7 @@ export interface CreatorAssetRecord {
   workflow?: CreatorWorkflowDraft;
   capability?: CapabilityImportDraft;
   lineage?: { sourceType: DiscoverAssetType; sourceId: string; sourceVersionId?: string; sourceName: string; sourceCreator: string };
+  pricing?: { model: 'free'|'monthly'|'one-time'|'per-invocation'; amountCents: number; label: string };
 }
 
 function strings(value: unknown): string[] {
@@ -106,6 +112,13 @@ async function workerReadiness(versionId: string, required: string[]): Promise<{
   return { readiness: 'available', reason: 'Required read/research capabilities have usable production routes.' };
 }
 
+async function workerReputation(workerId:string):Promise<{jobsCompleted?:number;completionRate?:number}> {
+  const result=await getDatabasePool().query<{attempted:string;completed:string}>(`SELECT count(DISTINCT j.id)::text attempted,count(DISTINCT j.id) FILTER (WHERE j.status='COMPLETED')::text completed FROM job_worker jw JOIN job j ON j.id=jw.job_id WHERE jw.worker_id=$1`,[workerId]);
+  const attempted=Number(result.rows[0]?.attempted??0),completed=Number(result.rows[0]?.completed??0);
+  if(attempted===0)return {};
+  return {jobsCompleted:completed,completionRate:Math.round((completed/attempted)*100)};
+}
+
 export async function listDiscoverSupply(): Promise<DiscoverItem[]> {
   const workerRows = await getDatabasePool().query<{
     id:string; version_id:string; name:string; tagline:string; responsibility:string; creator_name:string; origin:string; category:string;
@@ -125,11 +138,13 @@ export async function listDiscoverSupply(): Promise<DiscoverItem[]> {
   for (const row of workerRows.rows) {
     const required = strings(row.default_capability_requirements);
     const readiness = await workerReadiness(row.version_id, required);
+    const offer = await getMarketplaceOffer('worker', row.id);
+    const reputation = await workerReputation(row.id);
     workers.push({
       id:`discover-worker-${row.id}`,type:'worker',assetId:row.id,workerDefinitionId:row.id,name:row.name,tagline:row.tagline,description:row.responsibility,
-      creatorName:row.creator_name,isOriginal:row.origin==='agentplace-original',category:row.category,networks:[],pricing:{type:'free'},visibility:'public',
+      creatorName:row.creator_name,isOriginal:row.origin==='agentplace-original',category:row.category,networks:[],pricing:{type:offer.pricingModel==='free'?'free':'paid',label:priceLabel(offer.pricingModel,offer.priceCents),model:offer.pricingModel,amountCents:offer.priceCents},visibility:'public',
       authorityDefault:row.default_approval_boundary,sponsored:false,version:row.version,readiness:readiness.readiness,readinessReason:readiness.reason,
-      requiredCapabilities:required,lastUpdated:row.updated_at.toISOString(),allowsCustomization:true,
+      requiredCapabilities:required,lastUpdated:row.updated_at.toISOString(),allowsCustomization:true,...reputation,
       ...(row.source_id?{forkSourceId:row.source_id}:{ } as object),...(row.source_name?{forkSourceName:row.source_name}:{ } as object),...(row.source_creator?{forkSourceCreator:row.source_creator}:{ } as object),
     });
   }
@@ -139,18 +154,20 @@ export async function listDiscoverSupply(): Promise<DiscoverItem[]> {
     visibility:'public'|'unlisted'; pricing_type:'free'|'paid'; pricing_label:string|null; sponsored:boolean; version:string; authority_default:string|null;
     networks:unknown; metadata:unknown; updated_at:Date;
   }>(`SELECT id,asset_type,asset_id,name,tagline,description,creator_name,category,visibility,pricing_type,pricing_label,sponsored,version,authority_default,networks,metadata,updated_at
-    FROM marketplace_listing WHERE retired_at IS NULL AND visibility='public' AND asset_type IN ('workflow','capability') ORDER BY updated_at DESC`);
-  const other = listingRows.rows.map((row):DiscoverItem => {
+    FROM marketplace_listing ml WHERE ml.retired_at IS NULL AND ml.visibility='public' AND ml.asset_type IN ('workflow','capability') AND NOT (ml.asset_type='capability' AND EXISTS(SELECT 1 FROM creator_capability cc WHERE cc.id=ml.asset_id AND cc.trust_status='quarantined')) ORDER BY ml.updated_at DESC`);
+  const other:DiscoverItem[] = [];
+  for (const row of listingRows.rows) {
     const meta = record(row.metadata);
+    const offer = await getMarketplaceOffer(row.asset_type,row.asset_id);
     const status = typeof meta.readiness === 'string' && ['available','limited','preview','unavailable'].includes(meta.readiness) ? meta.readiness as DiscoverReadiness : 'preview';
-    return {
+    other.push({
       id:row.id,type:row.asset_type,assetId:row.asset_id,name:row.name,tagline:row.tagline,description:row.description,creatorName:row.creator_name,isOriginal:false,
-      category:row.category,networks:strings(row.networks),pricing:row.pricing_label?{type:row.pricing_type,label:row.pricing_label}:{type:row.pricing_type},visibility:row.visibility,
+      category:row.category,networks:strings(row.networks),pricing:{type:offer.pricingModel==='free'?'free':'paid',label:priceLabel(offer.pricingModel,offer.priceCents),model:offer.pricingModel,amountCents:offer.priceCents},visibility:row.visibility,
       ...(row.authority_default?{authorityDefault:row.authority_default}:{}),sponsored:row.sponsored,version:row.version,readiness:status,
       readinessReason:typeof meta.readinessReason==='string'?meta.readinessReason:'Creator asset is visible but not promoted into trusted AgentPlace routing.',
       requiredCapabilities:strings(meta.requiredCapabilities),lastUpdated:row.updated_at.toISOString(),allowsCustomization:true,
-    };
-  });
+    });
+  }
   return [...workers, ...other];
 }
 
@@ -236,7 +253,8 @@ export async function listCreatorAssets(ownerUserId:string):Promise<CreatorAsset
   const workflowAssets=workflows.rows.map((row:any):CreatorAssetRecord=>({id:row.id,type:'workflow',visibility:row.publication_status,name:row.name,version:row.version,versionId:row.version_id,createdAt:row.created_at.toISOString(),updatedAt:row.updated_at.toISOString(),workflow:{name:row.name,purpose:row.purpose,inputs:strings(row.inputs),steps:strings(row.steps),conditions:strings(row.conditions),outputs:strings(row.outputs),requiredCapabilities:strings(row.required_capabilities),safetyBoundaries:strings(row.safety_boundaries),compatibleWorkers:strings(row.compatible_workers)}}));
   const capabilities=await getDatabasePool().query<any>(`SELECT c.*,v.id AS version_id,v.version,v.source_metadata,jsonb_agg(jsonb_build_object('original',o.original_operation,'canonical',o.canonical_capability_id,'classification',o.classification,'description',o.description,'inputSchema',o.input_schema,'outputSchema',o.output_schema) ORDER BY o.original_operation) AS operations FROM creator_capability c JOIN LATERAL(SELECT * FROM creator_capability_version WHERE creator_capability_id=c.id AND retired_at IS NULL ORDER BY released_at DESC LIMIT 1)v ON true LEFT JOIN creator_capability_operation o ON o.creator_capability_version_id=v.id WHERE c.creator_user_id=$1 GROUP BY c.id,v.id,v.version,v.source_metadata ORDER BY c.updated_at DESC`,[ownerUserId]);
   const capabilityAssets=capabilities.rows.map((row:any):CreatorAssetRecord=>({id:row.id,type:'capability',visibility:row.publication_status,name:row.name,version:row.version,versionId:row.version_id,createdAt:row.created_at.toISOString(),updatedAt:row.updated_at.toISOString(),capability:{name:row.name,importType:row.import_type,endpoint:row.endpoint??undefined,provider:row.provider??undefined,version:row.version,operations:Array.isArray(row.operations)?row.operations:[],sourceMetadata:record(row.source_metadata)}}));
-  return [...workerAssets,...workflowAssets,...capabilityAssets].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+  const assets=[...workerAssets,...workflowAssets,...capabilityAssets].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+  return Promise.all(assets.map(async(asset)=>{const offer=await getMarketplaceOffer(asset.type,asset.id);return {...asset,pricing:{model:offer.pricingModel,amountCents:offer.priceCents,label:priceLabel(offer.pricingModel,offer.priceCents)}};}));
 }
 
 export async function publishCreatorAsset(ownerUserId:string,creatorName:string,type:DiscoverAssetType,assetId:string,visibility:'private'|'unlisted'|'published'):Promise<void>{
@@ -250,10 +268,11 @@ export async function publishCreatorAsset(ownerUserId:string,creatorName:string,
   const assets=await listCreatorAssets(ownerUserId); const asset=assets.find((item)=>item.id===assetId&&item.type===type); if(!asset)throw new Error('CREATOR_ASSET_NOT_FOUND');
   const draft=asset.workflow??asset.capability; const description=asset.workflow?.purpose??`Imported ${asset.capability?.importType.toUpperCase()} capability`; const category=type==='workflow'?'Workflows':'For Builders';
   const metadata=type==='workflow'?{readiness:'preview',readinessReason:'Workflow is published; runtime support depends on its required capabilities.',requiredCapabilities:asset.workflow?.requiredCapabilities??[]}:{readiness:'preview',readinessReason:'Creator-imported capabilities are isolated from trusted production routing.',requiredCapabilities:[]};
-  await getDatabasePool().query(`INSERT INTO marketplace_listing(id,asset_type,asset_id,creator_user_id,creator_name,name,tagline,description,category,visibility,pricing_type,version,authority_default,metadata)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'free',$11,$12,$13::jsonb)
+  const offer=await getMarketplaceOffer(type,assetId);
+  await getDatabasePool().query(`INSERT INTO marketplace_listing(id,asset_type,asset_id,creator_user_id,creator_name,name,tagline,description,category,visibility,pricing_type,pricing_label,version,authority_default,metadata)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb)
     ON CONFLICT(asset_type,asset_id) DO UPDATE SET creator_name=EXCLUDED.creator_name,name=EXCLUDED.name,tagline=EXCLUDED.tagline,description=EXCLUDED.description,visibility=EXCLUDED.visibility,version=EXCLUDED.version,metadata=EXCLUDED.metadata,retired_at=NULL,updated_at=now()`,
-    [`discover-${type}-${assetId}`,type,assetId,ownerUserId,creatorName,asset.name,type==='workflow'?'Reusable AgentPlace workflow':'Creator-imported capability',description,category,visibility==='published'?'public':'unlisted',asset.version,type==='workflow'?'No authority granted by workflow':'Imported capability grants no authority',JSON.stringify(metadata)]);
+    [`discover-${type}-${assetId}`,type,assetId,ownerUserId,creatorName,asset.name,type==='workflow'?'Reusable AgentPlace workflow':'Creator-imported capability',description,category,visibility==='published'?'public':'unlisted',offer.pricingModel==='free'?'free':'paid',priceLabel(offer.pricingModel,offer.priceCents),asset.version,type==='workflow'?'No authority granted by workflow':'Imported capability grants no authority',JSON.stringify(metadata)]);
   void draft;
 }
 

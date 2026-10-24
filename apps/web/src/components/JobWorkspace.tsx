@@ -13,6 +13,7 @@ import { ResearchReport } from './ResearchReport';
 import { scrollConversationToEnd } from '../platform/scroll';
 import { AgentPlaceMark } from './AgentPlaceBrand';
 import { makeJobRecurring } from '../platform/routineApi';
+import { fetchJobCosts, money, type JobCostSnapshot } from '../platform/billingApi';
 
 type JobWorkspaceTab = 'conversation' | 'team' | 'result' | 'activity';
 
@@ -46,6 +47,39 @@ function ProgressBar({ stages }: { stages: { id: string; label: string; status: 
         </ol>
       </details>
     </div>
+  );
+}
+
+
+function JobCostPanel({ jobId }: { jobId: string }) {
+  const state = useAppState();
+  const [snapshot,setSnapshot]=useState<JobCostSnapshot|null>(null);
+  const [error,setError]=useState<string|null>(null);
+
+  useEffect(()=>{
+    if(WEB_RUNTIME_SETTINGS.dataMode!=='api'||!state.user){setSnapshot(null);setError(null);return;}
+    let cancelled=false;
+    void fetchJobCosts(jobId).then((value)=>{if(!cancelled){setSnapshot(value);setError(null);}}).catch((value)=>{if(!cancelled)setError(value instanceof Error?value.message:'Cost attribution unavailable');});
+    return ()=>{cancelled=true;};
+  },[jobId,state.user]);
+
+  if(WEB_RUNTIME_SETTINGS.dataMode!=='api'||!state.user)return null;
+  const receiptCosts=(snapshot?.receiptCosts??[]).filter((entry)=>entry.category!=='capital');
+  return (
+    <details className="mt-4 rounded-lg border border-border bg-panel/40 px-3 py-2 text-xs">
+      <summary className="cursor-pointer text-text-sub hover:text-text">Job cost details{snapshot?` · ${money(snapshot.totalCents)} USD-attributed`:''}</summary>
+      <div className="mt-3 space-y-2">
+        {error&&<p className="text-danger">{error}</p>}
+        {!error&&snapshot&&<>
+          <p className="text-text-muted">USD-attributed service costs are kept separate from transferred capital and exact onchain fee assets.</p>
+          {snapshot.modelEstimatedUsd>0&&<div className="flex justify-between gap-4"><span className="text-text-muted">Model usage estimate</span><span className="font-mono text-text">${snapshot.modelEstimatedUsd.toFixed(6)}</span></div>}
+          {snapshot.entries.map((entry)=><div key={entry.id} className="flex justify-between gap-4"><span className="text-text-sub">{entry.description}</span><span className="font-mono text-text">{money(entry.amountCents)}</span></div>)}
+          {receiptCosts.map((entry,index)=><div key={`${entry.category}-${index}`} className="flex justify-between gap-4"><span className="text-text-sub">{entry.label}{entry.note?` · ${entry.note}`:''}</span><span className="font-mono text-text">{entry.amount}{entry.asset?` ${entry.asset}`:''}</span></div>)}
+          {snapshot.entries.length===0&&snapshot.modelEstimatedUsd===0&&receiptCosts.length===0&&<p className="text-text-muted">No attributable cost evidence has been recorded for this Job yet.</p>}
+        </>}
+        {!error&&!snapshot&&<p className="text-text-muted">Loading cost attribution…</p>}
+      </div>
+    </details>
   );
 }
 
@@ -183,6 +217,8 @@ function FinancialJobWorkspace() {
             </div>
           </div>
         </div>
+
+        <JobCostPanel jobId={job.id} />
 
         <div className="flex gap-0 mt-4 border-b border-border -mb-px">
           {tabs.map((tab) => (
@@ -640,6 +676,8 @@ export function JobWorkspace() {
         <div className="mt-4">
           <ProgressBar stages={job.stages} />
         </div>
+
+        <JobCostPanel jobId={job.id} />
 
         {/* Tabs */}
         <div className="flex gap-0 mt-4 border-b border-border -mb-px">

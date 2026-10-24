@@ -10,21 +10,23 @@ import type {
 
 interface ApiDiscoverItem {
   id:string; type:'worker'|'workflow'|'capability'; assetId:string; workerDefinitionId?:string; name:string; tagline:string; description:string;
-  creatorName:string; isOriginal:boolean; category:string; networks:string[]; pricing:{type:'free'|'paid';label?:string}; visibility:'public'|'unlisted';
+  creatorName:string; isOriginal:boolean; category:string; networks:string[]; pricing:{type:'free'|'paid';label?:string;model?:'free'|'monthly'|'one-time'|'per-invocation';amountCents?:number}; visibility:'public'|'unlisted';
   authorityDefault?:string; sponsored:boolean; version:string; readiness:'available'|'limited'|'preview'|'unavailable'; readinessReason:string;
-  requiredCapabilities:string[]; lastUpdated:string; forkSourceId?:string; forkSourceName?:string; forkSourceCreator?:string; allowsCustomization:boolean;
+  requiredCapabilities:string[]; lastUpdated:string; forkSourceId?:string; forkSourceName?:string; forkSourceCreator?:string; allowsCustomization:boolean; jobsCompleted?:number; completionRate?:number; medianResponse?:string; costAccuracy?:number;
 }
 interface ApiCreatorAsset {
   id:string; type:'worker'|'workflow'|'capability'; visibility:'draft'|'tested'|'private'|'unlisted'|'published'|'retired'; name:string; version:string;
   versionHistory?:Array<{versionId:string;version:string;releasedAt:string}>;
   createdAt:string; updatedAt:string; worker?:ApiWorkerDraft; workflow?:ApiWorkflowDraft; capability?:ApiCapabilityDraft;
   lineage?:{sourceType:'worker'|'workflow'|'capability';sourceId:string;sourceVersionId?:string;sourceName:string;sourceCreator:string};
+  pricing?:{model:'free'|'monthly'|'one-time'|'per-invocation';amountCents:number;label:string};
 }
 interface ApiWorkerDraft {
   name:string; tagline:string; responsibility:string; category:string; mission:string; responsibilities:string[]; antiJobs:string[]; expectedOutputs:string[];
   successConditions:string[]; method:string[]; capabilityRequirements:string[]; networks:string[]; authorityDefault:string;
   collaborators?:Array<{role:string;pinnedWorkerId?:string;roleBased?:boolean;required:boolean;whenUsed:string;contextShared:string;authorityBoundary:string}>;
   lineage?:{sourceType:'worker'|'workflow'|'capability';sourceId:string;sourceVersionId?:string;sourceName:string;sourceCreator:string};
+  pricing?:{model:'free'|'monthly'|'one-time'|'per-invocation';amountCents:number;label:string};
 }
 
 export interface CreatorBuilderSessionSnapshot {
@@ -69,8 +71,8 @@ async function request<T>(path:string,init?:RequestInit):Promise<T>{
 }
 
 function fromDiscover(value:ApiDiscoverItem):DiscoverSupplyItem{
-  const out:DiscoverSupplyItem={id:value.id,type:value.type,name:value.name,tagline:value.tagline,description:value.description,creatorId:value.isOriginal?'agentplace':'creator',creatorName:value.creatorName,isOriginal:value.isOriginal,category:value.category,networks:value.networks,pricing:value.pricing,visibility:value.visibility,sponsored:value.sponsored,lastUpdated:new Date(value.lastUpdated),version:value.version,allowsCustomization:value.allowsCustomization,readiness:value.readiness,readinessReason:value.readinessReason,requiredCapabilities:value.requiredCapabilities}; if(value.authorityDefault)out.authorityDefault=value.authorityDefault;
-  if(value.workerDefinitionId)out.workerDefinitionId=value.workerDefinitionId;if(value.forkSourceId)out.forkSourceId=value.forkSourceId;if(value.forkSourceName)out.forkSourceName=value.forkSourceName;if(value.forkSourceCreator)out.forkSourceCreator=value.forkSourceCreator;return out;
+  const out:DiscoverSupplyItem={id:value.id,type:value.type,creatorAssetId:value.assetId,name:value.name,tagline:value.tagline,description:value.description,creatorId:value.isOriginal?'agentplace':'creator',creatorName:value.creatorName,isOriginal:value.isOriginal,category:value.category,networks:value.networks,pricing:value.pricing,visibility:value.visibility,sponsored:value.sponsored,lastUpdated:new Date(value.lastUpdated),version:value.version,allowsCustomization:value.allowsCustomization,readiness:value.readiness,readinessReason:value.readinessReason,requiredCapabilities:value.requiredCapabilities}; if(value.authorityDefault)out.authorityDefault=value.authorityDefault;
+  if(value.workerDefinitionId)out.workerDefinitionId=value.workerDefinitionId;if(value.forkSourceId)out.forkSourceId=value.forkSourceId;if(value.forkSourceName)out.forkSourceName=value.forkSourceName;if(value.forkSourceCreator)out.forkSourceCreator=value.forkSourceCreator;if(value.jobsCompleted!==undefined)out.jobsCompleted=value.jobsCompleted;if(value.completionRate!==undefined)out.completionRate=value.completionRate;if(value.medianResponse!==undefined)out.medianResponse=value.medianResponse;if(value.costAccuracy!==undefined)out.costAccuracy=value.costAccuracy;return out;
 }
 function creatorVisibility(value:ApiCreatorAsset['visibility']):CreatorAssetVisibility{return value==='published'?'public':value==='retired'?'private':value;}
 function workerDraft(value:ApiWorkerDraft):WorkerDraftData{
@@ -78,9 +80,10 @@ function workerDraft(value:ApiWorkerDraft):WorkerDraftData{
 }
 function fromAsset(value:ApiCreatorAsset):CreatorAsset{
   const out:CreatorAsset={id:value.id,type:value.type,visibility:creatorVisibility(value.visibility),version:value.version,...(value.versionHistory?{versionHistory:value.versionHistory.map((item)=>({versionId:item.versionId,version:item.version,releasedAt:new Date(item.releasedAt)}))}:{}),createdAt:new Date(value.createdAt),updatedAt:new Date(value.updatedAt)};
-  if(value.worker)out.workerDraft=workerDraft(value.worker);
-  if(value.workflow)out.workflowDraft={...value.workflow,pricing:{type:'free'}} as WorkflowDraftData;
-  if(value.capability)out.capabilityDraft={name:value.capability.name,importType:value.capability.importType,...(value.capability.endpoint?{endpoint:value.capability.endpoint}:{}),operations:value.capability.operations.map((op)=>({original:op.original,canonical:op.canonical??'',classification:op.classification,description:op.description,...(op.sandboxEligible===undefined?{}:{sandboxEligible:op.sandboxEligible})})),...(value.capability.provider?{provider:value.capability.provider}:{}),...(value.capability.version?{version:value.capability.version}:{}),pricing:{type:'free'}} as CapabilityDraftData;
+  const pricing=value.pricing?{type:value.pricing.model==='free'?'free' as const:'paid' as const,label:value.pricing.label,model:value.pricing.model,amountCents:value.pricing.amountCents}:{type:'free' as const,model:'free' as const,amountCents:0};
+  if(value.worker){out.workerDraft=workerDraft(value.worker);out.workerDraft.pricing=pricing;}
+  if(value.workflow)out.workflowDraft={...value.workflow,pricing} as WorkflowDraftData;
+  if(value.capability)out.capabilityDraft={name:value.capability.name,importType:value.capability.importType,...(value.capability.endpoint?{endpoint:value.capability.endpoint}:{}),operations:value.capability.operations.map((op)=>({original:op.original,canonical:op.canonical??'',classification:op.classification,description:op.description,...(op.sandboxEligible===undefined?{}:{sandboxEligible:op.sandboxEligible})})),...(value.capability.provider?{provider:value.capability.provider}:{}),...(value.capability.version?{version:value.capability.version}:{}),pricing} as CapabilityDraftData;
   return out;
 }
 

@@ -1,12 +1,13 @@
 import { closeDatabasePool } from '@agent-place/db';
 import { processRoutineSchedulerPass } from '@agent-place/routines';
+import { processBillingRenewals } from '@agent-place/billing';
 import { defineService } from '@agent-place/shared';
 
 export const service = defineService({
   name: 'agent-place-scheduler',
   runtimeClass: 'scheduler',
-  version: '0.15.0',
-  milestone: 12,
+  version: '0.16.0',
+  milestone: 13,
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -19,9 +20,12 @@ async function loop(): Promise<void> {
   process.stdout.write(`${JSON.stringify({ level:'info',service:service.name,message:'AgentPlace scheduler started',version:service.version,pollMs,batchSize })}\n`);
   while (!stopping) {
     try {
-      const result = await processRoutineSchedulerPass({ limit: batchSize, leaseOwner });
+      const [result,billing] = await Promise.all([processRoutineSchedulerPass({ limit: batchSize, leaseOwner }),processBillingRenewals(batchSize)]);
       if (result.due || result.events || result.completed || result.failed || result.needsUser || result.expired || result.cooldownsReleased) {
         process.stdout.write(`${JSON.stringify({ level:'info',service:service.name,message:'Routine scheduler pass',...result })}\n`);
+      }
+      if (billing.due || billing.renewed || billing.pastDue || billing.cancelled) {
+        process.stdout.write(`${JSON.stringify({ level:'info',service:service.name,message:'Billing renewal pass',...billing })}\n`);
       }
     } catch (error) {
       process.stderr.write(`${JSON.stringify({ level:'error',service:service.name,message:'Routine scheduler pass failed',error:error instanceof Error?error.message:String(error) })}\n`);

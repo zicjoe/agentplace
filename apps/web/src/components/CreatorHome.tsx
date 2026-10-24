@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppState, useDispatch } from '../state/AppContext';
 import { fetchDiscoverSupply, publishCreatorAsset } from '../platform/creatorApi';
 import type { CreatorAsset } from '../state/types';
+import { fetchCreatorRevenue, money, pricingLabel, setCreatorPricing, type CreatorRevenueSnapshot, type PricingModel } from '../platform/billingApi';
 
 type CreatorTab = 'my-creations' | 'performance' | 'earnings' | 'publishing';
 
@@ -97,27 +98,27 @@ function PerformanceTab({ assets }: { assets: CreatorAsset[] }) {
 }
 
 function EarningsTab({ assets }: { assets: CreatorAsset[] }) {
-  const dispatch = useDispatch();
-  const publicAssets = assets.filter((asset) => asset.visibility === 'public');
+  const [revenue,setRevenue]=useState<CreatorRevenueSnapshot|null>(null);const [error,setError]=useState<string|null>(null);
+  useEffect(()=>{void fetchCreatorRevenue().then(setRevenue).catch((value)=>setError(value instanceof Error?value.message:'Creator earnings could not be loaded.'));},[]);
   return (
     <div className="space-y-5">
       <div className="border border-border rounded-lg bg-panel px-5 py-5">
-        <p className="text-sm font-semibold text-text">Creator earnings are not enabled yet</p>
-        <p className="text-xs text-text-muted mt-1 leading-relaxed">M12 makes creator assets durable and discoverable. Paid acquisition, revenue attribution and payouts arrive with Billing + Security Completion, so AgentPlace will not display fabricated earnings.</p>
+        <p className="text-[10px] font-mono uppercase tracking-wider text-text-dim">Gross attributable creator revenue</p>
+        <p className="text-2xl font-semibold text-text mt-1">{revenue?money(revenue.grossCents):'—'}</p>
+        <p className="text-xs text-text-muted mt-2 leading-relaxed">M13 records gross revenue attribution durably. Creator/platform allocation and cash-out are deliberately not enabled until the commercial split and settlement rail are approved.</p>
       </div>
-      {publicAssets.length > 0 ? (
-        <div className="border border-border-dim rounded-lg bg-panel px-5 py-4">
-          <p className="text-xs text-text-sub">{publicAssets.length} public asset{publicAssets.length === 1 ? '' : 's'} in Discover.</p>
-          <p className="text-xs text-text-muted mt-1">Public visibility does not imply monetization or payout eligibility.</p>
-        </div>
-      ) : (
-        <div className="text-center py-8">
-          <p className="text-sm text-text-muted">No public assets yet.</p>
-          <button onClick={() => { dispatch({ type: 'SET_ACTIVE_CREATION', id: null }); dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'agent-builder' }); }} className="mt-3 px-4 py-2 text-xs bg-primary text-white rounded hover:opacity-90 transition-opacity">Create a Worker</button>
-        </div>
-      )}
+      {error&&<p className="text-xs text-danger">{error}</p>}
+      {revenue&&revenue.entries.length>0?<div className="border border-border rounded-lg bg-panel px-4">{revenue.entries.map((entry)=><div key={entry.id} className="py-3 border-b border-border-dim last:border-0 flex justify-between gap-3"><div><p className="text-xs font-medium text-text">{entry.assetName}</p><p className="text-[10px] text-text-dim mt-1">{entry.sourceType} · {entry.allocationStatus==='unallocated'?'Commercial split not allocated':entry.payoutStatus} · {new Date(entry.occurredAt).toLocaleString()}</p></div><span className="text-xs font-mono text-accent">{money(entry.grossCents)}</span></div>)}</div>:<div className="border border-border-dim rounded-lg bg-panel px-5 py-4"><p className="text-xs text-text-muted">No creator revenue has been attributed yet across {assets.length} creator asset{assets.length===1?'':'s'}.</p></div>}
     </div>
   );
+}
+
+function PricingEditor({asset,onSaved}:{asset:CreatorAsset;onSaved:(pricing:{type:'free'|'paid';label:string;model:PricingModel;amountCents:number})=>void}){
+  const current=asset.workerDraft?.pricing??asset.workflowDraft?.pricing??asset.capabilityDraft?.pricing??{type:'free' as const};
+  const allowed:PricingModel[]=asset.type==='worker'?['free','monthly']:asset.type==='workflow'?['free','one-time']:['free','per-invocation'];
+  const [model,setModel]=useState<PricingModel>((current.model as PricingModel|undefined)??'free');const [amount,setAmount]=useState(current.amountCents?String(current.amountCents/100):'5');const [busy,setBusy]=useState(false);const [message,setMessage]=useState<string|null>(null);
+  async function save(){const amountCents=model==='free'?0:Math.round((Number(amount)||0)*100);setBusy(true);setMessage(null);try{await setCreatorPricing(asset.type,asset.id,model,amountCents);onSaved({type:model==='free'?'free':'paid',label:pricingLabel(model,amountCents),model,amountCents});setMessage('Pricing saved.');}catch(value){setMessage(value instanceof Error?value.message:'Pricing could not be saved.');}finally{setBusy(false);}}
+  return <div className="border-t border-border-dim pt-3 mt-3"><p className="text-[10px] font-mono uppercase tracking-wider text-text-dim mb-2">Commercial pricing</p><div className="flex gap-2 flex-wrap"><select value={model} onChange={(e)=>setModel(e.target.value as PricingModel)} className="bg-panel-raised border border-border rounded px-2 py-1.5 text-xs text-text">{allowed.map((value)=><option key={value} value={value}>{value==='free'?'Free':value==='monthly'?'Monthly subscription':value==='one-time'?'One-time license':'Per invocation'}</option>)}</select>{model!=='free'&&<input value={amount} onChange={(e)=>setAmount(e.target.value)} inputMode="decimal" className="w-28 bg-panel-raised border border-border rounded px-2 py-1.5 text-xs text-text" aria-label="Price in USD"/>}<button disabled={busy} onClick={()=>void save()} className="px-3 py-1.5 text-xs bg-primary text-white rounded disabled:opacity-50">{busy?'Saving…':'Save pricing'}</button></div><p className="text-[10px] text-text-dim mt-2">{model==='free'?'Free access':model==='per-invocation'?`${pricingLabel(model,Math.round((Number(amount)||0)*100))} · commercial metadata now; a charge occurs only on a separately trusted AgentPlace invocation route`:`${pricingLabel(model,Math.round((Number(amount)||0)*100))} · billed from AgentPlace service balance`}. Pricing never grants wallet authority.</p>{message&&<p className={`text-[10px] mt-1 ${message==='Pricing saved.'?'text-accent':'text-danger'}`}>{message}</p>}</div>;
 }
 
 function PublishingTab({ assets }: { assets: CreatorAsset[] }) {
@@ -152,6 +153,7 @@ function PublishingTab({ assets }: { assets: CreatorAsset[] }) {
                 {asset.visibility}
               </span>
             </div>
+            <PricingEditor asset={asset} onSaved={(pricing)=>{const updates=asset.type==='worker'?{workerDraft:{...asset.workerDraft!,pricing}}:asset.type==='workflow'?{workflowDraft:{...asset.workflowDraft!,pricing}}:{capabilityDraft:{...asset.capabilityDraft!,pricing}};dispatch({type:'UPDATE_CREATOR_ASSET',assetId:asset.id,updates});}} />
             {!isPublic && reviewing !== asset.id && (
               <button
                 onClick={() => setReviewing(asset.id)}
@@ -226,7 +228,7 @@ export function CreatorHome() {
             <p className="text-xs text-text-muted mt-0.5">Accessed through + Create · Not primary navigation</p>
           </div>
           <button
-            onClick={() => dispatch({ type: 'SET_CREATOR_SURFACE', surface: null })}
+            onClick={() => { dispatch({ type: 'SET_ACTIVE_CREATION', id: null }); dispatch({ type: 'SET_CREATOR_SURFACE', surface: null }); }}
             className="text-text-muted hover:text-text p-1 rounded transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
