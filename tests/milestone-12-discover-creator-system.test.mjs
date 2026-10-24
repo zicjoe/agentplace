@@ -210,6 +210,9 @@ test('M12 remote imports fail closed against SSRF and embedded credentials',()=>
   assert.match(api,/redirect:'manual'/);
   assert.match(api,/IMPORT_RESPONSE_TOO_LARGE/);
   assert.match(api,/IMPORT_CONTENT_TYPE_UNSUPPORTED/);
+  assert.match(api,/unsafe_import_rejected/);
+  assert.match(api,/Imported endpoint URLs cannot contain embedded credentials\. No request was sent and no capability was created\./);
+  assert.match(api,/Private, loopback, link-local and local-network endpoints are not allowed for remote capability imports\. No request was sent and no capability was created\./);
 });
 
 test('M12 safe imported capability testing is read-only and isolated',()=>{

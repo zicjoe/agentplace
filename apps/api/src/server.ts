@@ -1954,6 +1954,19 @@ const server = createServer((req, res) => {
       writeJson(res, 409, { error: 'execution_conflict', message: executionConflicts[code] ?? `AgentPlace could not reach a usable execution RPC${rpcDetail ? `: ${rpcDetail}` : ''}. Nothing was submitted.`, requestId });
       return;
     }
+    const importValidationErrors: Record<string,string> = {
+      IMPORT_URL_HTTPS_REQUIRED: 'Remote capability imports must use HTTPS. No request was sent and no capability was created.',
+      IMPORT_URL_CREDENTIALS_FORBIDDEN: 'Imported endpoint URLs cannot contain embedded credentials. No request was sent and no capability was created.',
+      IMPORT_URL_PRIVATE_HOST_FORBIDDEN: 'Private, loopback, link-local and local-network endpoints are not allowed for remote capability imports. No request was sent and no capability was created.',
+      IMPORT_REDIRECT_INVALID: 'The imported endpoint returned an invalid redirect. The import was stopped and no capability was created.',
+      IMPORT_TOO_MANY_REDIRECTS: 'The imported endpoint exceeded the safe redirect limit. The import was stopped and no capability was created.',
+      IMPORT_RESPONSE_TOO_LARGE: 'The imported endpoint response exceeded AgentPlace import limits. The import was stopped and no capability was created.',
+      IMPORT_CONTENT_TYPE_UNSUPPORTED: 'The imported endpoint returned an unsupported content type. The import was stopped and no capability was created.',
+    };
+    if(importValidationErrors[code]){
+      writeJson(res,400,{error:'unsafe_import_rejected',message:importValidationErrors[code],requestId});
+      return;
+    }
     const importHttpMatch=code.match(/^IMPORT_HTTP_(\d{3})$/);
     if(importHttpMatch){
       writeJson(res,502,{error:'import_upstream_error',message:`The imported API returned HTTP ${importHttpMatch[1]} during the read-only sandbox test. No capability was promoted and no authority was granted. Try again later or use another eligible public read operation.`,requestId});

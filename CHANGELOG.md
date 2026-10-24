@@ -1,5 +1,20 @@
-- M12 OpenAPI sandbox eligibility now excludes auth-required and obvious session-mutating GET operations, and surfaces upstream provider/network failures truthfully instead of reporting them as internal AgentPlace errors.
 # Changelog
+
+## 0.15.0 — M12 Discover + Creator System (candidate)
+
+- Replaced production Discover fixture truth with durable Worker/Workflow/Capability supply and runtime-readiness projection.
+- Added durable creator Workers, Workflows, imported capabilities, publication lifecycle, lineage and creator test records.
+- Added generic Agent Builder, real sandbox Worker tests, private install, versioned edits and public publication.
+- Added durable per-Worker Agent Builder conversations, user-turn quick actions, non-terminal private save, clean New Worker behavior, and reopen/continue continuity across refreshes.
+- Replaced the Agent Builder regex/keyword interpreter with AgentPlace Auto structured LLM turns, deterministic Creator-operation validation, durable turn metadata, parent-linked draft revisions and conversational undo.
+- Replaced Workflow Studio's one-shot local intent template with AgentPlace Auto structured Workflow turns plus deterministic capability/Worker eligibility and mandatory no-authority safety validation; compact layouts now surface the live Draft explicitly and later conversational edits are processed rather than ignored.
+- Added durable Workflow Studio creator sessions/messages and refresh-safe creator asset routes so saved Workflow transcript + Draft restore together from My creations and survive hard refresh.
+- Builder discussion, edit, Teach Mode, test, save/publish intent and undo are distinct; test scenarios no longer fall through into Method / Expertise.
+- Added Worker-version pinning through installations and Job assignments.
+- Added real server-side OpenAPI/MCP inspection with SSRF controls and bounded read-only OpenAPI sandbox invocation.
+- Kept creator imports isolated from trusted AgentPlace capability routing, with no new signer, custody, paid acquisition or Mainnet autonomy.
+- OpenAPI sandbox eligibility now excludes auth-required and obvious session-mutating GET operations, resolves declared runtime bases, and surfaces upstream provider/network failures truthfully.
+- Unsafe remote imports now return explicit fail-closed validation messages for credential-bearing, private/loopback, non-HTTPS and other rejected endpoints instead of a generic internal-error message; rejected URLs are blocked before fetch.
 
 ## 0.14.0 — M11 Routines + Background Work (candidate)
 
@@ -329,17 +344,3 @@
 - Added the missing canonical `asset.transfer` capability so it appears in Mandate/Authority editing.
 - Aligned M9 direct-transfer preparation with the Execution Operator worker contract, which already uses `asset.transfer`.
 - Added migration `0014_transfer_capability_alignment.sql`; no custody/signing behavior changed.
-
-## 0.15.0 — M12 Discover + Creator System (candidate)
-
-- Replaced production Discover fixture truth with durable Worker/Workflow/Capability supply and runtime-readiness projection.
-- Added durable creator Workers, Workflows, imported capabilities, publication lifecycle, lineage and creator test records.
-- Added generic Agent Builder, real sandbox Worker tests, private install, versioned edits and public publication.
-- Added durable per-Worker Agent Builder conversations, user-turn quick actions, non-terminal private save, clean New Worker behavior, and reopen/continue continuity across refreshes.
-- Replaced the Agent Builder regex/keyword interpreter with AgentPlace Auto structured LLM turns, deterministic Creator-operation validation, durable turn metadata, parent-linked draft revisions and conversational undo.
-- Replaced Workflow Studio's one-shot local intent template with AgentPlace Auto structured Workflow turns plus deterministic capability/Worker eligibility and mandatory no-authority safety validation; compact layouts now surface the live Draft explicitly and later conversational edits are processed rather than ignored.
-- Added durable Workflow Studio creator sessions/messages and refresh-safe creator asset routes so saved Workflow transcript + Draft restore together from My creations and survive hard refresh.
-- Builder discussion, edit, Teach Mode, test, save/publish intent and undo are distinct; test scenarios no longer fall through into Method / Expertise.
-- Added Worker-version pinning through installations and Job assignments.
-- Added real server-side OpenAPI/MCP inspection with SSRF controls and bounded read-only OpenAPI sandbox invocation.
-- Kept creator imports isolated from trusted AgentPlace capability routing, with no new signer, custody, paid acquisition or Mainnet autonomy.
