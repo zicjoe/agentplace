@@ -303,7 +303,7 @@ export async function createTestnetTopupIntent(ownerUserId:string,walletId:strin
   const from=normalizeAddress(w.address);
   if(from===cfg.treasuryAddress)throw new Error('BILLING_TOPUP_SELF_PAYMENT_FORBIDDEN');
   const amountAtomic=BigInt(amount)*10_000n,paymentId=id('spay');
-  await getDatabasePool().query(`INSERT INTO billing_service_payment(id,owner_user_id,wallet_id,asset_address,treasury_address,amount_cents,amount_atomic) VALUES($1,$2,$3,$4,$5,$6,$7)`,[paymentId,ownerUserId,walletId,cfg.assetAddress,cfg.treasuryAddress,amount,amountAtomic.toString()]);
+  await getDatabasePool().query(`INSERT INTO billing_service_payment(id,owner_user_id,wallet_id,network_id,chain_id,asset_address,treasury_address,amount_cents,amount_atomic) VALUES($1,$2,$3,'arbitrum-sepolia',421614,$4,$5,$6,$7)`,[paymentId,ownerUserId,walletId,cfg.assetAddress,cfg.treasuryAddress,amount,amountAtomic.toString()]);
   return {paymentId,walletRequest:{from,to:cfg.assetAddress,chainId:`0x${(421614).toString(16)}`,data:transferCalldata(cfg.treasuryAddress,amountAtomic),value:'0x0'},amountCents:amount,notice:'This is an explicit Arbitrum Sepolia USDC payment for AgentPlace service balance. It does not fund or authorize an Agent Account.'};
 }
 

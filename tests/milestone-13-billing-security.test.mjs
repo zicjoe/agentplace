@@ -143,6 +143,11 @@ test('M13 Security history hydrates durable occurredAt timestamps',()=>{
 });
 
 
+test('M13 top-up intents persist the required Arbitrum Sepolia network identity',()=>{
+  assert.match(billing,/INSERT INTO billing_service_payment\(id,owner_user_id,wallet_id,network_id,chain_id,asset_address,treasury_address,amount_cents,amount_atomic\)/);
+  assert.match(billing,/VALUES\(\$1,\$2,\$3,'arbitrum-sepolia',421614,\$4,\$5,\$6,\$7\)/);
+});
+
 test('M13 testnet service funding rejects self-payment and transaction-hash replay',()=>{
   const integrity=readFileSync('packages/db/migrations/0022_billing_topup_integrity.sql','utf8');
   assert.match(integrity,/billing_service_payment_transaction_hash_unique_idx/);
