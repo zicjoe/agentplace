@@ -907,6 +907,7 @@ const INITIAL_STATE: AppState = {
   activeJobTab: 'conversation',
   activeWalletId: null,
   activeActionId: null,
+  securityTargetActionId: null,
   activeRoutineId: null,
   conversations: [],
   workers: [],
@@ -972,6 +973,7 @@ export type Action =
   | { type: 'SET_ACTIVE_JOB'; id: string | null; tab?: 'conversation' | 'result'; clearConversation?: boolean }
   | { type: 'SET_ACTIVE_WALLET'; id: string | null }
   | { type: 'SET_ACTIVE_ACTION'; id: string | null }
+  | { type: 'SET_SECURITY_TARGET_ACTION'; id: string | null }
   | { type: 'ADD_CONV'; conv: Conversation; persisted?: boolean }
   | { type: 'ADD_MSG'; convId: string; msg: ChatMessage }
   | { type: 'UPDATE_MSG'; convId: string; msgId: string; updates: Partial<ChatMessage> }
@@ -1055,7 +1057,7 @@ function reducer(state: AppState, action: Action): AppState {
       return applyRouteSelection(state, action.route);
 
     case 'SET_USER':
-      return { ...state, user: action.user, identityCheckpoint: null };
+      return { ...state, user: action.user, identityCheckpoint: null, ...(action.user ? {} : { securityTargetActionId: null }) };
 
     case 'SET_CONVERSATIONS':
       return { ...state, conversations: action.conversations };
@@ -1124,7 +1126,10 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, activeWalletId: action.id, routeNotFound: null };
 
     case 'SET_ACTIVE_ACTION':
-      return { ...state, activeActionId: action.id };
+      return { ...state, activeActionId: action.id, ...(action.id ? { securityTargetActionId: action.id } : {}) };
+
+    case 'SET_SECURITY_TARGET_ACTION':
+      return { ...state, securityTargetActionId: action.id };
 
     case 'ADD_CONV':
       return {

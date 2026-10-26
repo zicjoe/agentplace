@@ -187,7 +187,22 @@ test('M13 emergency stop carries the exact visible Action into Security and repo
   assert.match(securityTarget,/SELECT id,status FROM financial_action WHERE owner_user_id=\$1 AND id=\$2 FOR UPDATE/);
   assert.match(securityTarget,/targetActionStopped/);
   assert.match(securityApi,/emergencyStopFutureExecution\(actionId\?:string\)/);
-  assert.match(securityViewTarget,/state\.activeActionId\?\?undefined/);
-  assert.match(context,/activeActionId: action\.view === 'security' \? state\.activeActionId : null/);
+  assert.match(securityViewTarget,/state\.securityTargetActionId\?\?state\.activeActionId\?\?undefined/);
+  assert.match(context,/securityTargetActionId: action\.id/);
+  assert.match(context,/SET_SECURITY_TARGET_ACTION/);
   assert.match(apiTarget,/emergencyStopFutureExecution\(identity\.appUserId,actionId\)/);
+});
+
+
+test('M13 emergency stop does not confuse historical submitted attempts with current cancellable actions',()=>{
+  const securityTarget=readFileSync('packages/security/src/index.ts','utf8');
+  const securityViewTarget=readFileSync('apps/web/src/components/SecurityAuthorityView.tsx','utf8');
+  const routing=readFileSync('apps/web/src/platform/routing.ts','utf8');
+  assert.match(securityTarget,/PROTECTED_ATTEMPT_STATUSES/);
+  assert.match(securityTarget,/SELECT id,status FROM financial_action WHERE owner_user_id=\$1 AND status=ANY/);
+  assert.doesNotMatch(securityTarget,/SELECT count\(\*\)::text count FROM transaction_attempt/);
+  assert.match(securityTarget,/targetProtectedAttemptStatus/);
+  assert.match(securityViewTarget,/current cancellable action/);
+  assert.match(routing,/activeActionId: null/);
+  assert.doesNotMatch(routing,/securityTargetActionId: null/);
 });

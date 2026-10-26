@@ -799,6 +799,7 @@ export interface AppState {
   activeJobTab: 'conversation' | 'result';
   activeWalletId: string | null;
   activeActionId: string | null;
+  securityTargetActionId: string | null;
   activeRoutineId: string | null;
   conversations: Conversation[];
   workers: Worker[];
