@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.16.0 — M13 Billing + Security Completion (candidate)
+- Fixed Security emergency-stop reconciliation so stopped financial Actions immediately render as non-executable across Action Review and conversation cards, and hardened approval/execution transactions against concurrent stop races.
 - Hardened the M13 testnet service-balance rail against self-payment and transaction-hash replay before enabling production acceptance.
 
 - Replaced prototype Billing projections with a durable append-only AgentPlace service ledger, service-balance derivation, monthly spend controls and persistent single-Job service-cost confirmation settings.

@@ -25,6 +25,7 @@ import { scrollConversationToEnd } from '../platform/scroll';
 import { conversationHistoryTitle } from '../platform/conversationNavigation';
 import { AgentPlaceMark } from './AgentPlaceBrand';
 import { fetchActionExecution, type ApiTransactionAttempt } from '../platform/executionApi';
+import { fetchAction, type ApiFinancialAction } from '../platform/actionApi';
 import { fetchActionVerification, type ApiSettlementObservation } from '../platform/verificationApi';
 
 // Research content is always rendered as React nodes, never model-supplied HTML.
@@ -452,6 +453,7 @@ function BridgeQuoteCard({ jobId, convId }: { jobId?: string; convId: string }) 
 
 function DurableActionReviewCard({ actionId }: { actionId: string }) {
   const dispatch = useDispatch();
+  const [financialAction, setFinancialAction] = useState<ApiFinancialAction | null>(null);
   const [attempt, setAttempt] = useState<ApiTransactionAttempt | null>(null);
   const [observation, setObservation] = useState<ApiSettlementObservation | null>(null);
   const [outcome, setOutcome] = useState<VerifiedOutcome | null>(null);
@@ -461,11 +463,13 @@ function DurableActionReviewCard({ actionId }: { actionId: string }) {
     if (WEB_RUNTIME_SETTINGS.dataMode !== 'api') return;
     let live = true;
     const load = async () => {
-      const [execution, verification] = await Promise.all([
+      const [action, execution, verification] = await Promise.all([
+        fetchAction(actionId).catch(() => null),
         fetchActionExecution(actionId).catch(() => null),
         fetchActionVerification(actionId).catch(() => ({ observation: null, outcome: null, receipt: null })),
       ]);
       if (!live) return;
+      setFinancialAction(action);
       setAttempt(execution);
       setObservation(verification.observation);
       setOutcome(verification.outcome);
@@ -474,11 +478,15 @@ function DurableActionReviewCard({ actionId }: { actionId: string }) {
       if (verification.receipt) dispatch({ type: 'ADD_VERIFIED_RECEIPT', receipt: verification.receipt });
     };
     void load();
+    const onInvalidated=()=>{void load();};
+    window.addEventListener('agentplace:financial-actions-invalidated',onInvalidated);
     const timer = window.setInterval(() => { void load(); }, 5000);
-    return () => { live = false; window.clearInterval(timer); };
+    return () => { live = false; window.removeEventListener('agentplace:financial-actions-invalidated',onInvalidated); window.clearInterval(timer); };
   }, [actionId, dispatch]);
 
-  const presentation = receipt
+  const presentation = financialAction?.status === 'REJECTED'
+    ? { label: 'Action stopped', title: 'This financial action is no longer executable', body: 'AgentPlace invalidated this unsubmitted action. Nothing was submitted and no funds moved.' }
+    : receipt
     ? { label: 'Completed · AgentPlace Verified', title: 'Economic outcome independently verified', body: receipt.actualEconomicOutcome }
     : outcome?.status === 'failed' || observation?.status === 'NOT_VERIFIED'
       ? { label: 'Outcome not verified', title: 'Independent verification did not pass', body: observation?.reasonSummary ?? 'The confirmed transaction did not satisfy the capability Verification Contract. No Verified Receipt was produced.' }
@@ -514,7 +522,7 @@ function DurableActionReviewCard({ actionId }: { actionId: string }) {
             onClick={() => dispatch({ type: 'SET_ACTIVE_ACTION', id: actionId })}
             className="flex-1 px-4 py-2.5 border border-border text-text-sub text-sm rounded font-medium hover:bg-panel transition-colors"
           >
-            Open Action Review
+            {financialAction?.status === 'REJECTED' ? 'View stopped action' : 'Open Action Review'}
           </button>
           {receipt && (
             <button

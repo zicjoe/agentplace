@@ -157,7 +157,7 @@ function StopExecutionModal({ onClose, onCompleted }: { onClose: () => void; onC
   const dispatch = useDispatch();const [busy,setBusy]=useState(false);const [error,setError]=useState<string|null>(null);const [result,setResult]=useState<{actionsStopped:number;walletPromptsStopped:number;submittedUntouched:number}|null>(null);
   async function confirm() {
     if(WEB_RUNTIME_SETTINGS.dataMode==='api'){
-      setBusy(true);setError(null);try{const next=await emergencyStopFutureExecution();setResult(next);onCompleted();}catch(value){setError(value instanceof Error?value.message:'Emergency stop could not be completed.');}finally{setBusy(false);}return;
+      setBusy(true);setError(null);try{const next=await emergencyStopFutureExecution();setResult(next);window.dispatchEvent(new Event('agentplace:financial-actions-invalidated'));onCompleted();}catch(value){setError(value instanceof Error?value.message:'Emergency stop could not be completed.');}finally{setBusy(false);}return;
     }
     dispatch({type:'ADD_ACTIVITY_EVENT',event:{id:uid(),eventType:'security',title:'Future execution steps stop requested',summary:'Emergency control · Cancellable future steps stopped where possible',effect:'Already-submitted blockchain transactions cannot be reversed.',timestamp:new Date(),status:'complete'}});onClose();
   }

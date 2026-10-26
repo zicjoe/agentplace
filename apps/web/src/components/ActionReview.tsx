@@ -104,6 +104,18 @@ export function ActionReview() {
   }, [actionId, dispatch]);
 
   useEffect(() => {
+    if (!actionId?.startsWith('fa_') || WEB_RUNTIME_SETTINGS.dataMode !== 'api') return;
+    let live=true;
+    const sync=()=>{void fetchAction(actionId).then((value)=>{if(!live)return;setServerAction(value);setApproved(value.status==='READY_FOR_EXECUTION'&&value.prepared?.authorityDecision.decision==='APPROVAL_REQUIRED');setRejected(value.status==='REJECTED');}).catch(()=>undefined);};
+    const onInvalidated=()=>sync();
+    const onFocus=()=>sync();
+    window.addEventListener('agentplace:financial-actions-invalidated',onInvalidated);
+    window.addEventListener('focus',onFocus);
+    const timer=window.setInterval(sync,3000);
+    return ()=>{live=false;window.removeEventListener('agentplace:financial-actions-invalidated',onInvalidated);window.removeEventListener('focus',onFocus);window.clearInterval(timer);};
+  }, [actionId]);
+
+  useEffect(() => {
     if (!executionAttempt || !['WALLET_PROMPTED','SUBMITTED','CONFIRMING','UNKNOWN'].includes(executionAttempt.status)) return;
     let live=true;
     const timer=window.setInterval(()=>{void fetchExecutionAttempt(executionAttempt.id).then((value)=>{if(live)setExecutionAttempt(value);}).catch(()=>undefined);},3500);
@@ -298,7 +310,7 @@ export function ActionReview() {
     );
   }
 
-  const isBlocked = action.authorityDecision === 'blocked' || action.status === 'blocked';
+  const isBlocked = action.authorityDecision === 'blocked' || action.status === 'blocked' || action.status === 'rejected';
   const authorityWithinMandate = action.authorityDecision === 'within-mandate';
   const authorityNeedsApproval = action.authorityDecision === 'needs-approval';
   const isWithinMandate = authorityWithinMandate && (!serverAction || serverAction.status === 'READY_FOR_EXECUTION');

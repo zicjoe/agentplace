@@ -158,3 +158,20 @@ test('M13 testnet service funding rejects self-payment and transaction-hash repl
   token(api,"BILLING_TOPUP_SELF_PAYMENT_FORBIDDEN");
   token(api,"BILLING_TOPUP_TRANSACTION_ALREADY_USED");
 });
+
+test('M13 emergency stop cannot be visually or transactionally resurrected',()=>{
+  const execution=readFileSync('packages/execution/src/index.ts','utf8');
+  const actionReview=readFileSync('apps/web/src/components/ActionReview.tsx','utf8');
+  const chatView=readFileSync('apps/web/src/components/ChatView.tsx','utf8');
+  token(execution,'SELECT * FROM financial_action WHERE owner_user_id=$1 AND id=$2 FOR UPDATE');
+  token(execution,'async function latestPrepared(owner:string,actionId:string,db:SqlExecutor=getDatabasePool())');
+  token(execution,'ACTION_STATE_CHANGED');
+  token(execution,'EXECUTION_PREPARATION_CHANGED');
+  token(execution,"decision='APPROVED' AND invalidated_at IS NULL");
+  token(securityView,"agentplace:financial-actions-invalidated");
+  token(actionReview,"agentplace:financial-actions-invalidated");
+  token(actionReview,"window.setInterval(sync,3000)");
+  token(chatView,"fetchAction(actionId)");
+  token(chatView,"Action stopped");
+  token(chatView,"View stopped action");
+});

@@ -51,6 +51,9 @@ if (/PRIVATE_KEY|MNEMONIC|SEED_PHRASE/.test(billing)) throw new Error('M13 servi
 const scheduler = readFileSync('apps/scheduler/src/index.ts', 'utf8');
 for (const token of ['processBillingRenewals','Billing renewal pass']) if (!scheduler.includes(token)) throw new Error(`M13 Scheduler missing ${token}`);
 
+const execution = readFileSync('packages/execution/src/index.ts', 'utf8');
+if (!execution.includes('async function latestPrepared(owner:string,actionId:string,db:SqlExecutor=getDatabasePool())')) throw new Error('M13 execution prepared-state helper must accept the shared SqlExecutor interface so Pool and transactional PoolClient are both valid.');
+
 const security = readFileSync('packages/security/src/index.ts', 'utf8');
 for (const token of ['listSecurityHistory','emergencyStopFutureExecution','quarantineCreatorAsset','releaseCreatorAssetQuarantine',"'WALLET_PROMPTED'","'SUBMITTED','CONFIRMING','CONFIRMED','UNKNOWN'","trust_status='quarantined'",'historical Jobs and evidence remain intact']) if (!security.includes(token)) throw new Error(`M13 security core missing ${token}`);
 if (/eth_sendTransaction|eth_sendRawTransaction|sendTransaction\(/i.test(security)) throw new Error('M13 emergency/security controls must not add a transaction submission path.');

@@ -21,6 +21,7 @@ AgentPlace v0.16.0 replaces billing fixtures with durable commercial/accounting 
 - Creator earnings are accounting liabilities only in M13; cash-out/settlement is not enabled.
 - Mainnet execution and autonomy remain disabled.
 - Emergency stop never claims to reverse a submitted blockchain transaction.
+- Emergency stop invalidation is authoritative across backend approval/execution gates and live UI state; stale Action Review state cannot resurrect a stopped action.
 - Quarantine blocks future eligibility while preserving historical Jobs/evidence.
 
 ## Gate
