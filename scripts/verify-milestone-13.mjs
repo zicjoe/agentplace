@@ -56,6 +56,7 @@ if (!execution.includes('async function latestPrepared(owner:string,actionId:str
 
 const security = readFileSync('packages/security/src/index.ts', 'utf8');
 for (const token of ['listSecurityHistory','emergencyStopFutureExecution','quarantineCreatorAsset','releaseCreatorAssetQuarantine',"'WALLET_PROMPTED'","'SUBMITTED','CONFIRMING','CONFIRMED','UNKNOWN'","trust_status='quarantined'",'historical Jobs and evidence remain intact']) if (!security.includes(token)) throw new Error(`M13 security core missing ${token}`);
+for (const token of ['targetActionId','targetActionFound','targetActionStatusBefore','targetActionStopped','SELECT id,status FROM financial_action WHERE owner_user_id=$1 AND id=$2 FOR UPDATE']) if (!security.includes(token)) throw new Error(`M13 targeted emergency stop missing ${token}`);
 if (/eth_sendTransaction|eth_sendRawTransaction|sendTransaction\(/i.test(security)) throw new Error('M13 emergency/security controls must not add a transaction submission path.');
 
 const marketplace = readFileSync('packages/marketplace/src/index.ts', 'utf8');
@@ -78,6 +79,7 @@ if (discoverDetail.includes('Paid · not yet enabled')) throw new Error('M13 pai
 
 const securityView = readFileSync('apps/web/src/components/SecurityAuthorityView.tsx', 'utf8');
 for (const token of ['fetchSecurityState','emergencyStopFutureExecution','quarantineCreatorSupply','releaseCreatorSupplyQuarantine','submitted, confirming, confirmed or unknown']) if (!securityView.includes(token)) throw new Error(`M13 Security UX missing ${token}`);
+for (const token of ['state.activeActionId??undefined','The Action Review you came from was stopped','not found under this signed-in AgentPlace account']) if (!securityView.includes(token)) throw new Error(`M13 targeted Security stop UX missing ${token}`);
 
 const jobWorkspace = readFileSync('apps/web/src/components/JobWorkspace.tsx', 'utf8');
 

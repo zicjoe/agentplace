@@ -1264,7 +1264,7 @@ This is a sandbox creator test. Do not claim that passing self-certifies safety.
   }
 
   if(url.pathname==='/api/v1/security/emergency-stop'&&req.method==='POST'){
-    const identity=await requireIdentity(req); writeJson(res,200,{result:await emergencyStopFutureExecution(identity.appUserId)}); return;
+    const identity=await requireIdentity(req); const body=asRecord(await readJson(req)); const actionId=typeof body.actionId==='string'&&body.actionId.trim()?body.actionId.trim():undefined; writeJson(res,200,{result:await emergencyStopFutureExecution(identity.appUserId,actionId)}); return;
   }
 
   if(url.pathname==='/api/v1/security/quarantines'&&req.method==='POST'){

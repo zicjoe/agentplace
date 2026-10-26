@@ -1084,7 +1084,7 @@ function reducer(state: AppState, action: Action): AppState {
         activeJobId: null,
         activeWalletId: null,
         activeRoutineId: null,
-        activeActionId: null,
+        activeActionId: action.view === 'security' ? state.activeActionId : null,
         activeCreatorSurface: null,
         activeDiscoverItemId: null,
         routeNotFound: null,

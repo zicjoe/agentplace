@@ -1,6 +1,8 @@
 # Changelog
 
 ## 0.16.0 — M13 Billing + Security Completion (candidate)
+
+- Emergency stop now carries the exact visible financial Action into Security, deterministically stops that owned Action under lock before sweeping other cancellable actions, and reports identity/status mismatches instead of a misleading zero-action result.
 - Fixed Security emergency-stop reconciliation so stopped financial Actions immediately render as non-executable across Action Review and conversation cards, and hardened approval/execution transactions against concurrent stop races.
 - Hardened the M13 testnet service-balance rail against self-payment and transaction-hash replay before enabling production acceptance.
 

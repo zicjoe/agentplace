@@ -175,3 +175,19 @@ test('M13 emergency stop cannot be visually or transactionally resurrected',()=>
   token(chatView,"Action stopped");
   token(chatView,"View stopped action");
 });
+
+
+test('M13 emergency stop carries the exact visible Action into Security and reports target status',()=>{
+  const securityTarget=readFileSync('packages/security/src/index.ts','utf8');
+  const securityApi=readFileSync('apps/web/src/platform/securityApi.ts','utf8');
+  const securityViewTarget=readFileSync('apps/web/src/components/SecurityAuthorityView.tsx','utf8');
+  const context=readFileSync('apps/web/src/fixtures/FixtureAppContext.tsx','utf8');
+  const apiTarget=readFileSync('apps/api/src/server.ts','utf8');
+  assert.match(securityTarget,/emergencyStopFutureExecution\(ownerUserId:string,targetActionId\?:string\)/);
+  assert.match(securityTarget,/SELECT id,status FROM financial_action WHERE owner_user_id=\$1 AND id=\$2 FOR UPDATE/);
+  assert.match(securityTarget,/targetActionStopped/);
+  assert.match(securityApi,/emergencyStopFutureExecution\(actionId\?:string\)/);
+  assert.match(securityViewTarget,/state\.activeActionId\?\?undefined/);
+  assert.match(context,/activeActionId: action\.view === 'security' \? state\.activeActionId : null/);
+  assert.match(apiTarget,/emergencyStopFutureExecution\(identity\.appUserId,actionId\)/);
+});
