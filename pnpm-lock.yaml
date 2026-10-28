@@ -17,72 +17,72 @@ importers:
 
   apps/api:
     dependencies:
-      '@agent-place/marketplace':
-        specifier: workspace:*
-        version: link:../../packages/marketplace
-      '@agent-place/billing':
-        specifier: workspace:*
-        version: link:../../packages/billing
-      '@agent-place/security':
-        specifier: workspace:*
-        version: link:../../packages/security
-      '@agent-place/creator-sdk':
-        specifier: workspace:*
-        version: link:../../packages/creator-sdk
-      '@agent-place/verification':
-        specifier: workspace:*
-        version: link:../../packages/verification
-      '@agent-place/notifications':
-        specifier: workspace:*
-        version: link:../../packages/notifications
-      '@agent-place/routines':
-        specifier: workspace:*
-        version: link:../../packages/routines
-      '@agent-place/capabilities':
-        specifier: workspace:*
-        version: link:../../packages/capabilities
       '@agent-place/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@agent-place/authority':
+        specifier: workspace:*
+        version: link:../../packages/authority
+      '@agent-place/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
+      '@agent-place/capabilities':
+        specifier: workspace:*
+        version: link:../../packages/capabilities
       '@agent-place/context':
         specifier: workspace:*
         version: link:../../packages/context
+      '@agent-place/creator-sdk':
+        specifier: workspace:*
+        version: link:../../packages/creator-sdk
       '@agent-place/db':
         specifier: workspace:*
         version: link:../../packages/db
       '@agent-place/execution':
         specifier: workspace:*
         version: link:../../packages/execution
-      '@agent-place/jobs':
-        specifier: workspace:*
-        version: link:../../packages/jobs
       '@agent-place/intelligence':
         specifier: workspace:*
         version: link:../../packages/intelligence
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
+      '@agent-place/marketplace':
+        specifier: workspace:*
+        version: link:../../packages/marketplace
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
+      '@agent-place/notifications':
+        specifier: workspace:*
+        version: link:../../packages/notifications
       '@agent-place/observability':
         specifier: workspace:*
         version: link:../../packages/observability
-      '@agent-place/router':
-        specifier: workspace:*
-        version: link:../../packages/router
-      '@agent-place/workers':
-        specifier: workspace:*
-        version: link:../../packages/workers
-      '@agent-place/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      '@agent-place/wallets':
-        specifier: workspace:*
-        version: link:../../packages/wallets
-      '@agent-place/authority':
-        specifier: workspace:*
-        version: link:../../packages/authority
       '@agent-place/risk':
         specifier: workspace:*
         version: link:../../packages/risk
+      '@agent-place/router':
+        specifier: workspace:*
+        version: link:../../packages/router
+      '@agent-place/routines':
+        specifier: workspace:*
+        version: link:../../packages/routines
+      '@agent-place/security':
+        specifier: workspace:*
+        version: link:../../packages/security
+      '@agent-place/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@agent-place/verification':
+        specifier: workspace:*
+        version: link:../../packages/verification
+      '@agent-place/wallets':
+        specifier: workspace:*
+        version: link:../../packages/wallets
+      '@agent-place/workers':
+        specifier: workspace:*
+        version: link:../../packages/workers
 
   apps/scheduler:
     dependencies:
@@ -138,9 +138,6 @@ importers:
 
   apps/worker:
     dependencies:
-      '@agent-place/verification':
-        specifier: workspace:*
-        version: link:../../packages/verification
       '@agent-place/capabilities':
         specifier: workspace:*
         version: link:../../packages/capabilities
@@ -153,12 +150,12 @@ importers:
       '@agent-place/execution':
         specifier: workspace:*
         version: link:../../packages/execution
-      '@agent-place/jobs':
-        specifier: workspace:*
-        version: link:../../packages/jobs
       '@agent-place/intelligence':
         specifier: workspace:*
         version: link:../../packages/intelligence
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../../packages/jobs
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
@@ -171,6 +168,9 @@ importers:
       '@agent-place/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@agent-place/verification':
+        specifier: workspace:*
+        version: link:../../packages/verification
       '@agent-place/workers':
         specifier: workspace:*
         version: link:../../packages/workers
@@ -184,8 +184,8 @@ importers:
         specifier: 1.7.5
         version: 1.7.5(pg@8.23.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       kysely:
-        specifier: 0.28.17
-        version: 0.28.17
+        specifier: 0.29.7
+        version: 0.29.7
       pg:
         specifier: 8.23.0
         version: 8.23.0
@@ -208,7 +208,6 @@ importers:
       '@agent-place/db':
         specifier: workspace:*
         version: link:../db
-
 
   packages/capabilities:
     dependencies:
@@ -253,12 +252,6 @@ importers:
         specifier: workspace:*
         version: link:../risk
 
-  packages/jobs:
-    dependencies:
-      '@agent-place/db':
-        specifier: workspace:*
-        version: link:../db
-
   packages/intelligence:
     dependencies:
       '@agent-place/db':
@@ -268,17 +261,23 @@ importers:
         specifier: workspace:*
         version: link:../telegraph
 
-  packages/marketplace:
+  packages/jobs:
     dependencies:
       '@agent-place/db':
         specifier: workspace:*
         version: link:../db
-      '@agent-place/creator-sdk':
-        specifier: workspace:*
-        version: link:../creator-sdk
+
+  packages/marketplace:
+    dependencies:
       '@agent-place/billing':
         specifier: workspace:*
         version: link:../billing
+      '@agent-place/creator-sdk':
+        specifier: workspace:*
+        version: link:../creator-sdk
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
 
   packages/models: {}
 
@@ -287,24 +286,6 @@ importers:
       '@agent-place/db':
         specifier: workspace:*
         version: link:../db
-
-  packages/routines:
-    dependencies:
-      '@agent-place/context':
-        specifier: workspace:*
-        version: link:../context
-      '@agent-place/db':
-        specifier: workspace:*
-        version: link:../db
-      '@agent-place/intelligence':
-        specifier: workspace:*
-        version: link:../intelligence
-      '@agent-place/jobs':
-        specifier: workspace:*
-        version: link:../jobs
-      '@agent-place/notifications':
-        specifier: workspace:*
-        version: link:../notifications
 
   packages/observability:
     dependencies:
@@ -328,6 +309,24 @@ importers:
       '@agent-place/workers':
         specifier: workspace:*
         version: link:../workers
+
+  packages/routines:
+    dependencies:
+      '@agent-place/context':
+        specifier: workspace:*
+        version: link:../context
+      '@agent-place/db':
+        specifier: workspace:*
+        version: link:../db
+      '@agent-place/intelligence':
+        specifier: workspace:*
+        version: link:../intelligence
+      '@agent-place/jobs':
+        specifier: workspace:*
+        version: link:../jobs
+      '@agent-place/notifications':
+        specifier: workspace:*
+        version: link:../notifications
 
   packages/security:
     dependencies:
@@ -860,6 +859,10 @@ packages:
   kysely@0.28.17:
     resolution: {integrity: sha512-nbD8lB9EB3wNdMhOCdx5Li8DxnLbvKByylRLcJ1h+4SkrowVeECAyZlyiKMThF7xFdRz0jSQ2MoJr+wXux2y0Q==}
     engines: {node: '>=20.0.0'}
+
+  kysely@0.29.7:
+    resolution: {integrity: sha512-fmIq+7kv4WbFm2tcfznRzikqB4cuNpgZ40PSU2fAJ2/OO5XhojqnTPrmgrCjYSRJVwBln03XcRXJGnw9H099IQ==}
+    engines: {node: '>=22.0.0'}
 
   lightningcss-android-arm64@1.32.0:
     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
@@ -1485,6 +1488,8 @@ snapshots:
   jose@6.2.12: {}
 
   kysely@0.28.17: {}
+
+  kysely@0.29.7: {}
 
   lightningcss-android-arm64@1.32.0:
     optional: true
