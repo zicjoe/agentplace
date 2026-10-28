@@ -25,3 +25,23 @@ export interface PublicRuntimeConfig {
     readonly ethereumWallet: boolean;
   };
 }
+
+export interface ApiReadinessResponse {
+  readonly service: string;
+  readonly version: string;
+  readonly milestone: number;
+  readonly status: "ready" | "degraded" | "not_ready";
+  readonly environment: EnvironmentName;
+  readonly timestamp: string;
+  readonly dependencies: {
+    readonly database: "ok" | "unavailable";
+    readonly authentication: "configured" | "not_configured";
+    readonly workerRuntime: "ok" | "stale" | "unknown";
+    readonly scheduler: "ok" | "stale" | "unknown";
+  };
+  readonly execution: {
+    readonly testnetEnabled: boolean;
+    readonly mainnetEnabled: boolean;
+    readonly mainnetAutonomyEnabled: boolean;
+  };
+}

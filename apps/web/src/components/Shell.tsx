@@ -26,8 +26,26 @@ import { WorkflowStudio } from './WorkflowStudio';
 import { CapabilityStudio } from './CapabilityStudio';
 import { BillingUsageView } from './BillingUsageView';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
+import { useRuntime } from '../platform/RuntimeProvider';
 import { pathForState } from '../platform/routing';
 import { AgentPlaceBrand } from './AgentPlaceBrand';
+
+
+function RuntimeStatusBanner() {
+  const { connection } = useRuntime();
+  if (connection.status === 'ready' || connection.status === 'checking') return null;
+  const unavailable = connection.status === 'unavailable';
+  return (
+    <div role="status" aria-live="polite" className={`shrink-0 border-b px-4 py-2 text-xs ${unavailable ? 'border-danger/30 bg-danger/5 text-danger' : 'border-warn/20 bg-warn/5 text-warn'}`}>
+      <span className="font-medium">{unavailable ? 'AgentPlace API unavailable.' : 'AgentPlace is running in a degraded state.'}</span>{' '}
+      <span className="text-text-sub">{connection.error ?? (connection.readiness?.dependencies.database === 'unavailable' ? 'Database readiness check is failing. State-changing work may be unavailable.' : 'Some production dependencies are not ready. Read-only surfaces may still work.')}</span>
+    </div>
+  );
+}
+
+function SkipLink() {
+  return <a href="#agentplace-main" className="agentplace-skip-link">Skip to main content</a>;
+}
 
 function PlaceholderView({ title, description }: { title: string; description: string }) {
   return (
@@ -140,6 +158,7 @@ export function Shell() {
   if (isMobile) {
     return (
       <div className="flex flex-col h-full min-h-0 min-w-0 bg-bg text-text overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        <SkipLink />
         {/* Conversation / history drawer */}
         {state.mobileDrawerOpen && (
           <div className="fixed inset-0 z-50 flex">
@@ -161,6 +180,7 @@ export function Shell() {
           <button
             onClick={() => dispatch({ type: 'SET_MOBILE_DRAWER', open: true })}
             className="text-text-muted hover:text-text p-1 -ml-1 transition-colors"
+            aria-label="Open navigation and conversation history"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 6h16M4 12h16M4 18h16" />
@@ -173,6 +193,7 @@ export function Shell() {
                 onClick={() => dispatch({ type: 'SET_NOTIFICATION_INBOX_OPEN', open: true })}
                 className="relative p-1 text-text-muted hover:text-text transition-colors"
                 title="Notifications"
+                aria-label="Open notifications"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -194,7 +215,8 @@ export function Shell() {
           </div>
         </div>
 
-        <main className="flex-1 min-h-0 min-w-0 overflow-hidden">
+        <RuntimeStatusBanner />
+        <main id="agentplace-main" tabIndex={-1} className="flex-1 min-h-0 min-w-0 overflow-hidden">
           <MainContent key={pathForState(state)} />
         </main>
 
@@ -212,10 +234,14 @@ export function Shell() {
 
   return (
     <div className="flex h-full min-h-0 min-w-0 bg-bg text-text overflow-hidden">
+      <SkipLink />
       <Sidebar />
-      <main className="flex-1 min-h-0 min-w-0 overflow-hidden">
+      <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+        <RuntimeStatusBanner />
+        <main id="agentplace-main" tabIndex={-1} className="flex-1 min-h-0 min-w-0 overflow-hidden">
         <MainContent key={pathForState(state)} />
-      </main>
+        </main>
+      </div>
       {state.showCreateMenu && <CreateMenu />}
       {state.identityCheckpoint && <IdentityCheckpoint />}
       {WEB_RUNTIME_SETTINGS.demoControlsEnabled && state.showDemoControls && <DemoControls />}

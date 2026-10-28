@@ -658,7 +658,7 @@ async function reserveServicePayment(args: {
   payerAddress: Address;
   policy: TelegraphServicePaymentConfig;
 }): Promise<string> {
-  return withTransaction(async (client) => {
+  const outcome = await withTransaction(async (client): Promise<{ reservationId?: string; review?: 'required' | 'rejected' }> => {
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`telegraph:${args.ownerUserId}:${args.jobId}`]);
     const existing = await client.query<PaymentLedgerRow>(
       `SELECT id,status,amount_atomic::text FROM telegraph_service_payment WHERE owner_user_id=$1 AND job_id=$2 AND request_fingerprint=$3 LIMIT 1`,
@@ -677,14 +677,58 @@ async function reserveServicePayment(args: {
     if (amountAtomic > args.policy.maxCallAtomic) throw new Error('TELEGRAPH_PAYMENT_CALL_LIMIT');
     if (committedAtomic + amountAtomic > args.policy.maxJobAtomic) throw new Error('TELEGRAPH_PAYMENT_JOB_LIMIT');
     if (callCount >= args.policy.maxCallsPerJob) throw new Error('TELEGRAPH_PAYMENT_JOB_CALL_LIMIT');
+
+    // M14: a real variable service charge above the user's configured single-Job
+    // threshold requires its own Service Cost Review. This is deliberately separate
+    // from Financial Action Review and creates no wallet/crypto authority.
+    const billing = await client.query<{ single_job_threshold_cents: string }>(
+      `SELECT single_job_threshold_cents::text FROM billing_account WHERE owner_user_id=$1`,
+      [args.ownerUserId],
+    );
+    const billingAccount = billing.rows[0];
+    const thresholdCents = BigInt(billingAccount?.single_job_threshold_cents ?? '0');
+    const amountCents = (amountAtomic + 9_999n) / 10_000n; // 6-decimal USDC -> USD cents, rounded up for policy.
+    if (amountCents > thresholdCents) {
+      const amountUsd = formatUsdcAtomic(amountAtomic);
+      const thresholdUsd = `${thresholdCents / 100n}.${(thresholdCents % 100n).toString().padStart(2, '0')}`;
+      const description = `Telegraph ${args.capabilityId} service invocation`;
+      await client.query(
+        `UPDATE service_cost_review SET status='EXPIRED' WHERE owner_user_id=$1 AND job_id=$2 AND status='PENDING' AND expires_at IS NOT NULL AND expires_at<=now()`,
+        [args.ownerUserId, args.jobId],
+      );
+      const review = await client.query<{ status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' }>(
+        `SELECT status FROM service_cost_review
+         WHERE owner_user_id=$1 AND job_id=$2 AND provider='Telegraph' AND request_fingerprint=$3
+           AND service_description=$4 AND amount_usd=$5::numeric
+         ORDER BY created_at DESC LIMIT 1`,
+        [args.ownerUserId, args.jobId, args.requestFingerprint, description, amountUsd],
+      );
+      const status = review.rows[0]?.status;
+      if (status === 'REJECTED') return { review: 'rejected' };
+      if (status !== 'APPROVED') {
+        if (status !== 'PENDING') {
+          await client.query(
+            `INSERT INTO service_cost_review(id,owner_user_id,job_id,provider,service_description,amount_usd,threshold_usd,status,expires_at,request_fingerprint)
+             VALUES($1,$2,$3,'Telegraph',$4,$5::numeric,$6::numeric,'PENDING',now()+interval '30 minutes',$7)`,
+            [`scr_${randomUUID()}`, args.ownerUserId, args.jobId, description, amountUsd, thresholdUsd, args.requestFingerprint],
+          );
+        }
+        return { review: 'required' };
+      }
+    }
+
     const id = `tpay_${randomUUID()}`;
     await client.query(
       `INSERT INTO telegraph_service_payment(id,owner_user_id,job_id,task_id,capability_id,implementation_id,service_id,request_fingerprint,payment_network,asset_address,pay_to,payer_address,amount_atomic,status)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'reserved')`,
       [id,args.ownerUserId,args.jobId,args.taskId,args.capabilityId,args.implementationId,args.serviceId,args.requestFingerprint,TELEGRAPH_PAYMENT_NETWORK,args.requirement.asset,args.requirement.payTo,args.payerAddress,args.requirement.amount],
     );
-    return id;
+    return { reservationId: id };
   });
+  if (outcome.review === 'required') throw new Error('TELEGRAPH_SERVICE_COST_REVIEW_REQUIRED');
+  if (outcome.review === 'rejected') throw new Error('TELEGRAPH_SERVICE_COST_REVIEW_REJECTED');
+  if (!outcome.reservationId) throw new Error('TELEGRAPH_PAYMENT_RESERVATION_FAILED');
+  return outcome.reservationId;
 }
 
 async function updateServicePayment(args: {

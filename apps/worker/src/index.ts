@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { listCanonicalCapabilities } from '@agent-place/capabilities';
 import { addMessage, createConversation, getIntelligenceContext } from '@agent-place/context';
-import { closeDatabasePool, getDatabasePool } from '@agent-place/db';
+import { closeDatabasePool, getDatabasePool, recordRuntimeHeartbeat } from '@agent-place/db';
 import { createFinancialAction, observePendingTransactionAttempts, prepareFinancialAction } from '@agent-place/execution';
 import { verifyConfirmedTransactionAttempts } from '@agent-place/verification';
 import {
@@ -35,7 +35,8 @@ import {
   type DurableRouteDecision,
   type RouteProposal,
 } from '@agent-place/router';
-import { defineService, parseEnvironmentContract } from '@agent-place/shared';
+import { createTraceId, defineService, parseEnvironmentContract } from '@agent-place/shared';
+import { createServiceLogger } from '@agent-place/observability';
 import { getWorkerCatalogVersions, listWorkerCatalog } from '@agent-place/workers';
 import { collectRoutedIntelligenceWithFallback, intelligenceEvidencePrompt, type IntelligenceSubject } from '@agent-place/intelligence';
 import {
@@ -49,15 +50,34 @@ import {
 export const service = defineService({
   name: 'agent-place-worker',
   runtimeClass: 'worker',
-  version: '0.15.0',
-  milestone: 12,
+  version: '0.17.0',
+  milestone: 14,
 });
 
+const logger = createServiceLogger(service.name);
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const pollMs = Math.max(500, Number.parseInt(process.env.AI_WORKER_POLL_MS ?? '1500', 10) || 1500);
 let stopping = false;
 const environmentContract = parseEnvironmentContract(process.env);
 const deploymentEnvironment = environmentContract.environment;
+const heartbeatInstanceId = process.env.RAILWAY_REPLICA_ID?.trim() || `worker:${process.pid}:${randomUUID()}`;
+async function heartbeat(): Promise<void> {
+  await recordRuntimeHeartbeat({
+    instanceId: heartbeatInstanceId,
+    serviceName: service.name,
+    runtimeClass: 'worker',
+    version: service.version,
+    milestone: service.milestone,
+    metadata: { deploymentEnvironment },
+  }).catch((error: unknown) => logger.warn('Worker heartbeat failed', { error: error instanceof Error ? error.message : String(error) }));
+}
+
+async function heartbeatLoop(): Promise<void> {
+  while (!stopping) {
+    await heartbeat();
+    await sleep(30_000);
+  }
+}
 
 const decisionSchema = {
   type: 'object',
@@ -957,10 +977,10 @@ async function transactionObservationLoop(): Promise<void> {
     try {
       const result = await observePendingTransactionAttempts(25);
       if (result.confirmed || result.reverted || result.unknown) {
-        process.stdout.write(`${JSON.stringify({ level: 'info', service: service.name, message: 'Transaction observation pass', ...result })}\n`);
+        logger.info('Transaction observation pass', { ...result });
       }
     } catch (error) {
-      process.stderr.write(`${JSON.stringify({ level: 'error', service: service.name, message: 'Transaction observation failed', error: error instanceof Error ? error.message : String(error) })}\n`);
+      logger.error('Transaction observation failed', { error: error instanceof Error ? error.message : String(error) });
     }
     await sleep(observationPollMs);
   }
@@ -972,27 +992,28 @@ async function settlementVerificationLoop(): Promise<void> {
     try {
       const result = await verifyConfirmedTransactionAttempts(25);
       if (result.verified || result.notVerified || result.unknown) {
-        process.stdout.write(`${JSON.stringify({ level: 'info', service: service.name, message: 'Settlement verification pass', ...result })}\n`);
+        logger.info('Settlement verification pass', { ...result });
       }
     } catch (error) {
-      process.stderr.write(`${JSON.stringify({ level: 'error', service: service.name, message: 'Settlement verification failed', error: error instanceof Error ? error.message : String(error) })}\n`);
+      logger.error('Settlement verification failed', { error: error instanceof Error ? error.message : String(error) });
     }
     await sleep(verificationPollMs);
   }
 }
 
 async function loop(): Promise<void> {
-  process.stdout.write(`${JSON.stringify({ level: 'info', service: service.name, message: 'AgentPlace worker started', version: service.version })}\n`);
+  logger.info('AgentPlace worker started', { version: service.version, milestone: service.milestone, pollMs });
   while (!stopping) {
     const task = await claimNextIntelligenceTask().catch((error: unknown) => {
-      process.stderr.write(`${JSON.stringify({ level: 'error', service: service.name, message: 'Task claim failed', error: error instanceof Error ? error.message : String(error) })}\n`);
+      logger.error('Task claim failed', { error: error instanceof Error ? error.message : String(error) });
       return null;
     });
     if (!task) { await sleep(pollMs); continue; }
-    process.stdout.write(`${JSON.stringify({ level: 'info', service: service.name, taskId: task.id, providerPreference: task.providerPreference, attempt: task.attempts, message: 'Intelligence task claimed' })}\n`);
+    const traceId = createTraceId();
+    logger.info('Intelligence task claimed', { providerPreference: task.providerPreference, attempt: task.attempts }, { traceId, taskId: task.id, ...(task.jobId ? { jobId: task.jobId } : {}) });
     try {
       await processTask(task);
-      process.stdout.write(`${JSON.stringify({ level: 'info', service: service.name, taskId: task.id, message: 'Intelligence task completed' })}\n`);
+      logger.info('Intelligence task completed', { attempt: task.attempts }, { traceId, taskId: task.id, ...(task.jobId ? { jobId: task.jobId } : {}) });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await failIntelligenceTask(task.id, message).catch(() => undefined);
@@ -1016,7 +1037,7 @@ async function loop(): Promise<void> {
           ? 'AgentPlace could not complete this intelligence run after its permitted attempts. This run has stopped, and your request is saved. Check task status or choose another available model for a new request.'
           : 'AgentPlace could not complete this intelligence attempt. Your request is saved and the Worker will retry within its configured limit.';
       await addAssistantMessage(task.ownerUserId, task.conversationId, response, undefined, task.jobId, `msg_task_failure_${task.id}_${task.attempts}`).catch(() => undefined);
-      process.stderr.write(`${JSON.stringify({ level: 'error', service: service.name, taskId: task.id, attempt: task.attempts, final: isFinalAttempt, message: 'Intelligence task failed', error: message })}\n`);
+      logger.error('Intelligence task failed', { attempt: task.attempts, final: isFinalAttempt, error: message }, { traceId, taskId: task.id, ...(task.jobId ? { jobId: task.jobId } : {}) });
     }
   }
 }
@@ -1024,5 +1045,5 @@ async function loop(): Promise<void> {
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { stopping = true; });
 
 if (process.env.NODE_ENV !== 'test') {
-  void Promise.all([loop(), transactionObservationLoop(), settlementVerificationLoop()]).finally(async () => { await closeDatabasePool(); });
+  void Promise.all([loop(), heartbeatLoop(), transactionObservationLoop(), settlementVerificationLoop()]).finally(async () => { await closeDatabasePool(); });
 }

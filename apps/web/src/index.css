@@ -112,3 +112,53 @@ body {
   scrollbar-width: thin;
   scrollbar-color: #1c1c30 transparent;
 }
+
+/* M14 launch-readiness accessibility and mobile behavior. */
+.agentplace-skip-link {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 100;
+  transform: translateY(-180%);
+  border: 1px solid #4c82f5;
+  border-radius: 0.5rem;
+  background: #141428;
+  color: #dde0ef;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.agentplace-skip-link:focus { transform: translateY(0); }
+
+:where(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid #6394f7;
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  button, [role='button'], summary { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 767px) {
+  [data-page-scroll], [data-workspace-scroll] {
+    scrollbar-gutter: auto;
+  }
+  .research-markdown table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .research-markdown pre {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}

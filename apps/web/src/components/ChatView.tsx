@@ -444,7 +444,7 @@ function BridgeQuoteCard({ jobId, convId }: { jobId?: string; convId: string }) 
         </div>
 
         <p className="text-[10px] text-text-dim mt-3">
-          Provider: {quote.provider ?? 'Across · prototype route'}
+          Provider: {quote.provider ?? 'Provider not reported'}
         </p>
       </div>
     </div>
@@ -726,6 +726,7 @@ export function ChatView() {
   // perps-action-trigger card
   const perpsCardMsg = [...conv.messages].reverse().find((m) => m.uiCard === 'perps-action-trigger');
   const showPerpsCard =
+    WEB_RUNTIME_SETTINGS.dataMode === 'fixtures' &&
     !!perpsCardMsg &&
     !isStreaming &&
     !conv.messages.some((m) => m.role === 'user' && m.timestamp > perpsCardMsg.timestamp);

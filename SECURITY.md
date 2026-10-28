@@ -35,3 +35,12 @@ If private reporting is temporarily unavailable, contact the repository owner th
 - A wallet-returned transaction hash is independently read from configured RPCs and compared with the exact approved `from`, `to`, calldata and value before confirmation is trusted.
 - An ambiguous submission/observation state never triggers automatic resubmission. `UNKNOWN` means resolve the original transaction state first.
 - Transaction confirmation is not an independently verified economic outcome and must not be labeled `Completed · AgentPlace Verified` in M9.
+
+
+## M14 launch-readiness controls
+
+- `/health` is liveness; `/ready` exposes database/auth/background-runtime readiness without secrets.
+- API/Worker/Scheduler logs use structured correlation identifiers and redact fields whose names indicate credentials, private keys, session tokens, signatures or raw transactions.
+- The repository `security:secrets` gate rejects secret-bearing filenames and high-confidence committed credential patterns.
+- GitHub CI runs the full AgentPlace check; CodeQL, dependency review and Dependabot provide additional repository security coverage.
+- Service Cost Review is a service-spend decision only. Approval does not create a Mandate, Authority Grant, wallet permission or Financial Action approval.

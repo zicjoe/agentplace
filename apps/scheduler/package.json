@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/scheduler",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -21,6 +21,7 @@
     "@agent-place/db": "workspace:*",
     "@agent-place/routines": "workspace:*",
     "@agent-place/shared": "workspace:*",
-    "@agent-place/billing": "workspace:*"
+    "@agent-place/billing": "workspace:*",
+    "@agent-place/observability": "workspace:*"
   }
 }

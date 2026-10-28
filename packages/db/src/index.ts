@@ -97,3 +97,43 @@ export async function closeDatabasePool(): Promise<void> {
   pool = null;
   await current.end();
 }
+
+export type RuntimeHeartbeatClass = 'api' | 'worker' | 'scheduler';
+export interface RuntimeHeartbeatInput {
+  instanceId: string;
+  serviceName: string;
+  runtimeClass: RuntimeHeartbeatClass;
+  version: string;
+  milestone: number;
+  status?: 'ok' | 'degraded';
+  metadata?: Readonly<Record<string, unknown>>;
+}
+
+export async function recordRuntimeHeartbeat(input: RuntimeHeartbeatInput): Promise<void> {
+  await getDatabasePool().query(
+    `INSERT INTO runtime_heartbeat(instance_id,service_name,runtime_class,version,milestone,status,metadata,started_at,last_seen_at)
+     VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,now(),now())
+     ON CONFLICT(instance_id) DO UPDATE SET service_name=excluded.service_name,runtime_class=excluded.runtime_class,version=excluded.version,milestone=excluded.milestone,status=excluded.status,metadata=excluded.metadata,last_seen_at=now()`,
+    [input.instanceId,input.serviceName,input.runtimeClass,input.version,input.milestone,input.status??'ok',JSON.stringify(input.metadata??{})],
+  );
+}
+
+export interface RuntimeClassReadiness {
+  runtimeClass: RuntimeHeartbeatClass;
+  status: 'ok' | 'stale' | 'unknown';
+  lastSeenAt?: string;
+  serviceName?: string;
+  version?: string;
+  milestone?: number;
+}
+
+export async function getRuntimeClassReadiness(runtimeClass: RuntimeHeartbeatClass, maxAgeSeconds = 120): Promise<RuntimeClassReadiness> {
+  const result = await getDatabasePool().query<{service_name:string;version:string;milestone:number;last_seen_at:Date;fresh:boolean}>(
+    `SELECT service_name,version,milestone,last_seen_at,last_seen_at > now()-($2::text||' seconds')::interval AS fresh
+     FROM runtime_heartbeat WHERE runtime_class=$1 ORDER BY last_seen_at DESC LIMIT 1`,
+    [runtimeClass,String(Math.max(10,Math.min(3600,maxAgeSeconds)))],
+  );
+  const row=result.rows[0];
+  if(!row)return {runtimeClass,status:'unknown'};
+  return {runtimeClass,status:row.fresh?'ok':'stale',lastSeenAt:row.last_seen_at.toISOString(),serviceName:row.service_name,version:row.version,milestone:row.milestone};
+}

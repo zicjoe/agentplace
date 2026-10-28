@@ -14,6 +14,7 @@ import { scrollConversationToEnd } from '../platform/scroll';
 import { AgentPlaceMark } from './AgentPlaceBrand';
 import { makeJobRecurring } from '../platform/routineApi';
 import { fetchJobCosts, money, type JobCostSnapshot } from '../platform/billingApi';
+import { ServiceCostReviewPanel } from './ServiceCostReviewPanel';
 
 type JobWorkspaceTab = 'conversation' | 'team' | 'result' | 'activity';
 
@@ -219,6 +220,7 @@ function FinancialJobWorkspace() {
         </div>
 
         <JobCostPanel jobId={job.id} />
+        <ServiceCostReviewPanel jobId={job.id} />
 
         <div className="flex gap-0 mt-4 border-b border-border -mb-px">
           {tabs.map((tab) => (
@@ -678,6 +680,7 @@ export function JobWorkspace() {
         </div>
 
         <JobCostPanel jobId={job.id} />
+        <ServiceCostReviewPanel jobId={job.id} />
 
         {/* Tabs */}
         <div className="flex gap-0 mt-4 border-b border-border -mb-px">

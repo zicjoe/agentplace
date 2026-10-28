@@ -45,7 +45,7 @@ test('fixed application shell keeps scrolling inside the active route', async ()
     read('apps/web/src/components/Shell.tsx'),
     read('apps/web/src/index.css'),
   ]);
-  assert.match(shell, /<main className="flex-1 min-h-0 min-w-0 overflow-hidden">/);
+  assert.match(shell, /<main[^>]*className="flex-1 min-h-0 min-w-0 overflow-hidden"[^>]*>/);
   assert.match(css, /#root[\s\S]*height: 100dvh/);
   assert.match(css, /\[data-page-scroll\][\s\S]*scrollbar-gutter: stable/);
 });

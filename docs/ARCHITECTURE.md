@@ -28,9 +28,11 @@ The browser also has a typed API boundary. Runtime health/configuration comes fr
 
 The closer a component gets to moving money, the less arbitrary intelligence it is allowed to exercise.
 
-## Initial request lineage
+## Request lineage and runtime readiness
 
-Every meaningful operation must carry a trace ID across API, planning, Worker, capability, provider, execution and verification boundaries. Structured audit and outbox records preserve the same lineage.
+The API now emits `x-agent-place-request-id` and `x-agent-place-trace-id`, and API/Worker/Scheduler runtimes use structured redacted logs. Worker tasks carry task/job correlation in logs. Durable Worker/Scheduler heartbeats let `/ready` distinguish API liveness from degraded background execution.
+
+Trace coverage is intentionally additive: durable Job/Action/transaction IDs remain the authoritative cross-process economic lineage, while request/trace IDs improve operational diagnosis without becoming financial authority.
 
 ## Data direction
 

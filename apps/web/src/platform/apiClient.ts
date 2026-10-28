@@ -1,4 +1,4 @@
-import type { ApiHealthResponse, PublicRuntimeConfig } from '@agent-place/shared';
+import type { ApiHealthResponse, ApiReadinessResponse, PublicRuntimeConfig } from '@agent-place/shared';
 import { WEB_RUNTIME_SETTINGS } from './runtime';
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -20,4 +20,8 @@ export function getApiHealth(signal?: AbortSignal): Promise<ApiHealthResponse> {
 
 export function getPublicRuntimeConfig(signal?: AbortSignal): Promise<PublicRuntimeConfig> {
   return getJson<PublicRuntimeConfig>('/api/v1/config', signal);
+}
+
+export function getApiReadiness(signal?: AbortSignal): Promise<ApiReadinessResponse> {
+  return getJson<ApiReadinessResponse>('/ready', signal);
 }

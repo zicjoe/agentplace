@@ -4,9 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   schedule:
-    - cron: '23 4 * * 1'
+    - cron: '17 4 * * 1'
 
 permissions:
   contents: read
@@ -14,12 +13,16 @@ permissions:
 
 jobs:
   analyze:
-    name: Analyze JavaScript / TypeScript
+    name: TypeScript security analysis
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
-      - uses: github/codeql-action/analyze@v3
+          queries: security-extended
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4

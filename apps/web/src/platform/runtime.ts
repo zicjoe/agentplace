@@ -1,4 +1,4 @@
-import type { PublicRuntimeConfig } from '@agent-place/shared';
+import type { ApiReadinessResponse, PublicRuntimeConfig } from '@agent-place/shared';
 
 export type WebDataMode = 'fixtures' | 'api';
 
@@ -11,8 +11,9 @@ export interface WebRuntimeSettings {
 }
 
 export interface RuntimeConnectionState {
-  readonly status: 'checking' | 'ready' | 'unavailable';
+  readonly status: 'checking' | 'ready' | 'degraded' | 'unavailable';
   readonly publicConfig: PublicRuntimeConfig | null;
+  readonly readiness: ApiReadinessResponse | null;
   readonly error: string | null;
 }
 

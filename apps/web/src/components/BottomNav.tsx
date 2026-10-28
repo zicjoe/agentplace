@@ -195,6 +195,8 @@ export function BottomNav() {
                   setShowMore(false);
                 }
               }}
+              aria-current={active ? 'page' : undefined}
+              aria-label={item.label}
               className={`flex-1 flex flex-col items-center gap-1 py-2 rounded transition-colors ${
                 active ? 'text-primary' : 'text-text-muted hover:text-text-sub'
               }`}

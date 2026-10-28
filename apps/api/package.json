@@ -1,6 +1,6 @@
 {
   "name": "@agent-place/api",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -38,6 +38,7 @@
     "@agent-place/marketplace": "workspace:*",
     "@agent-place/creator-sdk": "workspace:*",
     "@agent-place/billing": "workspace:*",
-    "@agent-place/security": "workspace:*"
+    "@agent-place/security": "workspace:*",
+    "@agent-place/observability": "workspace:*"
   }
 }

@@ -62,6 +62,9 @@ importers:
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
+      '@agent-place/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@agent-place/router':
         specifier: workspace:*
         version: link:../../packages/router
@@ -89,6 +92,9 @@ importers:
       '@agent-place/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@agent-place/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@agent-place/routines':
         specifier: workspace:*
         version: link:../../packages/routines
@@ -156,6 +162,9 @@ importers:
       '@agent-place/models':
         specifier: workspace:*
         version: link:../../packages/models
+      '@agent-place/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@agent-place/router':
         specifier: workspace:*
         version: link:../../packages/router

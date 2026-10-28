@@ -39,3 +39,5 @@ M12 Workflow Studio continuity adds `0020_creator_workflow_builder_conversations
 
 ### 0021_billing_security_completion.sql
 Adds M13 append-only service billing ledger/usage events, deterministic spend controls, marketplace offers/entitlements/subscriptions, creator gross-revenue attribution, testnet-only USDC service-payment evidence and owner-scoped Worker/capability quarantine records. Billing service balance is never wallet capital and commercial acquisition never creates authority.
+
+M14 adds `0023_launch_readiness_observability.sql` for non-financial Worker/Scheduler runtime heartbeat state used by `/ready`.

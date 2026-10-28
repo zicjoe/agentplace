@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.17.0 — M14 Production Reconciliation + Launch Readiness (candidate)
+
+- Split API liveness (`/health`) from dependency-aware production readiness (`/ready`) and added durable Worker/Scheduler heartbeats that remain fresh during long-running work.
+- Added structured, correlation-aware, secret-redacted API/Worker/Scheduler logging without placing signing material or user secrets in observability payloads.
+- Added an explicit Job-level Service Cost Review for paid external service spend above the user's single-Job threshold; approval is bound to the exact paid request and never grants wallet authority.
+- Added production degraded-state presentation, skip-link/focus/touch/reduced-motion accessibility foundations, mobile evidence overflow handling and additional prototype leakage guards.
+- Added GitHub CI, CodeQL, dependency review, Dependabot and a repository secret-file/high-confidence credential guard.
+- Added launch-readiness, deployment and production acceptance documentation while preserving all frozen M13 billing/security behavior.
+- Mainnet execution and Mainnet autonomy remain disabled by default.
+
 ## 0.16.0 — M13 Billing + Security Completion (candidate)
 
 - Emergency stop now carries the exact visible financial Action into Security, deterministically stops that owned Action under lock before sweeping other cancellable actions, and reports identity/status mismatches instead of a misleading zero-action result.
