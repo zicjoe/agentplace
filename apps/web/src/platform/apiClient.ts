@@ -11,6 +11,12 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   if (!response.ok) {
     throw new Error(`AgentPlace API request failed (${response.status})`);
   }
+
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    throw new Error(`AgentPlace API returned a non-JSON response for ${path}`);
+  }
+
   return (await response.json()) as T;
 }
 

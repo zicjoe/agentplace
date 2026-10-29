@@ -93,6 +93,19 @@ test('M14 service-cost decisions are durable and queryable by Job',()=>{
   token(api,'decideServiceCostReview');
 });
 
+
+
+test('M14 web routing proxies health and readiness before the SPA fallback',()=>{
+  const vercel=readFileSync('apps/web/vercel.json','utf8');
+  const vite=readFileSync('apps/web/vite.config.ts','utf8');
+  const apiClient=readFileSync('apps/web/src/platform/apiClient.ts','utf8');
+  token(vercel,'"source": "/health"');
+  token(vercel,'"source": "/ready"');
+  assert.ok(vercel.indexOf('"source": "/ready"') < vercel.indexOf('"source": "/(.*)"'));
+  token(vite,"'/health'"); token(vite,"'/ready'");
+  token(apiClient,'AgentPlace API returned a non-JSON response for ${path}');
+});
+
 test('M14 browser exposes degraded runtime truth instead of inventing availability',()=>{
   const provider=readFileSync('apps/web/src/platform/RuntimeProvider.tsx','utf8');
   token(provider,'getApiReadiness');

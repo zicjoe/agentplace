@@ -6,6 +6,14 @@
       "destination": "https://agent-placeapi-production.up.railway.app/api/:path*"
     },
     {
+      "source": "/health",
+      "destination": "https://agent-placeapi-production.up.railway.app/health"
+    },
+    {
+      "source": "/ready",
+      "destination": "https://agent-placeapi-production.up.railway.app/ready"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

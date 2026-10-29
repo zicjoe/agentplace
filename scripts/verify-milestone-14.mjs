@@ -25,6 +25,12 @@ if(!String(root.scripts.check).includes('security:secrets'))throw new Error('M14
 
 const api=readFileSync('apps/api/src/server.ts','utf8');
 for(const token of ["url.pathname === '/health'","url.pathname === '/ready'",'x-agent-place-request-id','x-agent-place-trace-id','getRuntimeClassReadiness'])if(!api.includes(token))throw new Error(`M14 readiness/API missing ${token}`);
+const vercel=readFileSync('apps/web/vercel.json','utf8');
+for(const token of ['"source": "/health"','"source": "/ready"'])if(!vercel.includes(token))throw new Error(`M14 Vercel readiness routing missing ${token}`);
+if(vercel.indexOf('"source": "/ready"')>vercel.indexOf('"source": "/(.*)"'))throw new Error('M14 /ready rewrite must precede the SPA fallback.');
+const vite=readFileSync('apps/web/vite.config.ts','utf8');
+for(const token of ["'/health'","'/ready'"])if(!vite.includes(token))throw new Error(`M14 Vite readiness proxy missing ${token}`);
+
 const migration=readFileSync('packages/db/migrations/0023_launch_readiness_observability.sql','utf8');
 if(!migration.includes('runtime_heartbeat'))throw new Error('M14 runtime heartbeat persistence missing.');
 

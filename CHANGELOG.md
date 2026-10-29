@@ -1,4 +1,5 @@
 # Changelog
+- Fixed Vercel/Vite readiness routing so `/ready` and `/health` reach the API instead of the SPA HTML fallback; non-JSON API responses now fail with a clear runtime error.
 
 ## 0.17.0 — M14 Production Reconciliation + Launch Readiness (candidate)
 
