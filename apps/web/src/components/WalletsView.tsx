@@ -874,7 +874,7 @@ function WalletRow({ wallet }: { wallet: WalletResource }) {
   return (
     <button
       onClick={() => dispatch({ type: 'SET_ACTIVE_WALLET', id: wallet.id })}
-      className="w-full text-left border border-border rounded-lg bg-panel px-5 py-4 hover:bg-panel-raised hover:border-border transition-colors group"
+      className="w-full min-w-0 overflow-hidden text-left border border-border rounded-lg bg-panel px-4 sm:px-5 py-4 hover:bg-panel-raised hover:border-border transition-colors group"
     >
       <div className="flex items-start gap-3">
         <div className="w-9 h-9 rounded bg-panel-raised border border-border flex items-center justify-center shrink-0">
@@ -897,7 +897,7 @@ function WalletRow({ wallet }: { wallet: WalletResource }) {
               {isDisconnected ? 'Disconnected' : cfg.badge}
             </span>
           </div>
-          <p className="text-xs text-text-muted font-mono mt-0.5">{wallet.address}</p>
+          <p className="max-w-full truncate text-xs text-text-muted font-mono mt-0.5" title={wallet.address}>{wallet.address}</p>
           <p className="text-xs text-text-sub mt-1">{cfg.tagline}</p>
           {primaryBalance && (
             <p className="text-xs text-text-muted mt-1">{primaryBalance.amount} {primaryBalance.symbol} · {primaryBalance.usdValue}</p>
@@ -915,11 +915,11 @@ function WalletRow({ wallet }: { wallet: WalletResource }) {
 
 function ModeExplainer() {
   return (
-    <div className="grid grid-cols-3 gap-3 mb-6">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 mb-5 sm:mb-6">
       {(Object.entries(MODE_CONFIG) as [WalletMode, typeof MODE_CONFIG[WalletMode]][]).map(([mode, cfg]) => (
-        <div key={mode} className="border border-border-dim rounded-lg bg-panel px-3 py-3">
+        <div key={mode} className="min-w-0 border border-border-dim rounded-lg bg-panel px-3 py-3">
           <p className="text-xs font-medium text-text mb-1">{cfg.label}</p>
-          <p className="text-[10px] text-text-muted leading-relaxed">{cfg.tagline}</p>
+          <p className="text-[11px] sm:text-[10px] text-text-muted leading-relaxed">{cfg.tagline}</p>
         </div>
       ))}
     </div>
@@ -982,17 +982,17 @@ export function WalletsView() {
   return (
     <>
       <div className="h-full min-h-0 flex flex-col bg-bg overflow-hidden">
-        <div className="px-6 pt-8 pb-0 shrink-0">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h1 className="text-2xl font-semibold text-text tracking-tight">Wallets & Accounts</h1>
-              <p className="text-sm text-text-sub mt-0.5">
+        <div className="px-4 sm:px-6 pt-6 sm:pt-8 pb-0 shrink-0">
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-5">
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-semibold text-text tracking-tight">Wallets & Accounts</h1>
+              <p className="text-sm text-text-sub mt-0.5 leading-relaxed">
                 Three ways AgentPlace can work with your financial resources
               </p>
             </div>
             <button
               onClick={() => setShowAdd(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded text-text-sub hover:text-text hover:bg-panel transition-colors"
+              className="inline-flex w-full sm:w-auto shrink-0 items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 text-xs font-medium border border-border rounded text-text-sub hover:text-text hover:bg-panel transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 4v16m8-8H4" />
@@ -1002,8 +1002,8 @@ export function WalletsView() {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-8">
-          <div className="max-w-2xl">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 pb-8">
+          <div className="w-full max-w-2xl min-w-0">
             {wallets.length === 0 ? (
               <div className="py-12 text-center">
                 <ModeExplainer />

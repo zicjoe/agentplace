@@ -1,4 +1,5 @@
 # Changelog
+- Fixed mobile Wallets & Accounts reconciliation: mode cards stack safely, add-wallet controls remain reachable, long wallet identifiers truncate inside cards, and the visible environment badge now defaults from deployed runtime truth instead of a stale Mainnet fixture default.
 - Fixed Vercel/Vite readiness routing so `/ready` and `/health` reach the API instead of the SPA HTML fallback; non-JSON API responses now fail with a clear runtime error.
 
 ## 0.17.0 — M14 Production Reconciliation + Launch Readiness (candidate)

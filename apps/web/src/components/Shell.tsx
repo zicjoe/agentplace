@@ -143,6 +143,7 @@ function MainContent() {
 export function Shell() {
   const state = useAppState();
   const dispatch = useDispatch();
+  const { connection } = useRuntime();
   const [isMobile, setIsMobile] = useState(
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
@@ -154,6 +155,15 @@ export function Shell() {
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
+
+  useEffect(() => {
+    const deploymentEnvironment = connection.publicConfig?.deploymentEnvironment ?? connection.readiness?.environment;
+    if (!deploymentEnvironment) return;
+    const defaultEnvironment = deploymentEnvironment === 'production-mainnet' || deploymentEnvironment === 'staging-mainnet-readonly'
+      ? 'mainnet'
+      : 'testnet';
+    dispatch({ type: 'SET_ENV', env: defaultEnvironment });
+  }, [connection.publicConfig?.deploymentEnvironment, connection.readiness?.environment, dispatch]);
 
   if (isMobile) {
     return (

@@ -14,6 +14,7 @@ const telegraph=readFileSync('packages/telegraph/src/runtime.ts','utf8');
 const serviceCost=readFileSync('apps/web/src/components/ServiceCostReviewPanel.tsx','utf8');
 const job=readFileSync('apps/web/src/components/JobWorkspace.tsx','utf8');
 const shell=readFileSync('apps/web/src/components/Shell.tsx','utf8');
+const wallets=readFileSync('apps/web/src/components/WalletsView.tsx','utf8');
 const css=readFileSync('apps/web/src/index.css','utf8');
 const ci=readFileSync('.github/workflows/ci.yml','utf8');
 const codeql=readFileSync('.github/workflows/codeql.yml','utf8');
@@ -111,6 +112,21 @@ test('M14 browser exposes degraded runtime truth instead of inventing availabili
   token(provider,'getApiReadiness');
   token(provider,"status: readiness?.status === 'ready' ? 'ready' : 'degraded'");
   token(shell,'AgentPlace is running in a degraded state.');
+});
+
+
+test('M14 mobile Wallets surface collapses safely and never overflows long wallet identifiers',()=>{
+  token(wallets,'grid grid-cols-1 sm:grid-cols-3');
+  token(wallets,'w-full sm:w-auto');
+  token(wallets,'px-4 sm:px-6');
+  token(wallets,'max-w-full truncate');
+  token(wallets,'min-w-0 overflow-hidden');
+});
+
+test('M14 shell defaults the visible trust environment from deployed runtime truth',()=>{
+  token(shell,'connection.publicConfig?.deploymentEnvironment ?? connection.readiness?.environment');
+  token(shell,"deploymentEnvironment === 'production-mainnet' || deploymentEnvironment === 'staging-mainnet-readonly'");
+  token(shell,"dispatch({ type: 'SET_ENV', env: defaultEnvironment })");
 });
 
 test('M14 accessibility baseline includes skip-link, focus, touch and reduced-motion handling',()=>{
