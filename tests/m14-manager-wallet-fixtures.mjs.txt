@@ -1,0 +1,56 @@
+let passed=0;
+function test(_name, fn){fn();passed++;}
+import assert from 'node:assert/strict';
+import { resolveManagerWalletResearch } from './apps/worker/src/managerWalletContext.ts';
+const wallet=(name,mode='watch-only',id=name)=>({id,name,mode,namespace:'eip155',address:'0x'+(id==='zic'?'1':'2').repeat(40)});
+const zic=wallet('zic');
+const secondary=wallet('Backup watch');
+const connected=wallet('My Wallet','connected');
+const msg=(role,content)=>({role,content});
+
+test('manager resolves the only eligible saved watch-only address, never asks user to paste it',()=>{
+ const r=resolveManagerWalletResearch('Check the portfolio of my watch-only wallet', [msg('user','Check the portfolio of my watch-only wallet')],[zic,connected]);
+ assert.equal(r.kind,'resolved');assert.equal(r.wallet.id,'zic');assert.match(r.request,/address=0x111111/);assert.match(r.request,/Read-only portfolio research/);
+});
+test('multiple matching wallets produce a numbered, owner-scoped clarification',()=>{
+ const request='Check my watch-only wallet portfolio';
+ const r=resolveManagerWalletResearch(request,[msg('user',request)],[zic,secondary,connected]);
+ assert.equal(r.kind,'clarify');assert.match(r.message,/Which saved wallet/);assert.match(r.message,/1\. zic/);assert.match(r.message,/2\. Backup watch/);
+ assert.doesNotMatch(r.message,/My Wallet/);
+});
+test('a numbered follow-up resumes the original user goal without selecting a connected wallet',()=>{
+ const request='Check my watch-only wallet portfolio';
+ const question=resolveManagerWalletResearch(request,[msg('user',request)],[zic,secondary,connected]);
+ assert.equal(question.kind,'clarify');
+ const history=[msg('user',request),msg('manager',question.message),msg('user','the second one')];
+ const r=resolveManagerWalletResearch('the second one',history,[zic,secondary,connected]);
+ assert.equal(r.kind,'resolved');assert.equal(r.wallet.id,'Backup watch');assert.match(r.request,/Check my watch-only wallet portfolio/);
+});
+test('explicit name selection is exact and fail-closed for unknown wallet',()=>{
+ const r=resolveManagerWalletResearch('Check wallet named zic portfolio',[msg('user','Check wallet named zic portfolio')],[zic,secondary]);
+ assert.equal(r.kind,'resolved');assert.equal(r.wallet.id,'zic');
+ const missing=resolveManagerWalletResearch('Check wallet named phantom portfolio',[msg('user','Check wallet named phantom portfolio')],[zic,secondary]);
+ assert.equal(missing.kind,'clarify');assert.match(missing.message,/couldn't find/);
+});
+test('no watch-only address fails closed, no substitution with connected wallet',()=>{
+ const r=resolveManagerWalletResearch('Check my watch-only wallet portfolio',[msg('user','Check my watch-only wallet portfolio')],[connected]);
+ assert.equal(r.kind,'clarify');assert.match(r.message,/couldn't find an eligible watch-only/);
+});
+test('plain general research and financial instructions remain outside wallet research path',()=>{
+ assert.equal(resolveManagerWalletResearch('Research BONK',[msg('user','Research BONK')],[zic]).kind,'not-wallet-research');
+ assert.equal(resolveManagerWalletResearch('Transfer 1 USDC from my watch-only wallet',[msg('user','Transfer 1 USDC from my watch-only wallet')],[zic]).kind,'not-wallet-research');
+});
+test('network is never silently changed or guessed when explicitly supplied',()=>{
+ const req='Check my watch-only wallet portfolio on Arbitrum';
+ const r=resolveManagerWalletResearch(req,[msg('user',req)],[zic]);
+ assert.equal(r.kind,'resolved');assert.equal(r.network,'arbitrum');
+});
+
+test('a follow-up to a confirmed wallet Job retains the same verified wallet',()=>{
+ const request='Focus on stablecoins';
+ const history=[msg('user','Check my watch-only wallet portfolio'),msg('manager',`I started real read-only research. Wallet research target: ${zic.address}. Open Job.`),msg('user',request)];
+ const r=resolveManagerWalletResearch(request,history,[zic,connected]);
+ assert.equal(r.kind,'resolved');assert.equal(r.wallet.id,'zic');assert.match(r.request,/Focus on stablecoins/);
+});
+
+console.log(`wallet checks passed ${passed}`);

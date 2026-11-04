@@ -1,4 +1,5 @@
 # Changelog
+- M14 intelligence acceptance candidate: Manager wallet/portfolio requests now resolve owner-scoped saved addresses before model planning, ask and resume wallet disambiguation, pin exact read-only wallet intelligence, preserve bounded conversation context, and avoid incompatible EVM/Solana Alchemy portfolio queries. Telegraph remains deferred.
 - Fixed mobile Wallets & Accounts reconciliation: mode cards stack safely, add-wallet controls remain reachable, long wallet identifiers truncate inside cards, and the visible environment badge now defaults from deployed runtime truth instead of a stale Mainnet fixture default.
 - Fixed Vercel/Vite readiness routing so `/ready` and `/health` reach the API instead of the SPA HTML fallback; non-JSON API responses now fail with a clear runtime error.
 
