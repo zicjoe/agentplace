@@ -372,3 +372,8 @@
 - Added the missing canonical `asset.transfer` capability so it appears in Mandate/Authority editing.
 - Aligned M9 direct-transfer preparation with the Execution Operator worker contract, which already uses `asset.transfer`.
 - Added migration `0014_transfer_capability_alignment.sql`; no custody/signing behavior changed.
+
+### M14 intelligence intervention — account-wide Manager context (candidate)
+- Added bounded owner-scoped Worker, Job, Routine and Workflow context to authenticated Manager planning.
+- Added deterministic Worker naming, ambiguity clarification, multi-turn numbered responses, and selected-Worker routing preference with fail-closed eligibility.
+- Introduced cross-object regression tests and a production acceptance contract; no change to Mainnet execution or autonomy.
