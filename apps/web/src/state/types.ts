@@ -208,6 +208,17 @@ export interface JobResult {
   label: 'Research complete';
 }
 
+export interface JobCollaborationStep {
+  id:string;
+  kind:'provider-evidence'|'specialist-research'|'lead-synthesis';
+  workerId?:string;
+  purpose:string;
+  dependsOn:string[];
+  status:'pending'|'running'|'completed'|'failed'|'skipped';
+  lastErrorCode?:string;
+  sourceCount:number;
+}
+
 export interface Job {
   id: string;
   title: string;
@@ -217,6 +228,7 @@ export interface Job {
   leadWorkerName: string;
   supportingWorkerIds: string[];
   supportingWorkerNames: string[];
+  orchestrationSteps?: JobCollaborationStep[];
   originWorkerId?: string;
   currentStage: string;
   stages: JobProgressStage[];

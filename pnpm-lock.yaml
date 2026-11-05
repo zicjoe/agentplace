@@ -138,6 +138,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@agent-place/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@agent-place/verification':
         specifier: workspace:*
         version: link:../../packages/verification

@@ -29,6 +29,7 @@
     "@agent-place/router": "workspace:*",
     "@agent-place/intelligence": "workspace:*",
     "@agent-place/verification": "workspace:*",
-    "@agent-place/observability": "workspace:*"
+    "@agent-place/observability": "workspace:*",
+    "@agent-place/billing": "workspace:*"
   }
 }

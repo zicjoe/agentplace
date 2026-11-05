@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import { buildCollaborationPlan, checkCollaborationDependencies } from './apps/worker/src/collaborationPlan.ts';
+
+const two=buildCollaborationPlan({leadWorkerId:'w-researcher',supportingWorkerIds:['w-memescout','w-smartmoney'],remainingModelCalls:2});
+assert.equal(two.participatingSpecialistIds.length,1);
+assert.deepEqual(two.participatingSpecialistIds,['w-memescout']);
+assert.deepEqual(two.skippedSpecialistIds,['w-smartmoney']);
+assert.equal(two.steps.at(-1).id,'lead-synthesis');
+assert.deepEqual(two.steps.at(-1).dependsOn,['provider-evidence','specialist-1','specialist-2']);
+assert.equal(checkCollaborationDependencies(two.steps),true);
+const none=buildCollaborationPlan({leadWorkerId:'a',supportingWorkerIds:['b'],remainingModelCalls:1});
+assert.deepEqual(none.participatingSpecialistIds,[]);
+assert.deepEqual(none.skippedSpecialistIds,['b']);
+assert.equal(checkCollaborationDependencies(none.steps),true);
+const three=buildCollaborationPlan({leadWorkerId:'l',supportingWorkerIds:['a','b','c','a','l'],remainingModelCalls:99});
+assert.deepEqual(three.participatingSpecialistIds,['a','b','c']);
+assert.equal(three.steps.length,5);
+const capped=buildCollaborationPlan({leadWorkerId:'l',supportingWorkerIds:['a','b','c'],remainingModelCalls:3,maxSpecialists:1});
+assert.deepEqual(capped.participatingSpecialistIds,['a']);
+assert.deepEqual(capped.skippedSpecialistIds,['b','c']);
+assert.equal(checkCollaborationDependencies([...two.steps,{id:'cycle',kind:'specialist-research',workerId:'z',purpose:'cycle',dependsOn:['cycle'],skipped:false}]),false);
+assert.equal(checkCollaborationDependencies([...two.steps,{id:'duplicate',kind:'specialist-research',workerId:'z',purpose:'dup',dependsOn:['missing'],skipped:false}]),false);
+console.log('collaboration plan runtime checks passed');

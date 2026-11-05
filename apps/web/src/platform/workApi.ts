@@ -46,6 +46,7 @@ interface ApiJob {
   status: 'PLANNED'|'RUNNING'|'PREPARING'|'AWAITING_APPROVAL'|'AUTHORIZED'|'SUBMITTED'|'CONFIRMING'|'SETTLING'|'VERIFYING'|'COMPLETED'|'RECOVERING'|'PAUSED'|'BLOCKED'|'FAILED_RECOVERABLE'|'FAILED_FINAL'|'REQUIRES_USER';
   environment: 'mainnet'|'testnet'; kind: 'research'|'operational'|'financial'; originType: 'user'|'worker'|'routine'|'agentplace';
   leadWorkerId: string; leadWorkerName: string; supportingWorkerIds: string[]; supportingWorkerNames: string[];
+  orchestrationSteps?: Array<{id:string;kind:'provider-evidence'|'specialist-research'|'lead-synthesis';workerId?:string;purpose:string;dependsOn:string[];status:'pending'|'running'|'completed'|'failed'|'skipped';lastErrorCode?:string;sources:Array<{url:string;title:string;provider:string}>}>;
   originWorkerId?: string; originConversationId?: string; jobConversationId?: string; originRoutineId?: string; routineRunId?: string; currentStage: string; stages: ApiJobStage[];
   createdAt: string; updatedAt: string;
 }
@@ -85,7 +86,10 @@ function fromApiStatus(status:ApiJob['status']):Job['status'] {
 function fromJob(value:ApiJob):Job {
   const out:Job = { id:value.id,title:value.title,goal:value.goal,status:fromApiStatus(value.status),leadWorkerId:value.leadWorkerId,leadWorkerName:value.leadWorkerName,
     supportingWorkerIds:value.supportingWorkerIds,supportingWorkerNames:value.supportingWorkerNames,currentStage:value.currentStage,
-    stages:value.stages.map(({id,label,status})=>({id,label,status})),kind:value.kind==='operational'?'research':value.kind,environment:value.environment,
+    stages:value.stages.map(({id,label,status})=>({id,label,status})),
+    ...(value.orchestrationSteps?{orchestrationSteps:value.orchestrationSteps.map(item=>({id:item.id,kind:item.kind,
+      ...(item.workerId?{workerId:item.workerId}:{}),purpose:item.purpose,dependsOn:item.dependsOn,status:item.status,
+      ...(item.lastErrorCode?{lastErrorCode:item.lastErrorCode}:{}),sourceCount:item.sources?.length??0}))}:{}),kind:value.kind==='operational'?'research':value.kind,environment:value.environment,
     createdAt:new Date(value.createdAt),updatedAt:new Date(value.updatedAt) };
   if (value.originWorkerId) out.originWorkerId=value.originWorkerId;
   if (value.originConversationId) out.originConversationId=value.originConversationId;

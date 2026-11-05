@@ -70,6 +70,16 @@ test('M14 structured logs carry correlation and redact secret-bearing fields',()
   token(scheduler,"logger.info('Routine scheduler pass'");
 });
 
+test('M14 Stage 3 Worker logs retain the claimed task trace across specialist execution and lease renewal',()=>{
+  token(worker,'async function processTask(task: IntelligenceTask, traceId: TraceId)');
+  token(worker,'await processTask(task, traceId)');
+  token(worker,'await executeResearch(task, context, decision, route, jobId, jobConversationId, traceId, previousReport)');
+  token(worker,'task,context,decision,route,jobId,jobConversationId,traceId,originalRequest');
+  token(worker,"logger.warn('Supporting Worker research unavailable',{errorCode:code},{traceId,taskId:task.id,jobId})");
+  token(worker,"logger.warn('Intelligence task lease lost', {attempt:task.attempts},{traceId,taskId:task.id})");
+  token(worker,"logger.warn('Intelligence task lease renewal failed',{error:error instanceof Error?error.message:String(error)},{traceId,taskId:task.id})");
+});
+
 test('M14 Service Cost Review is distinct from crypto authority',()=>{
   token(serviceCost,'Service Cost Review');
   assert.match(serviceCost,/does not approve a crypto transaction, grant wallet authority, or move your capital/i);

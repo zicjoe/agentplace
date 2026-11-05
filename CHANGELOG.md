@@ -1,4 +1,5 @@
 # Changelog
+- M14 Stage 3 typecheck correction: propagate the existing claimed-task `traceId` through research collaboration and keep it on specialist-failure and lease-renewal structured warnings. This repairs strict observability `TraceContext` typing without generating unrelated traces, changing execution behavior, or altering Mainnet posture.
 - M14 Manager Job-report continuity: owner-scoped prior research reports are now retrieved from durable Job conversations for follow-up questions (including the earlier BONK-risk investigation), with bounded historical context, unambiguous Job selection, and no need to paste saved results. Reports persist before Jobs advertise completion. Read-only routing, billing, authority and Mainnet posture are unchanged.
 - M14 intelligence acceptance candidate: Manager wallet/portfolio requests now resolve owner-scoped saved addresses before model planning, ask and resume wallet disambiguation, pin exact read-only wallet intelligence, preserve bounded conversation context, and avoid incompatible EVM/Solana Alchemy portfolio queries. Telegraph remains deferred.
 - Fixed mobile Wallets & Accounts reconciliation: mode cards stack safely, add-wallet controls remain reachable, long wallet identifiers truncate inside cards, and the visible environment badge now defaults from deployed runtime truth instead of a stale Mainnet fixture default.
@@ -378,3 +379,9 @@
 - Added bounded owner-scoped Worker, Job, Routine and Workflow context to authenticated Manager planning.
 - Added deterministic Worker naming, ambiguity clarification, multi-turn numbered responses, and selected-Worker routing preference with fail-closed eligibility.
 - Introduced cross-object regression tests and a production acceptance contract; no change to Mainnet execution or autonomy.
+
+### M14 intelligence intervention — real bounded collaboration (Stage 3 candidate)
+- Added additive owner-scoped Job orchestration checkpoints in `0024_manager_collaboration_steps.sql` and an explicit dependency-aware read-only plan.
+- Supporting Workers now make independent attributed read-only research calls; lead synthesis consumes preserved specialist output with source/evidence caveats. The Job Team view displays executed, failed, and budget-skipped steps separately.
+- Preserved model/daily cost caps, active task lease renewal, durable Job report continuity and fail-closed authority boundaries. The normal Manager default allows one supporting Worker plus lead synthesis; higher model-call allowance is an explicit operator cost decision.
+- No Telegraph/x402 changes. No new financial execution/authority path. Production acceptance is required before freezing M14.

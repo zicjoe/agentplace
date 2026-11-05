@@ -894,6 +894,24 @@ export function JobWorkspace() {
                   </div>
                 </details>
               )}
+              {productionConversation && (job.orchestrationSteps?.length ?? 0)>0 && (
+                <section aria-label="Recorded Worker participation" className="rounded-lg border border-border bg-panel/40 p-3 space-y-2">
+                  <h3 className="text-sm font-semibold text-text">Executed collaboration plan</h3>
+                  <p className="text-xs text-text-muted">These are persisted runtime steps, not an AI-generated description of a team. Skipped or failed Workers made no verified contribution.</p>
+                  <ol className="space-y-2">
+                    {job.orchestrationSteps?.map(step=>(
+                      <li key={step.id} className="rounded border border-border/80 p-2 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-medium text-text">{step.kind === 'lead-synthesis' ? `${job.leadWorkerName} · synthesis` : step.kind === 'provider-evidence' ? 'Structured provider evidence' : `${job.supportingWorkerNames[job.supportingWorkerIds.indexOf(step.workerId ?? '')] ?? 'Supporting Worker'} · independent research`}</span>
+                          <span className={step.status === 'completed' ? 'text-accent' : step.status === 'failed' ? 'text-danger' : step.status === 'skipped' ? 'text-warn' : 'text-text-sub'}>{step.status === 'completed' ? 'Completed' : step.status === 'skipped' ? 'Not run · budget limit' : step.status === 'failed' ? 'Unavailable' : step.status === 'running' ? 'Working' : 'Pending'}</span>
+                        </div>
+                        <p className="text-text-muted mt-1">{step.purpose}</p>
+                        {step.sourceCount > 0 && <p className="text-text-muted mt-1">{step.sourceCount} source references preserved</p>}
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              )}
               <div className="border border-border rounded-lg bg-panel px-4 py-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm font-semibold text-text">{job.leadWorkerName}</span>

@@ -12,7 +12,7 @@ export interface DurableJob {
   id: string; title: string; goal: string; status: JobStatus; environment: JobEnvironment; kind: JobKind; originType: JobOriginType;
   leadWorkerId: string; leadWorkerName: string; supportingWorkerIds: string[]; supportingWorkerNames: string[];
   originWorkerId?: string; originConversationId?: string; jobConversationId?: string; originRoutineId?: string; routineRunId?: string; currentStage: string; stages: DurableJobStage[];
-  createdAt: string; updatedAt: string;
+  createdAt: string; updatedAt: string; orchestrationSteps?: JobOrchestrationStep[];
 }
 export interface JobDraft extends Omit<DurableJob,'leadWorkerName'|'supportingWorkerNames'|'createdAt'|'updatedAt'> { createdAt?: string; updatedAt?: string; workerVersionOverrides?: Record<string,string>; }
 export interface JobWorkerVersionAssignment { workerId:string; workerVersionId:string; role:'lead'|'supporting'; }
@@ -25,13 +25,15 @@ type StageRow = { job_id:string; id:string; label:string; ordinal:number; status
 async function hydrate(ownerUserId:string, rows:JobRow[]):Promise<DurableJob[]> {
   if (!rows.length) return [];
   const ids = rows.map(r=>r.id);
-  const [assignments, stages] = await Promise.all([
+  const [assignments, stages, orchestration] = await Promise.all([
     getDatabasePool().query<AssignmentRow>(`SELECT jw.job_id,jw.worker_id,jw.role,d.name FROM job_worker jw JOIN worker_definition d ON d.id=jw.worker_id WHERE jw.owner_user_id=$1 AND jw.job_id=ANY($2::text[]) ORDER BY jw.added_at`, [ownerUserId,ids]),
     getDatabasePool().query<StageRow>(`SELECT job_id,id,label,ordinal,status FROM job_stage WHERE job_id=ANY($1::text[]) ORDER BY job_id,ordinal`, [ids]),
+    getDatabasePool().query<OrchestrationStepRow>(`SELECT s.id,s.job_id,s.worker_id,s.kind,s.purpose,s.depends_on,s.status,s.result_excerpt,s.sources,s.last_error_code,s.started_at,s.finished_at
+      FROM job_orchestration_step s WHERE s.owner_user_id=$1 AND s.job_id=ANY($2::text[]) ORDER BY s.created_at,s.id`,[ownerUserId,ids]),
   ]);
   return rows.map(row=>{
     const team=assignments.rows.filter(a=>a.job_id===row.id); const lead=team.find(a=>a.role==='lead'); const support=team.filter(a=>a.role==='supporting');
-    const out:DurableJob={id:row.id,title:row.title,goal:row.goal,status:row.status,environment:row.environment,kind:row.kind,originType:row.origin_type,leadWorkerId:lead?.worker_id ?? '',leadWorkerName:lead?.name ?? 'Unassigned',supportingWorkerIds:support.map(s=>s.worker_id),supportingWorkerNames:support.map(s=>s.name),currentStage:row.current_stage,stages:stages.rows.filter(s=>s.job_id===row.id),createdAt:row.created_at.toISOString(),updatedAt:row.updated_at.toISOString()};
+    const out:DurableJob={id:row.id,title:row.title,goal:row.goal,status:row.status,environment:row.environment,kind:row.kind,originType:row.origin_type,leadWorkerId:lead?.worker_id ?? '',leadWorkerName:lead?.name ?? 'Unassigned',supportingWorkerIds:support.map(s=>s.worker_id),supportingWorkerNames:support.map(s=>s.name),currentStage:row.current_stage,stages:stages.rows.filter(s=>s.job_id===row.id),createdAt:row.created_at.toISOString(),updatedAt:row.updated_at.toISOString(),orchestrationSteps:orchestration.rows.filter(step=>step.job_id===row.id).map(mapOrchestrationStep)};
     if(row.origin_worker_id) out.originWorkerId=row.origin_worker_id; if(row.origin_conversation_id) out.originConversationId=row.origin_conversation_id; if(row.job_conversation_id) out.jobConversationId=row.job_conversation_id; if(row.origin_routine_id) out.originRoutineId=row.origin_routine_id; if(row.routine_run_id) out.routineRunId=row.routine_run_id; return out;
   });
 }
@@ -139,6 +141,79 @@ export async function claimNextIntelligenceTask():Promise<IntelligenceTask|null>
       `UPDATE intelligence_task SET status='running',attempts=attempts+1,started_at=COALESCE(started_at,now()),lease_until=now()+interval '3 minutes',updated_at=now(),last_error=NULL WHERE id=$1 RETURNING *`,[row.id]);
     return updated.rows[0]?mapIntelligenceTask(updated.rows[0]):null;
   });
+}
+
+/** Renew a long-running intelligence task lease while multi-specialist research is
+ * in flight. The claim attempt is a fencing token: a superseded worker cannot
+ * extend a newly claimed task's lease. */
+export async function renewIntelligenceTaskLease(taskId:string,attempt:number):Promise<boolean>{
+  const result=await getDatabasePool().query<{id:string}>(
+    `UPDATE intelligence_task SET lease_until=now()+interval '3 minutes',updated_at=now()
+     WHERE id=$1 AND attempts=$2 AND status='running' AND lease_until>now() RETURNING id`,
+    [taskId,attempt]);
+  return !!result.rows[0];
+}
+
+export type OrchestrationStepKind='provider-evidence'|'specialist-research'|'lead-synthesis';
+export type OrchestrationStepStatus='pending'|'running'|'completed'|'failed'|'skipped';
+export interface JobOrchestrationStep {
+  id:string; jobId:string; workerId?:string; kind:OrchestrationStepKind;
+  purpose:string; dependsOn:string[]; status:OrchestrationStepStatus;
+  resultExcerpt?:string; sources:Array<{url:string;title:string;provider:string}>;
+  lastErrorCode?:string; startedAt?:string; finishedAt?:string;
+}
+export interface OrchestrationStepDraft {
+  id:string; kind:OrchestrationStepKind; workerId?:string; purpose:string;
+  dependsOn:string[]; skipped?:boolean;
+}
+type OrchestrationStepRow={id:string;job_id:string;worker_id:string|null;kind:OrchestrationStepKind;purpose:string;depends_on:string[];status:OrchestrationStepStatus;result_excerpt:string|null;sources:Array<{url:string;title:string;provider:string}>;last_error_code:string|null;started_at:Date|null;finished_at:Date|null};
+function mapOrchestrationStep(row:OrchestrationStepRow):JobOrchestrationStep {
+  return {id:row.id,jobId:row.job_id,kind:row.kind,purpose:row.purpose,dependsOn:row.depends_on,status:row.status,
+    ...(row.worker_id?{workerId:row.worker_id}:{}),...(row.result_excerpt?{resultExcerpt:row.result_excerpt}:{}),
+    sources:Array.isArray(row.sources)?row.sources:[],...(row.last_error_code?{lastErrorCode:row.last_error_code}:{}),
+    ...(row.started_at?{startedAt:row.started_at.toISOString()}:{}),...(row.finished_at?{finishedAt:row.finished_at.toISOString()}:{})};
+}
+/** Idempotent plan creation; never overwrite already completed work on a retry. */
+export async function createJobOrchestrationPlan(ownerUserId:string,jobId:string,steps:readonly OrchestrationStepDraft[]):Promise<void>{
+  if(steps.length>8||new Set(steps.map(step=>step.id)).size!==steps.length)throw new Error('ORCHESTRATION_PLAN_INVALID');
+  await withTransaction(async db=>{
+    const job=await db.query<{id:string}>(`SELECT id FROM job WHERE id=$1 AND owner_user_id=$2 FOR UPDATE`,[jobId,ownerUserId]);
+    if(!job.rows[0])throw new Error('JOB_NOT_FOUND');
+    for(const step of steps){
+      await db.query(`INSERT INTO job_orchestration_step(job_id,id,owner_user_id,worker_id,kind,purpose,depends_on,status,finished_at)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,CASE WHEN $8='skipped' THEN now() ELSE NULL END)
+        ON CONFLICT(job_id,id) DO NOTHING`,
+        [jobId,step.id,ownerUserId,step.workerId??null,step.kind,step.purpose.slice(0,800),step.dependsOn,step.skipped?'skipped':'pending']);
+    }
+  });
+}
+export async function listJobOrchestrationSteps(ownerUserId:string,jobId:string):Promise<JobOrchestrationStep[]>{
+  const result=await getDatabasePool().query<OrchestrationStepRow>(
+    `SELECT s.id,s.job_id,s.worker_id,s.kind,s.purpose,s.depends_on,s.status,s.result_excerpt,s.sources,s.last_error_code,s.started_at,s.finished_at
+     FROM job_orchestration_step s JOIN job j ON j.id=s.job_id AND j.owner_user_id=s.owner_user_id
+     WHERE s.owner_user_id=$1 AND s.job_id=$2 ORDER BY s.created_at,s.id`,[ownerUserId,jobId]);
+  return result.rows.map(mapOrchestrationStep);
+}
+export async function updateJobOrchestrationStep(ownerUserId:string,jobId:string,stepId:string,args:{
+  status:OrchestrationStepStatus;resultExcerpt?:string;
+  sources?:readonly {url:string;title:string;provider:string}[];lastErrorCode?:string;
+}):Promise<JobOrchestrationStep>{
+  const result=await getDatabasePool().query<OrchestrationStepRow>(
+    `UPDATE job_orchestration_step s SET status=$4,
+       result_excerpt=COALESCE($5::text,s.result_excerpt),sources=COALESCE($6::jsonb,s.sources),
+       last_error_code=$7,started_at=CASE WHEN $4='running' THEN COALESCE(s.started_at,now()) ELSE s.started_at END,
+       finished_at=CASE WHEN $4 IN ('completed','failed','skipped') THEN now() ELSE s.finished_at END,
+       updated_at=now()
+     WHERE s.owner_user_id=$1 AND s.job_id=$2 AND s.id=$3
+       AND EXISTS(SELECT 1 FROM job j WHERE j.id=s.job_id AND j.owner_user_id=$1)
+       AND s.status<>'completed'
+     RETURNING s.id,s.job_id,s.worker_id,s.kind,s.purpose,s.depends_on,s.status,s.result_excerpt,s.sources,s.last_error_code,s.started_at,s.finished_at`,
+    [ownerUserId,jobId,stepId,args.status,args.resultExcerpt?.slice(0,18000)??null,
+      args.sources?JSON.stringify(args.sources.slice(0,16)):null,args.lastErrorCode?.slice(0,160)??null]);
+  if(result.rows[0])return mapOrchestrationStep(result.rows[0]);
+  const existing=(await listJobOrchestrationSteps(ownerUserId,jobId)).find(step=>step.id===stepId);
+  if(!existing)throw new Error('ORCHESTRATION_STEP_NOT_FOUND');
+  return existing;
 }
 
 export async function completeIntelligenceTask(id:string):Promise<void>{ await getDatabasePool().query(`UPDATE intelligence_task SET status='completed',completed_at=now(),lease_until=NULL,updated_at=now() WHERE id=$1`,[id]); }
