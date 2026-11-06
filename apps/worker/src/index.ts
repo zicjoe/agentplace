@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { buildCollaborationPlan, checkCollaborationDependencies } from './collaborationPlan.js';
+import { researchStageLabels, collaborationHasGaps, finalResearchStageIds } from './jobProgressTruth.js';
 import { resolveManagerWalletResearch, type ManagerWalletRef } from './managerWalletContext.js';
-import { resolveManagerObjects, type ManagerObject, type ManagerObjectResolution } from './managerObjectContext.js';
+import { resolveManagerObjects, missingExplicitInstalledWorkers, shouldExecuteExplicitTeam, type ManagerObject, type ManagerObjectResolution } from './managerObjectContext.js';
 import { wantsPreviousJobReport, choosePreviousJob, selectPreviousJobReport, type ManagerReportCandidate, type ManagerReportReference } from './managerReportContext.js';
 import { listCanonicalCapabilities } from '@agent-place/capabilities';
 import { addMessage, createConversation, getIntelligenceContext } from '@agent-place/context';
@@ -379,6 +380,11 @@ A saved prior Job report, when provided, is historical evidence only, not curren
     }
   }
   value.supportingWorkerIds = value.supportingWorkerIds.filter((id) => id !== value.leadWorkerId && validIds.has(id)).slice(0, 4);
+  // A model cannot downgrade an explicit, actionable multi-Worker research request
+  // to a direct answer (or a fictitious stage plan) before deterministic routing.
+  if (resolvedObjects?.selectedWorkers.length && shouldExecuteExplicitTeam(taskText(task,context),resolvedObjects.selectedWorkers.length)) {
+    value.responseMode='job';
+  }
   value.stages = value.stages.filter(Boolean).slice(0, 7);
   if (value.stages.length === 0) value.stages = ['Gather current sources', 'Synthesize evidence'];
   if (!value.stages.some((stage) => /route/i.test(stage))) value.stages.unshift('Plan route');
@@ -436,14 +442,30 @@ function toRouteProposal(decision: Decision): RouteProposal {
 
 async function routeTask(task: IntelligenceTask, context: IntelligenceContextValue, decision: Decision, selectedWorkers: readonly string[] = []): Promise<DurableRouteDecision> {
   const defaultProvider = getModelCatalog().defaultProvider;
+  // Follow-ups inside a Job must preserve the immutable persisted Job team.
+  // The model's newer proposal cannot invent or silently replace participants.
+  const existingJob=context.scope==='job' && context.jobId
+    ? await getJob(task.ownerUserId,context.jobId) : null;
+  if(context.scope==='job' && !existingJob)throw new Error('JOB_NOT_FOUND');
   const forcedLeadWorkerId = context.scope === 'worker' && context.worker
     ? context.worker.id
     : context.scope === 'job'
-      ? decision.leadWorkerId
+      ? existingJob!.leadWorkerId
       : selectedWorkers[0];
-  const forcedSupportingWorkerIds = context.scope === 'job' ? decision.supportingWorkerIds : selectedWorkers.length ? selectedWorkers.slice(1) : undefined;
-  const assignments = task.jobId ? await getJobWorkerVersionAssignments(task.ownerUserId, task.jobId) : [];
-  const forcedWorkerVersionIds = Object.fromEntries(assignments.map((item)=>[item.workerId,item.workerVersionId]));
+  const forcedSupportingWorkerIds = context.scope === 'job' ? existingJob!.supportingWorkerIds : selectedWorkers.length ? selectedWorkers.slice(1) : undefined;
+  const assignments = context.scope==='job' && existingJob
+    ? await getJobWorkerVersionAssignments(task.ownerUserId,existingJob.id)
+    : task.jobId ? await getJobWorkerVersionAssignments(task.ownerUserId, task.jobId) : [];
+  const selectedVersions = selectedWorkers.length && context.scope === 'manager'
+    ? (await getDatabasePool().query<{worker_definition_id:string;worker_version_id:string}>(
+      `SELECT worker_definition_id,worker_version_id FROM user_worker
+       WHERE owner_user_id=$1 AND worker_definition_id=ANY($2::text[]) AND removed_at IS NULL AND status NOT IN ('removed','paused','blocked','limited')`,
+      [task.ownerUserId,selectedWorkers])).rows
+    : [];
+  const forcedWorkerVersionIds = Object.fromEntries([
+    ...selectedVersions.map((item)=>[item.worker_definition_id,item.worker_version_id]),
+    ...assignments.map((item)=>[item.workerId,item.workerVersionId]),
+  ]);
   return planRoute({
     ownerUserId: task.ownerUserId,
     taskId: task.id,
@@ -487,9 +509,9 @@ async function createResearchJob(task: IntelligenceTask, context: IntelligenceCo
   }
 
   const jobId = `job_${task.id}`;
-  const stageLabels = route.supportingWorkerIds.length
-    ? ['Plan route', 'Gather source evidence', 'Independent specialist research', 'Lead synthesis', 'Validate research coverage']
-    : decision.stages;
+  // Job stages describe actual runtime phases. Never publish model-proposed
+  // labels like "both Workers completed" as execution facts.
+  const stageLabels = researchStageLabels(route.supportingWorkerIds.length>0);
   const stages = stageLabels.map((label, index) => ({ id: `stage_${index + 1}`, label, ordinal: index, status: index === 0 ? 'done' as const : index === 1 ? 'active' as const : 'pending' as const }));
   await createJob(task.ownerUserId, {
     id: jobId,
@@ -616,21 +638,28 @@ async function collectSpecialistResearch(args:{
   task:IntelligenceTask; context:IntelligenceContextValue; decision:Decision;
   route:DurableRouteDecision; jobId:string; jobConversationId:string; traceId:TraceId;
   originalRequest:string; requirements:readonly ResearchRequirement[];
-  providerEvidencePrompt:string; liveCapabilities:readonly string[];
+  providerEvidencePrompt:string; usableStructuredEvidenceCount:number; liveCapabilities:readonly string[];
   unavailableRequestedCapabilities:readonly string[];
   previousReport?:ManagerReportReference;
 }):Promise<{handoff:string;completed:number;skipped:number;failed:number}> {
   const {task,route,jobId,jobConversationId,traceId}=args;
   const remaining=await remainingModelCalls(task.id);
   const plan=buildCollaborationPlan({leadWorkerId:route.leadWorkerId,supportingWorkerIds:route.supportingWorkerIds,remainingModelCalls:remaining});
-  if(!checkCollaborationDependencies(plan.steps))throw new Error('COLLABORATION_PLAN_INVALID');
-  await createJobOrchestrationPlan(task.ownerUserId,jobId,plan.steps.map(step=>({
+  // The same Job conversation may run additional research tasks. Checkpoints
+  // belong to the exact task, not merely the Job, so a later follow-up cannot
+  // accidentally reuse an older specialist report as if it ran again.
+  const taskSteps=plan.steps.map(step=>({...step,
+    id:`${task.id}:${step.id}`,
+    dependsOn:step.dependsOn.map(dependency=>`${task.id}:${dependency}`),
+  }));
+  if(!checkCollaborationDependencies(taskSteps))throw new Error('COLLABORATION_PLAN_INVALID');
+  await createJobOrchestrationPlan(task.ownerUserId,jobId,taskSteps.map(step=>({
     id:step.id,kind:step.kind,purpose:step.purpose,dependsOn:step.dependsOn,
     ...(step.workerId?{workerId:step.workerId}:{}),...(step.skipped?{skipped:true}:{})
   })));
-  await updateJobOrchestrationStep(task.ownerUserId,jobId,'provider-evidence',{
-    status:'completed',resultExcerpt:'Routed structured-provider evidence was collected where eligible. All provider coverage gaps remain explicit.'
-  });
+  await updateJobOrchestrationStep(task.ownerUserId,jobId,`${task.id}:provider-evidence`,args.usableStructuredEvidenceCount>0
+    ? {status:'completed',resultExcerpt:`${args.usableStructuredEvidenceCount} usable structured-provider evidence item(s) preserved.`}
+    : {status:'skipped',resultExcerpt:'No verified or partial structured-provider intelligence was available. Specialist web research may still supply independent sources.',lastErrorCode:'NO_USABLE_STRUCTURED_EVIDENCE'});
   await updateJobRuntime(task.ownerUserId,jobId,{status:'RUNNING',currentStage:'Independent specialist research',stageId:'stage_2',stageStatus:'done'});
   await updateJobRuntime(task.ownerUserId,jobId,{stageId:'stage_3',stageStatus:'active'});
   const assigned=await getJobWorkerVersionAssignments(task.ownerUserId,jobId);
@@ -638,7 +667,7 @@ async function collectSpecialistResearch(args:{
   const catalogue=await listWorkerCatalog();
   const reports:string[]=[];
   let completed=0,skipped=0,failed=0;
-  for(const step of plan.steps.filter(step=>step.kind==='specialist-research')) {
+  for(const step of taskSteps.filter(step=>step.kind==='specialist-research')) {
     const workerId=step.workerId!;
     const existing=(await listJobOrchestrationSteps(task.ownerUserId,jobId)).find(row=>row.id===step.id);
     const workerAssignment=assigned.find(item=>item.workerId===workerId);
@@ -701,9 +730,9 @@ async function collectSpecialistResearch(args:{
       logger.warn('Supporting Worker research unavailable',{errorCode:code},{traceId,taskId:task.id,jobId});
     }
   }
-  await updateJobRuntime(task.ownerUserId,jobId,{stageId:'stage_3',stageStatus:'done'});
+  await updateJobRuntime(task.ownerUserId,jobId,{stageId:'stage_3',stageStatus:collaborationHasGaps({expected:route.supportingWorkerIds.length,completed,skipped,failed})?'pending':'done'});
   await updateJobRuntime(task.ownerUserId,jobId,{status:'RUNNING',currentStage:'Lead synthesis',stageId:'stage_4',stageStatus:'active'});
-  await updateJobOrchestrationStep(task.ownerUserId,jobId,'lead-synthesis',{status:'running'});
+  await updateJobOrchestrationStep(task.ownerUserId,jobId,`${task.id}:lead-synthesis`,{status:'running'});
   return {handoff:reports.join('\n\n---\n\n').slice(0,26000),completed,skipped,failed};
 }
 
@@ -757,7 +786,9 @@ async function executeResearch(
   }
   const collaboration=route.supportingWorkerIds.length ? await collectSpecialistResearch({
     task,context,decision,route,jobId,jobConversationId,traceId,originalRequest,
-    requirements,providerEvidencePrompt,liveCapabilities,unavailableRequestedCapabilities,
+    requirements,providerEvidencePrompt,
+    usableStructuredEvidenceCount:structuredEvidence.filter(item=>item.status==='verified'||item.status==='partial').length,
+    liveCapabilities,unavailableRequestedCapabilities,
     ...(previousReport ? { previousReport } : {})
   }):undefined;
   if(collaboration && (collaboration.skipped||collaboration.failed)){
@@ -775,7 +806,7 @@ ${routineContract ? `\n${routineContract}` : ''}
 ${coverageInstructions}`;
 
   const completedSynthesis=collaboration
-    ? (await listJobOrchestrationSteps(task.ownerUserId,jobId)).find(step=>step.id==='lead-synthesis'&&step.status==='completed'&&step.resultExcerpt)
+    ? (await listJobOrchestrationSteps(task.ownerUserId,jobId)).find(step=>step.id===`${task.id}:lead-synthesis`&&step.status==='completed'&&step.resultExcerpt)
     :undefined;
   const replayedSynthesis=!!completedSynthesis;
   let research:ModelCallResult<ResearchResult>;
@@ -818,7 +849,7 @@ ${coverageInstructions}`;
   if(!replayedSynthesis){
     await assertTaskLease(task);
     await recordCompletedRun(task,research,'research-web',manifest,jobId,route.leadWorkerId);
-    if(collaboration)await updateJobOrchestrationStep(task.ownerUserId,jobId,'lead-synthesis',{
+    if(collaboration)await updateJobOrchestrationStep(task.ownerUserId,jobId,`${task.id}:lead-synthesis`,{
       status:'completed',resultExcerpt:research.value.answer,
       sources:research.value.sources.slice(0,16).map(source=>({...source,provider:research.provider}))});
   }
@@ -860,8 +891,18 @@ ${coverageInstructions}`;
   }
   // Never publish COMPLETED before the durable Job report is committed: a
   // follow-up could otherwise find a completed Job with no accessible output.
-  await getDatabasePool().query(`UPDATE job_stage SET status='done',updated_at=now() WHERE job_id=$1`, [jobId]);
-  await updateJobRuntime(task.ownerUserId, jobId, { status: 'COMPLETED', currentStage: 'Research complete' });
+  const partialTeam=collaborationHasGaps({expected:route.supportingWorkerIds.length,
+    completed:collaboration?.completed??0,skipped:collaboration?.skipped??0,failed:collaboration?.failed??0});
+  // Do not blanket-complete LLM stage labels. Each stage corresponds to a
+  // recorded runtime phase; incomplete specialist participation stays pending.
+  for(const stageId of finalResearchStageIds(route.supportingWorkerIds.length>0)){
+    await updateJobRuntime(task.ownerUserId,jobId,{stageId,stageStatus:'done'});
+  }
+  if(partialTeam){
+    await updateJobRuntime(task.ownerUserId, jobId, { status: 'COMPLETED', currentStage: 'Research complete · partial Worker participation' });
+  }else{
+    await updateJobRuntime(task.ownerUserId, jobId, { status: 'COMPLETED', currentStage: 'Research complete' });
+  }
   await appendJobEvent({ ownerUserId: task.ownerUserId, jobId, workerId: route.leadWorkerId, eventType: 'job.completed', title: decision.title || 'Research completed', summary: `${requirements.length}/${requirements.length} research requirement${requirements.length === 1 ? '' : 's'} addressed · ${research.value.sources.length} lead source${research.value.sources.length === 1 ? '' : 's'} preserved${collaboration ? ` · ${collaboration.completed} specialist run(s), ${collaboration.skipped} skipped, ${collaboration.failed} unavailable` : ''}`, status: 'COMPLETED', eventId: `evt_job_completed_${task.id}` });
   await getDatabasePool().query(`UPDATE user_worker SET status='standby',current_job_id=NULL,current_focus=NULL,updated_at=now() WHERE owner_user_id=$1 AND id=$2 AND status NOT IN ('paused','removed','blocked','limited')`, [task.ownerUserId, route.leadWorkerId]);
 }
@@ -1162,6 +1203,15 @@ async function processTask(task: IntelligenceTask, traceId: TraceId): Promise<vo
   }
   const context = await getIntelligenceContext(task.ownerUserId, task.conversationId);
   if (!context) throw new Error('INTELLIGENCE_CONTEXT_NOT_FOUND');
+  if(context.scope==='worker' && task.inputSource==='USER_MESSAGE'){
+    const requested=missingExplicitInstalledWorkers(taskText(task,context),[],await listWorkerCatalog());
+    if(shouldExecuteExplicitTeam(taskText(task,context),requested.length)){
+      await addAssistantMessage(task.ownerUserId,context.conversationId,
+        'You asked for multiple named Workers, but this is a single-Worker conversation. Start work from the Manager to coordinate the team. I have not launched a one-Worker Job or claimed that the other Worker participated.');
+      await completeIntelligenceTask(task.id);
+      return;
+    }
+  }
   if (task.inputSource === 'USER_MESSAGE' && (await tryPrepareTransferRequest(task, context) || await tryPrepareBridgeRequest(task, context))) {
     await completeIntelligenceTask(task.id);
     return;
@@ -1184,7 +1234,7 @@ async function processTask(task: IntelligenceTask, traceId: TraceId): Promise<vo
   if (context.scope === 'manager' && task.inputSource === 'USER_MESSAGE') {
     const db = getDatabasePool();
     const [workers, jobs, routines, workflows] = await Promise.all([
-      db.query<{id:string;name:string;status:string;responsibility:string}>(`SELECT uw.id,d.name,uw.status,d.responsibility FROM user_worker uw JOIN worker_definition d ON d.id=uw.worker_definition_id WHERE uw.owner_user_id=$1 AND uw.status<>'removed' AND uw.removed_at IS NULL ORDER BY uw.added_at DESC LIMIT 50`,[task.ownerUserId]),
+      db.query<{id:string;name:string;status:string;responsibility:string}>(`SELECT uw.worker_definition_id AS id,d.name,uw.status,d.responsibility FROM user_worker uw JOIN worker_definition d ON d.id=uw.worker_definition_id WHERE uw.owner_user_id=$1 AND uw.status<>'removed' AND uw.removed_at IS NULL ORDER BY uw.added_at DESC LIMIT 50`,[task.ownerUserId]),
       db.query<{id:string;title:string;status:string;goal:string}>(`SELECT id,title,status,goal FROM job WHERE owner_user_id=$1 ORDER BY updated_at DESC LIMIT 15`,[task.ownerUserId]),
       db.query<{id:string;title:string;status:string}>(`SELECT id,title,status FROM routine WHERE owner_user_id=$1 ORDER BY updated_at DESC LIMIT 15`,[task.ownerUserId]),
       db.query<{id:string;name:string;publication_status:string}>(`SELECT id,name,publication_status FROM workflow_definition WHERE creator_user_id=$1 AND publication_status<>'retired' ORDER BY updated_at DESC LIMIT 15`,[task.ownerUserId]),
@@ -1201,8 +1251,19 @@ async function processTask(task: IntelligenceTask, traceId: TraceId): Promise<vo
       await completeIntelligenceTask(task.id);
       return;
     }
+    // Names mentioned by the user are not interchangeable with a model's proposed
+    // plan. Detect known public Workers which were requested but are not installed;
+    // without this, a single installed match could silently hide the other name.
+    const availableCatalog=await listWorkerCatalog();
+    const installedWorkers=items.filter(item=>item.kind==='worker');
+    const missing=missingExplicitInstalledWorkers(taskText(task,context),installedWorkers,availableCatalog);
+    if(missing.length){
+      await addAssistantMessage(task.ownerUserId,context.conversationId,
+        `I found the requested Worker${missing.length===1?'':'s'} ${missing.map(item=>item.name).join(', ')} in Discover, but ${missing.length===1?'it is':'they are'} not installed in your account. I won't claim they worked or silently substitute another Worker. Add ${missing.length===1?'that Worker':'those Workers'} first, then retry your request.`);
+      await completeIntelligenceTask(task.id);
+      return;
+    }
     if(resolution.selectedWorkers.length){
-      const availableCatalog=await listWorkerCatalog();
       const availableIds=new Set(availableCatalog.map(item=>item.id));
       const unsupported=resolution.selectedWorkers.filter(id=>!availableIds.has(id));
       if(unsupported.length){
@@ -1277,6 +1338,17 @@ async function processTask(task: IntelligenceTask, traceId: TraceId): Promise<vo
   }
 
   const route = await routeTask(task, context, decision, objectRequest?.selectedWorkers ?? []);
+  if(context.scope==='job' && context.jobId){
+    const recorded=await getJob(task.ownerUserId,context.jobId);
+    if(!recorded || recorded.leadWorkerId!==route.leadWorkerId ||
+       recorded.supportingWorkerIds.length!==route.supportingWorkerIds.length ||
+       recorded.supportingWorkerIds.some(id=>!route.supportingWorkerIds.includes(id))){
+      await addAssistantMessage(task.ownerUserId,context.conversationId,
+        'This Job cannot use its previously recorded Worker team under the current eligibility rules. I have not claimed a new team performed research; start a new Manager Job if you need different Workers.');
+      await completeIntelligenceTask(task.id);
+      return;
+    }
+  }
   if(objectRequest?.selectedWorkers.length){
     const routed=new Set([route.leadWorkerId,...route.supportingWorkerIds]);
     const omitted=objectRequest.selectedWorkers.filter(id=>!routed.has(id));

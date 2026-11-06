@@ -1,4 +1,12 @@
 # Changelog
+
+## M14 Stage 3 — Worker participation truth correction (candidate)
+
+- Resolve installed Worker names to canonical definition IDs, validate explicitly named team members and pin installed versions.
+- Replace unverified model-proposed Job progress stages with deterministic runtime phases and partial-participation reporting.
+- Warn on legacy Jobs whose proposed progress claims team members not present in persisted execution records.
+- No migration, payment or authority expansion.
+
 - M14 Stage 3 typecheck correction: propagate the existing claimed-task `traceId` through research collaboration and keep it on specialist-failure and lease-renewal structured warnings. This repairs strict observability `TraceContext` typing without generating unrelated traces, changing execution behavior, or altering Mainnet posture.
 - M14 Manager Job-report continuity: owner-scoped prior research reports are now retrieved from durable Job conversations for follow-up questions (including the earlier BONK-risk investigation), with bounded historical context, unambiguous Job selection, and no need to paste saved results. Reports persist before Jobs advertise completion. Read-only routing, billing, authority and Mainnet posture are unchanged.
 - M14 intelligence acceptance candidate: Manager wallet/portfolio requests now resolve owner-scoped saved addresses before model planning, ask and resume wallet disambiguation, pin exact read-only wallet intelligence, preserve bounded conversation context, and avoid incompatible EVM/Solana Alchemy portfolio queries. Telegraph remains deferred.

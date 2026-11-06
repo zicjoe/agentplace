@@ -25,14 +25,19 @@ interface JobMessage {
   isStreaming?: boolean;
 }
 
-function ProgressBar({ stages }: { stages: { id: string; label: string; status: 'done' | 'active' | 'pending' }[] }) {
-  if (stages.length === 0) return null;
+function ProgressBar({ stages, unverifiedTeamClaims = false }: { stages: { id: string; label: string; status: 'done' | 'active' | 'pending' }[]; unverifiedTeamClaims?: boolean }) {
+  // Earlier Job stages came from a model plan. Do not render unverified
+  // multi-Worker claims as completed actual execution.
+  const visibleStages=unverifiedTeamClaims ? stages.map(stage=>
+    /\b(?:worker|researcher|scout|compare|reconcile|their evidence|specialist)\b/i.test(stage.label)
+      ? {...stage,status:'pending' as const,label:'Proposed collaboration · not verified'} : stage) : stages;
+  if (visibleStages.length === 0) return null;
   return (
     <div className="space-y-2">
       <p className="text-[11px] uppercase tracking-wide font-medium text-text-sub">Job progress</p>
       <div role="group" aria-label="Job stages" className="overflow-x-auto max-w-full pb-2" tabIndex={0}>
         <ol className="flex min-w-max gap-2">
-          {stages.map((stage, i) => <li key={stage.id} className="w-32 sm:w-36 shrink-0">
+          {visibleStages.map((stage, i) => <li key={stage.id} className="w-32 sm:w-36 shrink-0">
             <div className={`h-1 rounded-full mb-2 ${stage.status === 'done' ? 'bg-accent' : stage.status === 'active' ? 'bg-primary' : 'bg-border'}`} />
             <span className={`text-xs font-medium ${stage.status === 'done' ? 'text-accent' : stage.status === 'active' ? 'text-text' : 'text-text-muted'}`}>
               {stage.status === 'done' ? '✓' : i + 1} {stage.status === 'done' ? 'Complete' : stage.status === 'active' ? 'In progress' : 'Pending'}
@@ -44,7 +49,7 @@ function ProgressBar({ stages }: { stages: { id: string; label: string; status: 
       <details className="text-xs text-text-sub group">
         <summary className="cursor-pointer w-fit py-1 text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary">View all stage details</summary>
         <ol className="mt-2 space-y-2 border-l border-border pl-3">
-          {stages.map((stage) => <li key={stage.id}><span className="text-text font-medium">{stage.status === 'done' ? 'Done' : stage.status === 'active' ? 'Current' : 'Pending'}:</span> {stage.label}</li>)}
+          {visibleStages.map((stage) => <li key={stage.id}><span className="text-text font-medium">{stage.status === 'done' ? 'Done' : stage.status === 'active' ? 'Current' : 'Pending'}:</span> {stage.label}</li>)}
         </ol>
       </details>
     </div>
@@ -625,7 +630,7 @@ export function JobWorkspace() {
                   className={`w-1.5 h-1.5 rounded-full ${isComplete ? 'bg-accent' : 'bg-primary'}`}
                 />
                 <span className={`text-xs ${isComplete ? 'text-accent' : 'text-primary'}`}>
-                  {isComplete ? 'Research complete' : job.status === 'planning' ? 'Planning' : job.status === 'failed' ? 'Failed' : job.status === 'blocked' ? 'Blocked' : job.status === 'needs-you' ? 'Needs you' : job.status === 'recovering' ? 'Recovering' : 'Working'}
+                  {isComplete ? (job.currentStage.includes('partial Worker') ? 'Research complete · partial team' : 'Research complete') : job.status === 'planning' ? 'Planning' : job.status === 'failed' ? 'Failed' : job.status === 'blocked' ? 'Blocked' : job.status === 'needs-you' ? 'Needs you' : job.status === 'recovering' ? 'Recovering' : 'Working'}
                 </span>
               </div>
             </div>
@@ -674,9 +679,21 @@ export function JobWorkspace() {
           </div>
         </div>
 
+        {/* Historical Jobs created before the orchestration guard may have model-written
+            step labels claiming two Workers ran. Those labels are NOT execution proof. */}
+        {productionConversation && !job.orchestrationSteps?.length && job.supportingWorkerIds.length===0 &&
+          job.stages.some(stage=>/\b(?:researcher|scout|workers?)\b/i.test(stage.label)&&/\b(?:and|both|respective)\b/i.test(stage.label)) && (
+          <p role="status" className="mt-3 text-xs text-warn">
+            This earlier Job has unverified collaboration claims in its proposed progress labels. Only the Lead Worker is recorded; these labels are not proof of another Worker running.
+          </p>
+        )}
         {/* Progress */}
         <div className="mt-4">
-          <ProgressBar stages={job.stages} />
+          <ProgressBar stages={job.stages} unverifiedTeamClaims={productionConversation && !job.orchestrationSteps?.length && job.supportingWorkerIds.length===0 &&
+            job.stages.some(stage=>/\b(?:researcher|scout|workers?)\b/i.test(stage.label)&&/\b(?:and|both|respective)\b/i.test(stage.label))} />
+          {productionConversation && job.orchestrationSteps?.some(step=>step.kind==='specialist-research'&&step.status!=='completed') && (
+            <p role="status" className="mt-2 text-xs text-warn">Research report available with incomplete specialist participation. See Team for exact completed, skipped or unavailable Workers.</p>
+          )}
         </div>
 
         <JobCostPanel jobId={job.id} />
@@ -903,7 +920,7 @@ export function JobWorkspace() {
                       <li key={step.id} className="rounded border border-border/80 p-2 text-xs">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="font-medium text-text">{step.kind === 'lead-synthesis' ? `${job.leadWorkerName} · synthesis` : step.kind === 'provider-evidence' ? 'Structured provider evidence' : `${job.supportingWorkerNames[job.supportingWorkerIds.indexOf(step.workerId ?? '')] ?? 'Supporting Worker'} · independent research`}</span>
-                          <span className={step.status === 'completed' ? 'text-accent' : step.status === 'failed' ? 'text-danger' : step.status === 'skipped' ? 'text-warn' : 'text-text-sub'}>{step.status === 'completed' ? 'Completed' : step.status === 'skipped' ? 'Not run · budget limit' : step.status === 'failed' ? 'Unavailable' : step.status === 'running' ? 'Working' : 'Pending'}</span>
+                          <span className={step.status === 'completed' ? 'text-accent' : step.status === 'failed' ? 'text-danger' : step.status === 'skipped' ? 'text-warn' : 'text-text-sub'}>{step.status === 'completed' ? 'Completed' : step.status === 'skipped' ? (step.kind === 'provider-evidence' ? 'No usable structured evidence' : 'Not run · budget limit') : step.status === 'failed' ? 'Unavailable' : step.status === 'running' ? 'Working' : 'Pending'}</span>
                         </div>
                         <p className="text-text-muted mt-1">{step.purpose}</p>
                         {step.sourceCount > 0 && <p className="text-text-muted mt-1">{step.sourceCount} source references preserved</p>}

@@ -74,3 +74,24 @@ export function resolveManagerObjects(input:string,history:readonly ManagerObjec
   }
   return {kind:'continue',request,context:contextBlock(items),selectedWorkers:selectedWorkers.slice(0,5).map(item=>item.id)};
 }
+
+
+/** A named public Worker cannot disappear from an explicit team request just
+ * because the user has not installed it. Supply catalog is data, not authority. */
+export function missingExplicitInstalledWorkers(
+  request:string,
+  installed:readonly Pick<ManagerObject,'id'|'name'>[],
+  catalog:readonly {id:string;name:string}[],
+):Array<{id:string;name:string}>{
+  if(!/\b(?:use|assign|delegate|coordinate|ask|investigate|research|analy[sz]e|have)\b/i.test(request))return [];
+  const installedIds=new Set(installed.map(item=>item.id));
+  return catalog.filter(item=>refersTo(request,item.name)&&!installedIds.has(item.id));
+}
+
+/** Only actual work instructions may require team orchestration. A casual
+ * question mentioning two Workers is still allowed to get a direct answer. */
+export function shouldExecuteExplicitTeam(request:string,selectedCount:number):boolean{
+  return selectedCount>=2
+    && /\b(?:use|assign|delegate|coordinate|investigate|research|analy[sz]e|examine)\b/i.test(request)
+    && !/^(?:what|which|why|how|can|could)\b/i.test(request.trim());
+}
