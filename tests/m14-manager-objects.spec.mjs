@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { resolveManagerObjects } from '../apps/worker/src/managerObjectContext.ts';
+import { resolveManagerObjects, recoverBlockedWorkerRequest } from '../apps/worker/src/managerObjectContext.ts';
 const items=[
  {kind:'worker',id:'w-cr',name:'Crypto Researcher',status:'standby'},
  {kind:'worker',id:'w-ms',name:'Meme Scout',status:'standby'},
@@ -52,4 +52,41 @@ test('M14 conversational reference resolves prior explicit Worker',()=>{
  const result=resolveManagerObjects('Ask that worker to look into PEPE',history,items);
  assert.equal(result.kind,'continue');
  assert.deepEqual(result.selectedWorkers,['w-cr']);
+});
+
+test('M14 recover paused-Worker blocked goal after explicit resume and retry',()=>{
+ const original='Use Crypto Researcher and Meme Scout to investigate DOGE; research market context and liquidity. Do not take financial action.';
+ const paused=resolveManagerObjects(original,[],items.map(item=>item.id==='w-cr'?{...item,status:'paused'}:item));
+ assert.equal(paused.kind,'clarify');
+ const history=[{role:'user',content:original},{role:'manager',content:paused.message},{role:'user',content:'I resumed Crypto Researcher. Continue our original investigation.'}];
+ const recovered=recoverBlockedWorkerRequest(history.at(-1).content,history);
+ assert.match(recovered,/Use Crypto Researcher and Meme Scout/);
+ const resumed=resolveManagerObjects(recovered,history,items);
+ assert.equal(resumed.kind,'continue');
+ assert.deepEqual(resumed.selectedWorkers,['w-cr','w-ms']);
+});
+test('M14 recover not-installed requested Worker only after explicit retry',()=>{
+ const original='Use Crypto Researcher and Meme Scout to investigate PEPE. Do not take financial action.';
+ const notice='I found the requested Worker Crypto Researcher in Discover, but it is not installed in your account. I won\'t claim they worked or silently substitute another Worker. Add that Worker first, then retry your request.';
+ const history=[{role:'user',content:original},{role:'manager',content:notice},{role:'user',content:'Installed it. Please retry the original research.'}];
+ const request=recoverBlockedWorkerRequest(history.at(-1).content,history);
+ assert.match(request,/Meme Scout/);
+ const resolved=resolveManagerObjects(request,history,items);
+ assert.deepEqual(resolved.selectedWorkers,['w-cr','w-ms']);
+});
+test('M14 never resume a blocked request when the user requests a replacement or it is financial',()=>{
+ const notice='Crypto Researcher (worker; paused) is not currently ready for new work. Review its status in My Agents. I won\'t silently replace or reactivate it.';
+ const history=[{role:'user',content:'Use Crypto Researcher to research DOGE'},{role:'manager',content:notice},{role:'user',content:'Use Meme Scout instead, continue'}];
+ assert.equal(recoverBlockedWorkerRequest(history.at(-1).content,history),undefined);
+ const unsafe=[{role:'user',content:'Use Crypto Researcher and Meme Scout to transfer 1 USDC'},{role:'manager',content:notice},{role:'user',content:'Retry'}];
+ assert.equal(recoverBlockedWorkerRequest('Retry',unsafe),undefined);
+ assert.equal(recoverBlockedWorkerRequest('What is happening?',history),undefined);
+});
+test('M14 recovered request still fails closed if Worker remains paused',()=>{
+ const original='Use Crypto Researcher and Meme Scout to investigate DOGE';
+ const pausedItems=items.map(item=>item.id==='w-cr'?{...item,status:'paused'}:item);
+ const paused=resolveManagerObjects(original,[],pausedItems);
+ const history=[{role:'user',content:original},{role:'manager',content:paused.message},{role:'user',content:'Retry original research'}];
+ const recovered=recoverBlockedWorkerRequest('Retry original research',history);
+ assert.equal(resolveManagerObjects(recovered,history,pausedItems).kind,'clarify');
 });

@@ -26,7 +26,8 @@ test('uninstalled but explicitly requested known Worker cannot silently vanish f
   const missing=missingExplicitInstalledWorkers(request,installed.slice(1),catalog);
   assert.deepEqual(missing,[catalog[0]]);
   const worker=read('apps/worker/src/index.ts');
-  assert.match(worker,/missingExplicitInstalledWorkers\(taskText\(task,context\),installedWorkers,availableCatalog\)/);
+  assert.match(worker,/const effectiveRequest=recoveredRequest\?\?taskText\(task,context\)/);
+  assert.match(worker,/missingExplicitInstalledWorkers\(effectiveRequest,installedWorkers,availableCatalog\)/);
   assert.match(worker,/not installed in your account/);
   assert.match(worker,/I won't claim they worked or silently substitute/);
 });

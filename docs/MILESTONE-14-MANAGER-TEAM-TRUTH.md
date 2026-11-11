@@ -25,3 +25,8 @@ A BONK Job claimed that Crypto Researcher and Meme Scout completed research in t
 6. Prior legacy Jobs retain historical evidence; the UI marks unverified plan claims without manufacturing execution records.
 
 No new migration, custody, authority, mainnet, x402 or external payment change. This is same-M14 v0.17.0 correction. `pnpm check` remains mandatory before deployment.
+
+## Stage 3 continuation correction — paused or not installed
+A user's explicit retry after resuming or installing a previously requested Worker must recover the original read-only goal and **all** originally selected Workers. The Manager re-resolves current owner-scoped installation/status and the Router rechecks current eligibility, pinned versions, spending and capability constraints before creating a new Job. It must not rerun financial actions, change the user's new goal, reactivate Workers, or claim historical unsuccessful attempts performed research.
+
+Production retest: pause Crypto Researcher; request Crypto Researcher + Meme Scout for DOGE; resume Crypto Researcher; in the same Manager conversation say “I've resumed Crypto Researcher; continue the original investigation.” Verify the new Job includes both Workers and persisted specialist/lead steps. Repeat for the not-installed → installed path using the same original conversation.

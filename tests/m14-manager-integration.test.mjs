@@ -21,3 +21,11 @@ test('M14 references do not expand financial authority or secretly activate Rout
  assert.doesNotMatch(resolver,/prepareFinancialAction|createFinancialAction|activateRoutine|updateMandate|executeTransaction/);
  assert.match(resolver,/Verify access\/eligibility in the trusted Router/);
 });
+
+test('M14 blocked Worker retry restores the full goal before resolving catalog and Router',()=>{
+ assert.match(worker,/recoverBlockedWorkerRequest\(taskText\(task,context\),context\.recentMessages\)/);
+ assert.match(worker,/resolveManagerObjects\(effectiveRequest,context\.recentMessages,items\)/);
+ assert.match(worker,/missingExplicitInstalledWorkers\(effectiveRequest,installedWorkers,availableCatalog\)/);
+ assert.match(worker,/shouldExecuteExplicitTeam\(resolvedObjects\.request,resolvedObjects\.selectedWorkers\.length\)/);
+ assert.match(resolver,/Recheck the complete original Worker team against the current account/);
+});

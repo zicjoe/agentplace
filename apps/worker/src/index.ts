@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { buildCollaborationPlan, checkCollaborationDependencies } from './collaborationPlan.js';
 import { researchStageLabels, collaborationHasGaps, finalResearchStageIds } from './jobProgressTruth.js';
 import { resolveManagerWalletResearch, type ManagerWalletRef } from './managerWalletContext.js';
-import { resolveManagerObjects, missingExplicitInstalledWorkers, shouldExecuteExplicitTeam, type ManagerObject, type ManagerObjectResolution } from './managerObjectContext.js';
+import { resolveManagerObjects, recoverBlockedWorkerRequest, missingExplicitInstalledWorkers, shouldExecuteExplicitTeam, type ManagerObject, type ManagerObjectResolution } from './managerObjectContext.js';
 import { wantsPreviousJobReport, choosePreviousJob, selectPreviousJobReport, type ManagerReportCandidate, type ManagerReportReference } from './managerReportContext.js';
 import { listCanonicalCapabilities } from '@agent-place/capabilities';
 import { addMessage, createConversation, getIntelligenceContext } from '@agent-place/context';
@@ -382,7 +382,7 @@ A saved prior Job report, when provided, is historical evidence only, not curren
   value.supportingWorkerIds = value.supportingWorkerIds.filter((id) => id !== value.leadWorkerId && validIds.has(id)).slice(0, 4);
   // A model cannot downgrade an explicit, actionable multi-Worker research request
   // to a direct answer (or a fictitious stage plan) before deterministic routing.
-  if (resolvedObjects?.selectedWorkers.length && shouldExecuteExplicitTeam(taskText(task,context),resolvedObjects.selectedWorkers.length)) {
+  if (resolvedObjects?.selectedWorkers.length && shouldExecuteExplicitTeam(resolvedObjects.request,resolvedObjects.selectedWorkers.length)) {
     value.responseMode='job';
   }
   value.stages = value.stages.filter(Boolean).slice(0, 7);
@@ -1245,7 +1245,9 @@ async function processTask(task: IntelligenceTask, traceId: TraceId): Promise<vo
       ...routines.rows.map(r=>({kind:'routine' as const,id:r.id,name:r.title,status:r.status})),
       ...workflows.rows.map(w=>({kind:'workflow' as const,id:w.id,name:w.name,status:w.publication_status})),
     ];
-    const resolution=resolveManagerObjects(taskText(task,context),context.recentMessages,items);
+    const recoveredRequest=recoverBlockedWorkerRequest(taskText(task,context),context.recentMessages);
+    const effectiveRequest=recoveredRequest??taskText(task,context);
+    const resolution=resolveManagerObjects(effectiveRequest,context.recentMessages,items);
     if(resolution.kind==='clarify'){
       await addAssistantMessage(task.ownerUserId,context.conversationId,resolution.message);
       await completeIntelligenceTask(task.id);
@@ -1256,7 +1258,7 @@ async function processTask(task: IntelligenceTask, traceId: TraceId): Promise<vo
     // without this, a single installed match could silently hide the other name.
     const availableCatalog=await listWorkerCatalog();
     const installedWorkers=items.filter(item=>item.kind==='worker');
-    const missing=missingExplicitInstalledWorkers(taskText(task,context),installedWorkers,availableCatalog);
+    const missing=missingExplicitInstalledWorkers(effectiveRequest,installedWorkers,availableCatalog);
     if(missing.length){
       await addAssistantMessage(task.ownerUserId,context.conversationId,
         `I found the requested Worker${missing.length===1?'':'s'} ${missing.map(item=>item.name).join(', ')} in Discover, but ${missing.length===1?'it is':'they are'} not installed in your account. I won't claim they worked or silently substitute another Worker. Add ${missing.length===1?'that Worker':'those Workers'} first, then retry your request.`);

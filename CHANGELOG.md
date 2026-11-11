@@ -1,5 +1,10 @@
 # Changelog
 
+## M14 Stage 3 — Blocked Worker request continuation correction (candidate)
+
+- Recover the original read-only Manager request when a user explicitly retries after resuming or installing a named Worker. Resolve the complete requested team again from current owner-scoped inventory, then pass it through the existing Router/entitlement/eligibility checks. No silent reactivation, substitution, financial replay or new authority.
+- Preserve a user's explicit change of plan (for example, “use Meme Scout instead”) rather than replaying a blocked request. Add regressions for resumed, newly installed, still paused, replacement and financial-action cases.
+
 ## M14 Stage 3 — Worker participation truth correction (candidate)
 
 - Resolve installed Worker names to canonical definition IDs, validate explicitly named team members and pin installed versions.
