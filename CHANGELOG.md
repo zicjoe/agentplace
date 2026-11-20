@@ -1,5 +1,8 @@
 # Changelog
 
+- M14 Conversation-First UX Phase 2 review candidate: research now leads with an evidence-qualified answer and preserves Coverage/Sources as expandable audit details; older reports can surface a verbatim conclusion first, with warnings for likely unfinished prose. The structured intelligence fabric now pins established Solana BONK to its original mint, rejects conflicting named-token addresses before provider calls, refuses ambiguous ticker searches, validates CoinGecko contract mapping and DEX/GoPlus returned mint keys, and avoids counting identity-only evidence as market intelligence. Model responses explicitly cut off by provider limits are not published as completed reports. No wallet/authority/execution/billing/scheduler configuration changes; candidate requires `pnpm check` and live UX testing before acceptance.
+
+
 ## M14 Stage 3 — Blocked Worker request continuation correction (candidate)
 
 - Recover the original read-only Manager request when a user explicitly retries after resuming or installing a named Worker. Resolve the complete requested team again from current owner-scoped inventory, then pass it through the existing Router/entitlement/eligibility checks. No silent reactivation, substitution, financial replay or new authority.

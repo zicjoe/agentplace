@@ -92,7 +92,8 @@ test('follow-up Jobs use task-scoped checkpoints and cannot replay a previous ta
 
 test('provider evidence is completed only when usable structured provider output exists',()=>{
   const worker=read('apps/worker/src/index.ts');
-  assert.match(worker,/usableStructuredEvidenceCount:structuredEvidence\.filter\(item=>item\.status==='verified'\|\|item\.status==='partial'\)\.length/);
+  assert.match(worker,/const providerFacts = structuredEvidence\.filter\(\(item\) => item\.capabilityId !== 'token\.identity\.resolve'\)/);
+  assert.match(worker,/usableStructuredEvidenceCount:providerFacts\.filter\(item=>item\.status==='verified'\|\|item\.status==='partial'\)\.length/);
   assert.match(worker,/lastErrorCode:'NO_USABLE_STRUCTURED_EVIDENCE'/);
   const workspace=read('apps/web/src/components/JobWorkspace.tsx');
   assert.match(workspace,/No usable structured evidence/);

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { getDatabasePool } from '@agent-place/db';
 import { normalizeTelegraphMappedInvocation } from '@agent-place/telegraph/runtime';
+import { pinnedTokenFor, pinnedTokenConflict, selectUnambiguousTokenCandidate, type TokenSearchCandidate } from './tokenIdentity.js';
 
 export type IntelligenceSubjectKind = 'token' | 'wallet' | 'protocol' | 'stablecoin';
 export interface IntelligenceSubject {
@@ -137,25 +138,33 @@ function bindWalletSubjectFromPriorEvidence(subject:IntelligenceSubject, prior:r
 
 async function resolveToken(subject:IntelligenceSubject):Promise<ResolvedToken|null> {
   const query=subject.query.trim(); const requested=normalizedNetwork(subject.network);
+  // An explicit user's address is authoritative only for the requested asset;
+  // conflicting named-token identity is blocked before any provider is called.
+  if(pinnedTokenConflict(query,requested,subject.address)) return null;
   if(subject.address?.trim() && requested) return {query,network:requested,address:subject.address.trim()};
   if (/^0x[a-fA-F0-9]{40}$/.test(query) && requested) return {query,network:requested,address:query};
   if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(query) && (requested==='solana'||!requested)) return {query,network:'solana',address:query};
+  const pinned=pinnedTokenFor(query,requested);
+  if(pinned) return {query,network:pinned.network,address:pinned.address,symbol:pinned.symbol,sourceUrl:pinned.sourceUrl};
   const payload=object(await fetchJson(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(query)}`,{headers:headers()}));
   const pairs=array(payload.pairs).map(object).filter((pair)=>pair.pairAddress);
-  const exact=pairs.filter((pair)=>{
-    const chain=normalizedNetwork(string(pair.chainId)); if(requested && chain!==requested) return false;
-    const base=object(pair.baseToken); const quote=object(pair.quoteToken);
-    const q=query.toLowerCase();
-    return [string(base.symbol),string(base.name),string(base.address),string(quote.symbol),string(quote.name),string(quote.address)].some((v)=>v?.toLowerCase()===q);
-  });
-  const pool=(exact.length?exact:pairs.filter((pair)=>!requested||normalizedNetwork(string(pair.chainId))===requested))
-    .sort((a,b)=>(number(object(b.liquidity).usd)??0)-(number(object(a.liquidity).usd)??0))[0];
-  if(!pool) return null;
-  const base=object(pool.baseToken); const quote=object(pool.quoteToken); const q=query.toLowerCase();
-  const token=[base,quote].find((candidate)=>[string(candidate.symbol),string(candidate.name),string(candidate.address)].some((v)=>v?.toLowerCase()===q)) ?? base;
-  const address=string(token.address); if(!address) return null;
-  const symbol=string(token.symbol); const name=string(token.name); const sourceUrl=string(pool.url);
-  return {query,network:normalizedNetwork(string(pool.chainId)),address,...(symbol?{symbol}:{}),...(name?{name}:{}),...(sourceUrl?{sourceUrl}:{})};
+  const candidates:TokenSearchCandidate[]=[];
+  for(const pair of pairs){
+    const network=normalizedNetwork(string(pair.chainId));
+    if(requested && requested!==network) continue;
+    for(const item of [object(pair.baseToken),object(pair.quoteToken)]){
+      const address=string(item.address);
+      if(!address) continue;
+      const symbol=string(item.symbol);
+      const name=string(item.name);
+      const sourceUrl=string(pair.url);
+      candidates.push({network,address,...(symbol?{symbol}:{}),...(name?{name}:{}),...(sourceUrl?{sourceUrl}:{})});
+    }
+  }
+  // A ticker search with multiple mints is ambiguous even when one pool has
+  // much more liquidity. Let the user select the intended contract instead.
+  const selected=selectUnambiguousTokenCandidate(query,requested,candidates);
+  return selected ? {query,...selected} : null;
 }
 
 function evidenceBase(args:{jobId:string;taskId:string;invocation:IntelligenceInvocation;subject:IntelligenceSubject;resolved?:ResolvedToken|null}):Omit<IntelligenceEvidence,'id'|'status'|'summary'|'data'|'observedAt'|'fetchedAt'|'limitations'> {
@@ -169,10 +178,13 @@ function makeEvidence(base:ReturnType<typeof evidenceBase>, args:{status:Intelli
 async function dexScreener(invocation:IntelligenceInvocation, subject:IntelligenceSubject, base:ReturnType<typeof evidenceBase>, resolved:ResolvedToken|null):Promise<IntelligenceEvidence> {
   if(!resolved) return makeEvidence(base,{status:'unavailable',summary:'Token address/network could not be resolved for DEX market data.',limitations:['A unique token/network or contract address is required.']});
   const url=`https://api.dexscreener.com/token-pairs/v1/${encodeURIComponent(dexscreenerNetwork(resolved.network))}/${encodeURIComponent(resolved.address)}`;
-  const rows=array(await fetchJson(url,{headers:headers()})).map(object).sort((a,b)=>(number(object(b.liquidity).usd)??0)-(number(object(a.liquidity).usd)??0));
-  const top=rows[0]; if(!top) return makeEvidence(base,{status:'unavailable',summary:'DEX Screener returned no pools for this token.',sourceUrl:resolved.sourceUrl??url});
+  const rows=array(await fetchJson(url,{headers:headers()})).map(object)
+    .filter((row)=>[object(row.baseToken),object(row.quoteToken)].some((token)=>string(token.address)?.toLowerCase()===resolved.address.toLowerCase()))
+    .sort((a,b)=>(number(object(b.liquidity).usd)??0)-(number(object(a.liquidity).usd)??0));
+  const top=rows[0]; if(!top) return makeEvidence(base,{status:'unavailable',summary:'DEX Screener returned no pools containing the resolved token mint.',sourceUrl:resolved.sourceUrl??url});
   const liquidity=number(object(top.liquidity).usd); const volume24h=number(object(top.volume).h24); const price=number(top.priceUsd); const marketCap=number(top.marketCap); const fdv=number(top.fdv);
-  const facts={symbol:string(object(top.baseToken).symbol),priceUsd:price,liquidityUsd:liquidity,volume24hUsd:volume24h,marketCapUsd:marketCap,fdvUsd:fdv,priceChange:top.priceChange,txns:top.txns,pairAddress:string(top.pairAddress),dexId:string(top.dexId),poolCount:rows.length};
+  const matchedToken=[object(top.baseToken),object(top.quoteToken)].find((token)=>string(token.address)?.toLowerCase()===resolved.address.toLowerCase())!;
+  const facts={symbol:string(matchedToken.symbol),tokenAddress:resolved.address,priceUsd:price,liquidityUsd:liquidity,volume24hUsd:volume24h,marketCapUsd:marketCap,fdvUsd:fdv,priceChange:top.priceChange,txns:top.txns,pairAddress:string(top.pairAddress),dexId:string(top.dexId),poolCount:rows.length};
   return makeEvidence(base,{status:'verified',summary:`DEX market data: price ${price??'n/a'} USD; top-pool liquidity ${liquidity??'n/a'} USD; 24h volume ${volume24h??'n/a'} USD.`,data:facts,sourceUrl:string(top.url)??resolved.sourceUrl??url,limitations:['Liquidity and volume are pool/DEX observations and may not represent all venues.']});
 }
 
@@ -180,8 +192,18 @@ async function coinGecko(invocation:IntelligenceInvocation, subject:Intelligence
   const proKey=env('COINGECKO_API_KEY'); const demoKey=env('COINGECKO_DEMO_API_KEY'); const key=proKey||demoKey; if(!key) return makeEvidence(base,{status:'unavailable',summary:'CoinGecko API key is not configured.'});
   const h=headers({[proKey?'x-cg-pro-api-key':'x-cg-demo-api-key']:key}); const apiBase=proKey?'https://pro-api.coingecko.com/api/v3':'https://api.coingecko.com/api/v3';
   const search=object(await fetchJson(`${apiBase}/search?query=${encodeURIComponent(subject.query)}`,{headers:h}));
-  const coins=array(search.coins).map(object); const q=subject.query.toLowerCase(); const coin=coins.find((c)=>string(c.symbol)?.toLowerCase()===q)||coins.find((c)=>string(c.name)?.toLowerCase()===q)||coins[0];
-  const id=coin&&string(coin.id); if(!id) return makeEvidence(base,{status:'unavailable',summary:'CoinGecko could not resolve the requested asset.'});
+  const coins=array(search.coins).map(object); const q=subject.query.replace(/^\$/,'').toLowerCase();
+  const exact=coins.filter((c)=>string(c.symbol)?.toLowerCase()===q||string(c.name)?.toLowerCase()===q);
+  // CoinGecko names/symbols are not unique. Confirm its platform contract
+  // matches the SAME resolved token before merging any market observations.
+  const knownBonk=resolved?.network==='solana'&&pinnedTokenFor(subject.query,'solana')?.address===resolved.address;
+  const coin=knownBonk?exact.find((c)=>string(c.id)==='bonk'):exact.length===1?exact[0]:undefined;
+  const id=coin&&string(coin.id); if(!id||!resolved) return makeEvidence(base,{status:'unavailable',summary:'CoinGecko symbol lookup is ambiguous or the token mint is not resolved; no coin market data was attributed.'});
+  const meta=object(await fetchJson(`${apiBase}/coins/${encodeURIComponent(id)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false`,{headers:h}));
+  const platform=({ethereum:'ethereum',base:'base',arbitrum:'arbitrum-one',bnb:'binance-smart-chain',solana:'solana'} as Record<string,string>)[resolved.network];
+  const observedAddress=platform?(string(object(meta.platforms)[platform])||string(object(object(meta.detail_platforms)[platform]).contract_address)):undefined;
+  if(!observedAddress||observedAddress.toLowerCase()!==resolved.address.toLowerCase())
+    return makeEvidence(base,{status:'unavailable',summary:`CoinGecko asset identity for ${id} could not be matched to the resolved ${resolved.network} token mint. Price results were not merged.`,data:{coinId:id,expectedAddress:resolved.address,providerAddress:observedAddress??null},limitations:['Do not combine prices from an unresolved CoinGecko listing with mint-scoped provider evidence.']});
   const price=object(await fetchJson(`${apiBase}/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true&include_last_updated_at=true`,{headers:h}));
   const row=object(price[id]);
   return makeEvidence(base,{status:'verified',summary:`CoinGecko market snapshot for ${string(coin.name)??subject.query}: ${number(row.usd)??'n/a'} USD.`,data:{coinId:id,name:string(coin.name),symbol:string(coin.symbol),market:row,resolvedAddress:resolved?.address},sourceUrl:`https://www.coingecko.com/en/coins/${encodeURIComponent(id)}`,limitations:['Market aggregates can differ across venues and update intervals.']});
@@ -245,7 +267,7 @@ async function goPlus(invocation:IntelligenceInvocation, subject:IntelligenceSub
   if(resolved.network==='solana') url=`https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses=${encodeURIComponent(resolved.address)}`;
   else if(chain) url=`https://api.gopluslabs.io/api/v1/token_security/${chain}?contract_addresses=${encodeURIComponent(resolved.address)}`;
   else return makeEvidence(base,{status:'unavailable',summary:`GoPlus adapter does not map network ${resolved.network}.`});
-  const payload=object(await fetchJson(url,{headers:h})); const result=object(payload.result); const row=object(result[resolved.address.toLowerCase()]??result[resolved.address]??Object.values(result)[0]);
+  const payload=object(await fetchJson(url,{headers:h})); const result=object(payload.result); const row=object(result[resolved.address.toLowerCase()]??result[resolved.address]);
   const summary=invocation.capabilityId==='token.deployer.analyze'
     ? `GoPlus deployer/owner snapshot: creator ${string(row.creator_address)??'unknown'}; owner ${string(row.owner_address)??'unknown'}.`
     : `GoPlus token-security snapshot returned ${Object.keys(row).length} risk/contract fields.`;
@@ -419,7 +441,23 @@ export async function collectRoutedIntelligenceWithFallback(args:{ownerUserId:st
   const routes=[...args.routes.slice(0,24)].sort((left,right)=>intelligenceDependencyRank(left.capabilityId)-intelligenceDependencyRank(right.capabilityId));
   const out:IntelligenceEvidence[]=[];
   const resolution=new Map<string,ResolvedToken|null>();
-  for(const subject of subjects) if(subject.kind==='token'||subject.kind==='stablecoin') resolution.set(`${subject.kind}:${subject.query}:${subject.network??''}:${subject.address??''}`,await resolveToken(subject).catch(()=>null));
+  for(const subject of subjects) if(subject.kind==='token'||subject.kind==='stablecoin') {
+    const resolved=await resolveToken(subject).catch(()=>null);
+    resolution.set(`${subject.kind}:${subject.query}:${subject.network??''}:${subject.address??''}`,resolved);
+    if(resolved){
+      const pin=pinnedTokenFor(subject.query,resolved.network);
+      const evidence=makeEvidence(evidenceBase({jobId:args.jobId,taskId:args.taskId,
+        invocation:{capabilityId:'token.identity.resolve',implementationId:'agentplace-token-identity-v1',provider:'agentplace'},subject,resolved}),{
+        status:pin?.address===resolved.address?'verified':'partial',
+        summary:`Asset identity: ${subject.query} on ${resolved.network} is scoped to token ${resolved.address}.`,
+        data:{network:resolved.network,address:resolved.address,resolutionMethod:pin?.address===resolved.address?'pinned-reference':'explicit-address-or-unambiguous-search'},
+        ...(resolved.sourceUrl?{sourceUrl:resolved.sourceUrl}:{}),
+        limitations:pin?.address===resolved.address?['This reference identifies the original token; market and wallet facts still require fresh provider data.']:['Search/explicit-address identity is not independently authenticated by AgentPlace.']
+      });
+      await persistIntelligenceEvidence(args.ownerUserId,evidence);
+      out.push(evidence);
+    }
+  }
   for(const route of routes) {
     const capability=route.capabilityId;
     const kinds:IntelSubjectKindCompat = capability.startsWith('wallet.') ? ['wallet'] : capability.startsWith('protocol.') ? ['protocol'] : capability.startsWith('stablecoin.') ? ['stablecoin'] : ['token','stablecoin'];
@@ -427,8 +465,30 @@ export async function collectRoutedIntelligenceWithFallback(args:{ownerUserId:st
     for(const rawSubject of subjects.filter((item)=>kinds.includes(item.kind)).slice(0,6)) {
       const subject=bindWalletSubjectFromPriorEvidence(rawSubject,out);
       const resolved=resolution.get(`${subject.kind}:${subject.query}:${subject.network??''}:${subject.address??''}`)??null;
+      const conflict=(subject.kind==='token'||subject.kind==='stablecoin')
+        ? pinnedTokenConflict(subject.query,normalizedNetwork(subject.network),subject.address)
+        : null;
+      if(conflict){
+        // Do not attempt fallback providers with a conflicting mint: several
+        // adapters otherwise use the user/LLM-supplied address as a fallback.
+        const invocation=candidates[0];
+        if(invocation){
+          const evidence=makeEvidence(evidenceBase({jobId:args.jobId,taskId:args.taskId,invocation,subject}),{
+            status:'unavailable',summary:conflict,limitations:['Identity mismatch: provider request intentionally not sent.']
+          });
+          await persistIntelligenceEvidence(args.ownerUserId,evidence);
+          out.push(evidence);
+        }
+        continue;
+      }
       for(const invocation of candidates) {
         const base=evidenceBase({jobId:args.jobId,taskId:args.taskId,invocation,subject,resolved});
+        if((subject.kind==='token'||subject.kind==='stablecoin') && !resolved &&
+           (capability.startsWith('token.')||capability.startsWith('smartmoney.')||capability.startsWith('stablecoin.'))){
+          const evidence=makeEvidence(base,{status:'unavailable',summary:`The ${subject.query} token identity is unresolved or ambiguous on ${normalizedNetwork(subject.network)||'the requested network'}. No token-specific provider request was sent.`,limitations:['Provide the exact token mint/contract address and network to resolve this identity.']});
+          await persistIntelligenceEvidence(args.ownerUserId,evidence);out.push(evidence);
+          break;
+        }
         let evidence:IntelligenceEvidence;
         try {
           evidence=await invokeIntelligenceCandidate({ownerUserId:args.ownerUserId,jobId:args.jobId,taskId:args.taskId,invocation,subject,base,resolved,prior:out});

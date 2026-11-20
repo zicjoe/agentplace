@@ -30,7 +30,7 @@ export function researchCoverageInstructions(
   const unavailable = unavailableRequestedCapabilities.length > 0
     ? unavailableRequestedCapabilities.join(', ')
     : 'none explicitly identified';
-  return `Research coverage contract:\n${rows}\n\nBefore detailed analysis, include a section headed exactly \"## Coverage\" with a Markdown table whose first column contains every requirement ID above exactly once. Use only these status phrases: \"Verified from available evidence\", \"Partially verified\", or \"Not verified / capability unavailable\". The Basis column must say what evidence supports the status or why verification is unavailable. Do not omit a requested requirement simply because a specialist capability is unavailable.\n\nRequested capabilities that are currently non-live: ${unavailable}.\n\nAfter the coverage table, provide the useful source-grounded analysis that is actually supported. If preserved evidence cannot establish a requested point, say so explicitly rather than inventing a metric, wallet classification, deployer conclusion, security score, or onchain state. Do not add a final Sources section; AgentPlace appends preserved provider URLs separately.`;
+  return `Research coverage contract:\n${rows}\n\nLead with a concise \"## Bottom line\" directly answering the user and the most important evidence-qualified findings. Then include a section headed exactly \"## Coverage\" with a Markdown table whose first column contains every requirement ID above exactly once. Use only these status phrases: \"Verified from available evidence\", \"Partially verified\", or \"Not verified / capability unavailable\". The Basis column must say what evidence supports the status or why verification is unavailable. Do not omit a requested requirement simply because a specialist capability is unavailable.\n\nRequested capabilities that are currently non-live: ${unavailable}.\n\nThe coverage table is a detailed audit, not the opening user-facing answer. Give the source-grounded analysis before the table. If preserved evidence cannot establish a requested point, say so explicitly rather than inventing a metric, wallet classification, deployer conclusion, security score, or onchain state. Do not add a final Sources section; AgentPlace appends preserved provider URLs separately.`;
 }
 
 export function hasResearchCoverage(answer: string, requirements: readonly ResearchRequirement[]): boolean {
@@ -57,5 +57,5 @@ export function appendCoverageFallback(
     '| --- | --- | --- | --- |',
     ...rows,
   ].join('\n');
-  return `${coverage}\n\n${answer.trim()}`.trim();
+  return `${answer.trim()}\n\n${coverage}`.trim();
 }

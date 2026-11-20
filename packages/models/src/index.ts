@@ -121,10 +121,11 @@ function num(value:unknown):number|undefined { return typeof value==='number'&&N
 
 function openAIOutputText(payload:unknown):string {
   const root=object(payload); if(typeof root.output_text==='string') return root.output_text;
+  const parts:string[]=[];
   for(const item of array(root.output)) for(const content of array(object(item).content)) {
-    const c=object(content); if(c.type==='output_text' && typeof c.text==='string') return c.text;
+    const c=object(content); if(c.type==='output_text' && typeof c.text==='string') parts.push(c.text);
   }
-  return '';
+  return parts.join('\n').trim();
 }
 function geminiOutputText(payload:unknown):string {
   const root=object(payload); if(typeof root.output_text==='string') return root.output_text;
@@ -246,6 +247,13 @@ export async function researchWithWeb(args:{provider?:ModelProviderPreference;mo
       }),
     });
   }
+  const result=object(payload);
+  const truncated=provider==='openai'
+    ? result.status==='incomplete'||!!object(result.incomplete_details).reason
+    : provider==='anthropic'
+      ? result.stop_reason==='max_tokens'
+      : array(result.candidates).some((candidate)=>object(candidate).finishReason==='MAX_TOKENS');
+  if(truncated) throw new ModelGatewayError('research_output_truncated','Research model stopped before completing its response. The partial output was not published as a complete report.');
   const answer=(provider==='openai'?openAIOutputText(payload):provider==='gemini'?geminiOutputText(payload):anthropicOutputText(payload)).trim();
   if(!answer) throw new ModelGatewayError('empty_research_output','Research provider returned no answer.');
   const found=new Map<string,string>(); collectSources(payload,found);
