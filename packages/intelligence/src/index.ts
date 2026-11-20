@@ -2,6 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { getDatabasePool } from '@agent-place/db';
 import { normalizeTelegraphMappedInvocation } from '@agent-place/telegraph/runtime';
 import { pinnedTokenFor, pinnedTokenConflict, selectUnambiguousTokenCandidate, type TokenSearchCandidate } from './tokenIdentity.js';
+import { ProviderHttpError, retryAfterMilliseconds, withBoundedProviderRetry, singleFlight } from './providerReliability.js';
+import { extractNansenSmartMoneyUsdFlow, type SmartMoneyFlowSignal } from './flowSignals.js';
+export { reconcileResearchRuntimeClaims } from './researchGrounding.js';
 
 export type IntelligenceSubjectKind = 'token' | 'wallet' | 'protocol' | 'stablecoin';
 export interface IntelligenceSubject {
@@ -96,9 +99,15 @@ async function fetchJson(url:string, init:RequestInit={}):Promise<unknown> {
   const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),timeoutMs());
   try {
     const response=await fetch(url,{...init,signal:controller.signal}); const text=await response.text();
-    if(!response.ok) throw new Error(`HTTP_${response.status}:${text.slice(0,300)}`);
+    if(!response.ok) throw new ProviderHttpError(response.status, retryAfterMilliseconds(response.headers.get('retry-after')));
     return text?JSON.parse(text) as unknown:{};
   } finally { clearTimeout(timer); }
+}
+
+/** Bounded transient retry for public DexScreener reads; never wait for a long 429 cooldown. */
+function dexScreenerJson(url:string):Promise<unknown> {
+  return withBoundedProviderRetry(()=>fetchJson(url,{headers:headers()}),
+    {maxAttempts:2,maxWaitMs:1000,defaultWaitMs:400});
 }
 
 async function rpcJson(url:string, method:string, params:unknown):Promise<JsonObject> {
@@ -120,6 +129,9 @@ function concentrationMetrics(rawBalances:readonly bigint[], totalSupply:bigint)
 }
 function intelligenceDependencyRank(capabilityId:string):number {
   if(capabilityId==='token.deployer.analyze') return 0;
+  // The derived accumulator MUST run after all candidate Nansen flow reads,
+  // even if the Router supplies the capability routes in another order.
+  if(capabilityId==='smartmoney.accumulation.detect') return 3;
   if(capabilityId==='wallet.activity.analyze') return 2;
   return 1;
 }
@@ -146,7 +158,7 @@ async function resolveToken(subject:IntelligenceSubject):Promise<ResolvedToken|n
   if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(query) && (requested==='solana'||!requested)) return {query,network:'solana',address:query};
   const pinned=pinnedTokenFor(query,requested);
   if(pinned) return {query,network:pinned.network,address:pinned.address,symbol:pinned.symbol,sourceUrl:pinned.sourceUrl};
-  const payload=object(await fetchJson(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(query)}`,{headers:headers()}));
+  const payload=object(await dexScreenerJson(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(query)}`));
   const pairs=array(payload.pairs).map(object).filter((pair)=>pair.pairAddress);
   const candidates:TokenSearchCandidate[]=[];
   for(const pair of pairs){
@@ -175,16 +187,19 @@ function makeEvidence(base:ReturnType<typeof evidenceBase>, args:{status:Intelli
   const fetchedAt=new Date().toISOString(); return {id:`iev_${randomUUID()}`,...base,status:args.status,summary:args.summary,data:args.data??{},...(args.sourceUrl?{sourceUrl:safeUrl(args.sourceUrl)}:{}),observedAt:args.observedAt??fetchedAt,fetchedAt,...(args.freshnessSeconds===undefined?{}:{freshnessSeconds:args.freshnessSeconds}),...(args.providerConfidence===undefined?{}:{providerConfidence:args.providerConfidence}),...(args.derivationVersion?{derivationVersion:args.derivationVersion}:{}),limitations:args.limitations??[]};
 }
 
-async function dexScreener(invocation:IntelligenceInvocation, subject:IntelligenceSubject, base:ReturnType<typeof evidenceBase>, resolved:ResolvedToken|null):Promise<IntelligenceEvidence> {
+async function dexScreener(invocation:IntelligenceInvocation, subject:IntelligenceSubject, base:ReturnType<typeof evidenceBase>, resolved:ResolvedToken|null, readCache:Map<string,Promise<unknown>>):Promise<IntelligenceEvidence> {
   if(!resolved) return makeEvidence(base,{status:'unavailable',summary:'Token address/network could not be resolved for DEX market data.',limitations:['A unique token/network or contract address is required.']});
   const url=`https://api.dexscreener.com/token-pairs/v1/${encodeURIComponent(dexscreenerNetwork(resolved.network))}/${encodeURIComponent(resolved.address)}`;
-  const rows=array(await fetchJson(url,{headers:headers()})).map(object)
+  const payload=await singleFlight(readCache,`dexscreener:${url}`,()=>dexScreenerJson(url));
+  const rows=array(payload).map(object)
     .filter((row)=>[object(row.baseToken),object(row.quoteToken)].some((token)=>string(token.address)?.toLowerCase()===resolved.address.toLowerCase()))
     .sort((a,b)=>(number(object(b.liquidity).usd)??0)-(number(object(a.liquidity).usd)??0));
   const top=rows[0]; if(!top) return makeEvidence(base,{status:'unavailable',summary:'DEX Screener returned no pools containing the resolved token mint.',sourceUrl:resolved.sourceUrl??url});
   const liquidity=number(object(top.liquidity).usd); const volume24h=number(object(top.volume).h24); const price=number(top.priceUsd); const marketCap=number(top.marketCap); const fdv=number(top.fdv);
   const matchedToken=[object(top.baseToken),object(top.quoteToken)].find((token)=>string(token.address)?.toLowerCase()===resolved.address.toLowerCase())!;
-  const facts={symbol:string(matchedToken.symbol),tokenAddress:resolved.address,priceUsd:price,liquidityUsd:liquidity,volume24hUsd:volume24h,marketCapUsd:marketCap,fdvUsd:fdv,priceChange:top.priceChange,txns:top.txns,pairAddress:string(top.pairAddress),dexId:string(top.dexId),poolCount:rows.length};
+  const snapshotFingerprint=createHash('sha256').update(`${base.jobId}:${base.taskId}:dexscreener:${url}`).digest('hex');
+  const facts={symbol:string(matchedToken.symbol),tokenAddress:resolved.address,priceUsd:price,liquidityUsd:liquidity,volume24hUsd:volume24h,marketCapUsd:marketCap,fdvUsd:fdv,priceChange:top.priceChange,txns:top.txns,pairAddress:string(top.pairAddress),dexId:string(top.dexId),poolCount:rows.length,
+    requestParameters:{endpoint:'/token-pairs/v1/{chainId}/{tokenAddress}',network:resolved.network,tokenAddress:resolved.address},snapshotFingerprint};
   return makeEvidence(base,{status:'verified',summary:`DEX market data: price ${price??'n/a'} USD; top-pool liquidity ${liquidity??'n/a'} USD; 24h volume ${volume24h??'n/a'} USD.`,data:facts,sourceUrl:string(top.url)??resolved.sourceUrl??url,limitations:['Liquidity and volume are pool/DEX observations and may not represent all venues.']});
 }
 
@@ -226,20 +241,37 @@ async function defillama(invocation:IntelligenceInvocation, subject:Intelligence
   return makeEvidence(base,{status:row?'verified':'unavailable',summary:row?`DefiLlama stablecoin snapshot for ${string(row.symbol)??subject.query}.`:'DefiLlama could not resolve this stablecoin.',data:row?jsonExcerpt(row):{},sourceUrl:'https://defillama.com/stablecoins',limitations:['Supply and peg data are provider-normalized observations, not an audit of reserves.']});
 }
 
-async function nansen(invocation:IntelligenceInvocation, subject:IntelligenceSubject, base:ReturnType<typeof evidenceBase>, resolved:ResolvedToken|null):Promise<IntelligenceEvidence> {
+async function nansen(invocation:IntelligenceInvocation, subject:IntelligenceSubject, base:ReturnType<typeof evidenceBase>, resolved:ResolvedToken|null, readCache:Map<string,Promise<unknown>>):Promise<IntelligenceEvidence> {
   const key=env('NANSEN_API_KEY'); if(!key) return makeEvidence(base,{status:'unavailable',summary:'Nansen API key is not configured.'});
   const h=headers({'apiKey':key,'content-type':'application/json'}); const network=nansenNetwork(resolved?.network||normalizedNetwork(subject.network)); const address=resolved?.address||subject.address?.trim()||(/^0x[a-fA-F0-9]{40}$/.test(subject.query)||/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(subject.query)?subject.query:'');
   if(!network||!address) return makeEvidence(base,{status:'unavailable',summary:'Nansen requires a resolved network and address for this capability.'});
   let path=''; let body:JsonObject={};
   if(invocation.capabilityId==='token.holders.analyze') { path='/api/v1/tgm/holders'; body={chain:network,token_address:address,aggregate_by_entity:false,label_type:'all_holders',pagination:{page:1,per_page:20},order_by:[{field:'token_amount',direction:'DESC'}]}; }
-  else if(invocation.capabilityId==='smartmoney.flow.read'||invocation.capabilityId==='token.smartmoney.read'||invocation.capabilityId==='smartmoney.accumulation.detect') { path='/api/v1/tgm/flow-intelligence'; body={chain:network,token_address:address}; }
+  else if(invocation.capabilityId==='smartmoney.flow.read'||invocation.capabilityId==='token.smartmoney.read'||invocation.capabilityId==='smartmoney.accumulation.detect') { path='/api/v1/tgm/flow-intelligence'; body={chain:network,token_address:address,timeframe:'1d'}; }
   else if(invocation.capabilityId==='wallet.performance.analyze') { const to=new Date(); const from=new Date(to.getTime()-90*86400000); path='/api/v1/profiler/address/pnl-summary'; body={address,chain:network,date:{from:from.toISOString(),to:to.toISOString()}}; }
   else if(invocation.capabilityId==='wallet.activity.analyze') { const to=new Date(); const from=new Date(to.getTime()-30*86400000); path='/api/v1/profiler/address/transactions'; body={address,chain:network,date:{from:from.toISOString(),to:to.toISOString()},hide_spam_token:true,pagination:{page:1,per_page:20},order_by:[{field:'block_timestamp',direction:'DESC'}]}; }
   else if(invocation.capabilityId==='wallet.cluster.analyze') { path='/api/v1/profiler/address/related-wallets'; body={address,chain:network,pagination:{page:1,per_page:20},order_by:[{field:'order',direction:'ASC'}]}; }
   else { path='/api/v1/profiler/address/current-balance'; body={address,chain:network}; }
-  const payload=await fetchJson(`https://api.nansen.ai${path}`,{method:'POST',headers:h,body:JSON.stringify(body)});
-  const d=object(payload); const rows=array(d.data); const status=rows.length||Object.keys(object(d.data)).length?'verified':'partial';
-  return makeEvidence(base,{status,summary:`Nansen ${invocation.capabilityId} returned ${rows.length||Object.keys(object(d.data)).length} structured record(s).`,data:jsonExcerpt(payload),sourceUrl:'https://app.nansen.ai',limitations:[invocation.capabilityId==='wallet.cluster.analyze'?'Related-wallet evidence shows first-degree relationships; it does not prove common ownership.':'Nansen labels/segments are provider-defined intelligence and should be attributed as such.']});
+  const endpoint=`https://api.nansen.ai${path}`;
+  const requestKey=`nansen:${path}:${JSON.stringify(body)}`;
+  // Both token.smartmoney.read and smartmoney.flow.read use this exact
+  // metered endpoint. A collection-local single-flight read avoids paying
+  // twice for one identical snapshot and preserves that common lineage.
+  const read=()=>fetchJson(endpoint,{method:'POST',headers:h,body:JSON.stringify(body)});
+  const payload=path==='/api/v1/tgm/flow-intelligence'
+    ? await singleFlight(readCache,requestKey,read)
+    : await read();
+  const d=object(payload); const rows=array(d.data);
+  const status=rows.length||Object.keys(object(d.data)).length?'verified':'partial';
+  const normalized:SmartMoneyFlowSignal|null=path==='/api/v1/tgm/flow-intelligence'
+    ? extractNansenSmartMoneyUsdFlow(payload):null;
+  const publicParameters={endpoint:path,chain:network,...(body.token_address?{tokenAddress:address}:{}),...(body.timeframe?{timeframe:body.timeframe}:{})};
+  const snapshotFingerprint=createHash('sha256').update(`${base.jobId}:${base.taskId}:${requestKey}:${JSON.stringify(payload)}`).digest('hex');
+  return makeEvidence(base,{status,summary:`Nansen ${invocation.capabilityId} returned ${rows.length||Object.keys(object(d.data)).length} structured record(s).`,
+    data:{...jsonExcerpt(payload),requestParameters:publicParameters,snapshotFingerprint,...(normalized?{normalizedSmartMoneyFlow:normalized}:{})},
+    sourceUrl:'https://app.nansen.ai',
+    limitations:[invocation.capabilityId==='wallet.cluster.analyze'?'Related-wallet evidence shows first-degree relationships; it does not prove common ownership.':'Nansen labels/segments are provider-defined intelligence and should be attributed as such.',
+      ...(path==='/api/v1/tgm/flow-intelligence'?['The explicit 1d request window is recorded; reported cohorts do not establish beneficial ownership, trading intent or whole-market direction.','Capabilities sharing a snapshotFingerprint reused one provider response; they are not independent corroboration.']:[])]});
 }
 
 let goPlusTokenCache:{token:string;expiresAt:number}|null=null;
@@ -370,25 +402,23 @@ async function blockscout(invocation:IntelligenceInvocation, subject:Intelligenc
 }
 
 
-function findNumericByKey(value:unknown, patterns:RegExp[], depth=0):Array<{key:string;value:number}> {
-  if(depth>8||value===null||value===undefined) return [];
-  if(Array.isArray(value)) return value.flatMap((item)=>findNumericByKey(item,patterns,depth+1));
-  if(typeof value!=='object') return [];
-  const out:Array<{key:string;value:number}>=[];
-  for(const [key,child] of Object.entries(value as Record<string,unknown>)) {
-    const n=number(child); if(n!==undefined&&patterns.some((pattern)=>pattern.test(key))) out.push({key,value:n});
-    out.push(...findNumericByKey(child,patterns,depth+1));
-  }
-  return out;
-}
 function deriveAccumulation(base:ReturnType<typeof evidenceBase>, prior:readonly IntelligenceEvidence[]):IntelligenceEvidence {
-  const source=prior.find((item)=>item.subjectQuery===base.subjectQuery&&item.provider==='nansen'&&(item.capabilityId==='smartmoney.flow.read'||item.capabilityId==='token.smartmoney.read')&&item.status==='verified');
-  if(!source) return makeEvidence(base,{status:'unavailable',summary:'Accumulation signal requires preserved Nansen smart-money flow evidence from the same Job.',derivationVersion:'agentplace-smartmoney-accumulation-v1',limitations:['No independent source evidence was available for this derivation.']});
-  const metrics=findNumericByKey(source.data,[/net[_-]?flow.*7d/i,/net[_-]?flow.*24h/i,/balance.*change/i]);
-  const strongest=metrics.sort((a,b)=>Math.abs(b.value)-Math.abs(a.value))[0];
-  if(!strongest) return makeEvidence(base,{status:'partial',summary:'Smart-money evidence was preserved, but no supported net-flow/change field was available for a deterministic accumulation signal.',data:{sourceEvidenceId:source.id},derivationVersion:'agentplace-smartmoney-accumulation-v1',limitations:['No accumulation/distribution direction was inferred without a recognized numeric provider field.']});
-  const direction=strongest.value>0?'accumulation':strongest.value<0?'distribution':'neutral';
-  return makeEvidence(base,{status:'verified',summary:`AgentPlace derived ${direction} from Nansen field ${strongest.key}=${strongest.value}.`,data:{direction,metric:strongest,sourceEvidenceId:source.id,sourceProvider:'nansen'},...(source.sourceUrl?{sourceUrl:source.sourceUrl}:{}),derivationVersion:'agentplace-smartmoney-accumulation-v1',limitations:['This is a bounded deterministic derivation from provider-defined Smart Money evidence, not an AgentPlace wallet-quality score.']});
+  const source=prior.find((item)=>item.subjectQuery===base.subjectQuery &&
+    item.network===base.network && item.address?.toLowerCase()===base.address?.toLowerCase() &&
+    item.provider==='nansen' && item.capabilityId==='smartmoney.flow.read' && item.status==='verified' &&
+    object(item.data.requestParameters).timeframe==='1d');
+  if(!source) return makeEvidence(base,{status:'unavailable',summary:'Accumulation analysis requires a verified Nansen flow snapshot for the same token and an explicitly recorded observation window.',derivationVersion:'agentplace-smartmoney-flow-v2',limitations:['A different cohort, token, or unbounded observation window cannot establish Smart Money accumulation.']});
+  const metric=object(source.data.normalizedSmartMoneyFlow);
+  const value=number(metric.valueUsd);
+  if(metric.cohort!=='smart_money'||metric.metric!=='net_flow_usd'||value===undefined)
+    return makeEvidence(base,{status:'partial',summary:'Nansen flow evidence was preserved, but no unambiguous smart-money-cohort USD net flow field was recognized. No direction inferred.',
+      data:{sourceEvidenceId:source.id,snapshotFingerprint:source.data.snapshotFingerprint??null},
+      derivationVersion:'agentplace-smartmoney-flow-v2',limitations:['Whale, exchange and fresh-wallet flows cannot be substituted for Smart Money cohort flows.']});
+  const direction=value>0?'net-inflow':value<0?'net-outflow':'flat';
+  return makeEvidence(base,{status:'verified',summary:`AgentPlace measured Nansen Smart Money cohort ${direction} of ${value} USD for the explicitly requested 1d window; this alone does not prove market-wide accumulation or distribution.`,
+    data:{direction,cohort:'smart_money',valueUsd:value,window:'1d',metricPath:metric.path,sourceEvidenceId:source.id,sourceProvider:'nansen',snapshotFingerprint:source.data.snapshotFingerprint??null},
+    ...(source.sourceUrl?{sourceUrl:source.sourceUrl}:{}),derivationVersion:'agentplace-smartmoney-flow-v2',
+    limitations:['This is a provider-defined cohort net-flow signal, NOT market-wide accumulation, wallet identity or trading intent.','Zero net flow does not establish zero participation.']});
 }
 
 export async function persistIntelligenceEvidence(ownerUserId:string,evidence:IntelligenceEvidence):Promise<void> {
@@ -406,12 +436,13 @@ async function invokeIntelligenceCandidate(args:{
   base:ReturnType<typeof evidenceBase>;
   resolved:ResolvedToken|null;
   prior:readonly IntelligenceEvidence[];
+  readCache:Map<string,Promise<unknown>>;
 }):Promise<IntelligenceEvidence> {
   const { invocation, subject, base, resolved }=args;
-  if(invocation.provider==='dexscreener') return dexScreener(invocation,subject,base,resolved);
+  if(invocation.provider==='dexscreener') return dexScreener(invocation,subject,base,resolved,args.readCache);
   if(invocation.provider==='coingecko') return coinGecko(invocation,subject,base,resolved);
   if(invocation.provider==='defillama') return defillama(invocation,subject,base);
-  if(invocation.provider==='nansen') return nansen(invocation,subject,base,resolved);
+  if(invocation.provider==='nansen') return nansen(invocation,subject,base,resolved,args.readCache);
   if(invocation.provider==='goplus') return goPlus(invocation,subject,base,resolved);
   if(invocation.provider==='bubblemaps') return bubblemaps(invocation,subject,base,resolved);
   if(invocation.provider==='birdeye') return birdeye(invocation,subject,base,resolved);
@@ -441,6 +472,7 @@ export async function collectRoutedIntelligenceWithFallback(args:{ownerUserId:st
   const routes=[...args.routes.slice(0,24)].sort((left,right)=>intelligenceDependencyRank(left.capabilityId)-intelligenceDependencyRank(right.capabilityId));
   const out:IntelligenceEvidence[]=[];
   const resolution=new Map<string,ResolvedToken|null>();
+  const readCache=new Map<string,Promise<unknown>>(); // one collection only; no cross-Job market staleness
   for(const subject of subjects) if(subject.kind==='token'||subject.kind==='stablecoin') {
     const resolved=await resolveToken(subject).catch(()=>null);
     resolution.set(`${subject.kind}:${subject.query}:${subject.network??''}:${subject.address??''}`,resolved);
@@ -491,7 +523,7 @@ export async function collectRoutedIntelligenceWithFallback(args:{ownerUserId:st
         }
         let evidence:IntelligenceEvidence;
         try {
-          evidence=await invokeIntelligenceCandidate({ownerUserId:args.ownerUserId,jobId:args.jobId,taskId:args.taskId,invocation,subject,base,resolved,prior:out});
+          evidence=await invokeIntelligenceCandidate({ownerUserId:args.ownerUserId,jobId:args.jobId,taskId:args.taskId,invocation,subject,base,resolved,prior:out,readCache});
         } catch(error) {
           evidence=makeEvidence(base,{status:'error',summary:`${invocation.provider} intelligence request failed.`,data:{error:error instanceof Error?error.message:String(error)},limitations:['Provider failure was preserved instead of being converted into a factual finding.']});
         }
@@ -524,8 +556,11 @@ export function intelligenceEvidencePrompt(evidence:readonly IntelligenceEvidenc
   if(!evidence.length) return 'No structured provider intelligence was collected for this Job.';
   return evidence.slice(0,40).map((item,index)=>[
     `E${index+1} ${item.capabilityId} · ${item.provider} · ${item.subjectQuery} · ${item.status}`,
+    `persisted_evidence_id=${item.id} — this is actual runtime evidence; do not infer an unexecuted capability from the routable-capability list`,
     item.summary,
-    `network=${item.network??'n/a'} address=${item.address??'n/a'} fetched_at=${item.fetchedAt}`,
+    `network=${item.network??'n/a'} address=${item.address??'n/a'} fetched_at=${item.fetchedAt} observed_at=${item.observedAt}`,
+    `provider_source_url=${item.sourceUrl??'none'} request_parameters=${JSON.stringify(item.data.requestParameters??{})}`,
+    `snapshot_fingerprint=${String(item.data.snapshotFingerprint??'none')} (same fingerprint means SAME provider observation, not independent confirmation)`,
     `data=${JSON.stringify(item.data).slice(0,3500)}`,
     item.limitations.length?`limitations=${item.limitations.join(' | ')}`:'',
   ].filter(Boolean).join('\n')).join('\n\n');
@@ -562,8 +597,11 @@ export async function readDeterministicMarketMetric(args: {
   const resolved = await resolveToken(subject);
   if (!resolved) throw new Error('CONDITION_SUBJECT_UNRESOLVED');
   const url = `https://api.dexscreener.com/token-pairs/v1/${encodeURIComponent(dexscreenerNetwork(resolved.network))}/${encodeURIComponent(resolved.address)}`;
-  const rows = array(await fetchJson(url, { headers: headers() }))
+  const rows = array(await dexScreenerJson(url))
     .map(object)
+    .filter((row) => [object(row.baseToken),object(row.quoteToken)].some(
+      (token) => string(token.address)?.toLowerCase() === resolved.address.toLowerCase()
+    ))
     .sort((a, b) => (number(object(b.liquidity).usd) ?? 0) - (number(object(a.liquidity).usd) ?? 0));
   const top = rows[0];
   if (!top) throw new Error('CONDITION_METRIC_UNAVAILABLE');

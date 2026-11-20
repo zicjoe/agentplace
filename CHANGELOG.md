@@ -1,5 +1,12 @@
 # Changelog
 
+## M15 Stage 1 — Intelligence Reliability & Evidence-Grounded Synthesis (review candidate)
+
+- Implemented bounded DexScreener 429/5xx retry behavior, per-Job duplicate-read coalescing for market/liquidity and identical Nansen flow requests, explicit 1-day Nansen windows and sanitized request fingerprints.
+- Strengthened derived smart-money analysis to only interpret a recognized Smart Money cohort USD flow rather than the largest arbitrary whale/exchange number. Ambiguous/missing fields stay partial.
+- Improved evidence-grounded synthesis using actual persisted capability statuses, evidence IDs and provider provenance, with a deterministic correction for the observed false identity-resolver-unavailable claim.
+- No schema migration, wallet signing/financial authority change, new Mainnet autonomy or Railway Scheduler modification. Milestone 15 candidate remains on accepted M14 v0.17.0 baseline pending broader acceptance/release versioning.
+
 - M14 Conversation-First UX Phase 2 database FK repair: register read-only canonical capability `token.identity.resolve` in migration `0025_token_identity_evidence_capability.sql`, so the new identity provenance row satisfies `intelligence_evidence_capability_id_fkey` before the Worker invokes structured research providers. Includes a focused regression test; no Worker routing, authority, signer, billing or Scheduler changes. Apply database migrations before testing the redeployed Worker.
 
 - M14 Conversation-First UX Phase 2 review candidate: research now leads with an evidence-qualified answer and preserves Coverage/Sources as expandable audit details; older reports can surface a verbatim conclusion first, with warnings for likely unfinished prose. The structured intelligence fabric now pins established Solana BONK to its original mint, rejects conflicting named-token addresses before provider calls, refuses ambiguous ticker searches, validates CoinGecko contract mapping and DEX/GoPlus returned mint keys, and avoids counting identity-only evidence as market intelligence. Model responses explicitly cut off by provider limits are not published as completed reports. No wallet/authority/execution/billing/scheduler configuration changes; candidate requires `pnpm check` and live UX testing before acceptance.
