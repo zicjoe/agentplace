@@ -107,7 +107,7 @@ test('hybrid UI opens the existing Job Result, retains saved evidence and respec
   const card = read('apps/web/src/components/ResearchResultCard.tsx');
   const research = read('apps/web/src/components/ResearchMarkdown.tsx');
   assert.match(chat, /msg_origin_result_/);
-  assert.match(chat, /SET_ACTIVE_JOB', id: msg\.jobId!, tab: 'result'/);
+  assert.match(chat, /SET_ACTIVE_JOB', id: linkedJob\.id, tab: 'result'/);
   assert.match(job, /id\.startsWith\('msg_job_result_'\)/);
   assert.match(job, /<ResearchReport key=\{job\.id\}/);
   assert.match(job, /lastConversationRef\.current !== conversationKey/);

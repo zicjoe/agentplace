@@ -93,6 +93,22 @@ body {
 .research-markdown pre { white-space: pre; }
 .research-markdown :is(a, code) { overflow-wrap: anywhere; }
 
+/* Conversation-first presentation. Research appears as readable saved text,
+   while technical evidence is reachable through the Job Workspace. */
+.chat-conversation .research-markdown {
+  font-size: 0.9375rem;
+  line-height: 1.8;
+  color: #abb0c8;
+}
+.chat-conversation .research-markdown :is(h2, h3) {
+  font-size: 1rem;
+  line-height: 1.5;
+  margin-top: 0.625rem;
+}
+.chat-conversation .conversation-research-answer > .research-markdown {
+  padding-bottom: 0.5rem;
+}
+
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;

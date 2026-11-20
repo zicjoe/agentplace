@@ -8,7 +8,7 @@ import { fetchJobEvidence, fetchJobIntelligenceEvidence, fetchJobRoute, type Job
 import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
 import { ResearchMarkdown } from './ResearchMarkdown';
-import { ResearchResultCard } from './ResearchResultCard';
+import { ConversationResearchAnswer } from './ConversationResearchAnswer';
 import { ResearchReport } from './ResearchReport';
 import { scrollConversationToEnd } from '../platform/scroll';
 import { AgentPlaceMark } from './AgentPlaceBrand';
@@ -770,7 +770,7 @@ export function JobWorkspace() {
                           </span>
                         ) : (
                           productionConversation && msg.id.startsWith('msg_job_result_') ? (
-                            <ResearchResultCard text={msg.content} title={job.title} onOpenReport={() => setActiveTab('result')} />
+                            <ConversationResearchAnswer text={msg.content} title={job.title} complete={job.status === 'completed'} onViewWork={() => setActiveTab('result')} />
                           ) : <ResearchMarkdown text={msg.content} />
                         )}
                       </div>
