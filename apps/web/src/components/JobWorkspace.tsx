@@ -5,6 +5,7 @@ import type { ExecutionStatus } from '../state/types';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
 import { fetchJobEvidence, fetchJobIntelligenceEvidence, fetchJobRoute, type JobEvidenceSource, type JobIntelligenceEvidence, type JobRouteDecision } from '../platform/workApi';
+import { evidenceRequestMetrics, summarizeJobRequestMetrics } from '../platform/providerRequestSummary';
 import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
 import { ResearchMarkdown } from './ResearchMarkdown';
@@ -892,6 +893,18 @@ export function JobWorkspace() {
                   </summary>
                   <div className="mt-3 space-y-2">
                     <p className="text-[11px] text-text-muted leading-relaxed">Provider-attributed read-only evidence preserved for this Job. A provider signal is evidence, not an instruction or financial authorization.</p>
+                    {(() => {
+                      const total=summarizeJobRequestMetrics(intelligenceEvidence);
+                      return total ? (
+                        <div className="rounded-md border border-border-dim bg-panel/60 px-3 py-2" aria-label="Recorded provider request activity">
+                          <p className="text-[11px] font-medium text-text">Provider request activity · this Job</p>
+                          <p className="text-[11px] text-text-sub mt-1">
+                            {total.outboundAttempts} outbound attempts · {total.cacheReuses} shared reads · {total.scheduledRetries} scheduled retries · {total.errors} HTTP/parse failures
+                          </p>
+                          <p className="text-[11px] text-text-muted mt-1">Measured within {total.instrumentedEvidence} instrumented evidence records. Attempts are not billed API calls or verified cost savings. Older records may lack telemetry.</p>
+                        </div>
+                      ) : null;
+                    })()}
                     {intelligenceEvidence.slice(0, 24).map((item) => (
                       <div key={item.id} className="rounded border border-border-dim px-3 py-2">
                         <div className="flex items-start justify-between gap-3">
@@ -904,6 +917,12 @@ export function JobWorkspace() {
                           </span>
                         </div>
                         <p className="text-[11px] text-text-sub mt-1.5 leading-relaxed">{item.summary}</p>
+                        {(() => {
+                          const usage=evidenceRequestMetrics(item.data);
+                          return usage ? <p className="text-[11px] text-text-muted mt-1" aria-label="Provider request count">
+                            Outbound attempts: {usage.outboundAttempts} · shared read: {usage.cacheReuses} · retries: {usage.scheduledRetries} · HTTP/parse failures: {usage.errors}
+                          </p> : null;
+                        })()}
                         {item.limitations.length > 0 && <p className="text-[11px] text-text-muted mt-1">Limit: {item.limitations[0]}</p>}
                         {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="text-[11px] text-primary hover:underline mt-1 inline-block">Open provider evidence ↗</a>}
                       </div>

@@ -1,3 +1,11 @@
+## M15 Stage 2 — Provider observability and provenance (review candidate; production unverified)
+
+- Added owner-scoped per-Job HTTP request attempt telemetry for intelligence providers: response outcomes, numeric status, latency, retry wait and cache reuse without raw URLs or secrets.
+- Surfaced Job and per-capability provider request counts inside the existing expandable evidence inspector; older persisted evidence remains compatible.
+- Preserved Alchemy ranked-holder request parameters and content-addressed DexScreener/Nansen snapshot fingerprints.
+- Classified provider errors without storing secret-bearing raw exception messages; external SDKs not instrumented by the HTTP adapter are not misreported as zero-call.
+- No database migration, scheduler change, wallet authority change or Mainnet-autonomy expansion. Full production acceptance pending.
+
 # Changelog
 
 ## M15 Stage 1 — Intelligence Reliability & Evidence-Grounded Synthesis (review candidate)

@@ -32,3 +32,7 @@ This Stage 1 candidate is intentionally based on **v0.17.0**; it does not claim 
 ## Stage 1 exit
 
 Pass full `pnpm check` on the developer machine. Deploy only after that; no DB migration for this candidate. Perform one new read-only BONK investigation in the live app, inspect the structured evidence rows, confirm DexScreener retry/error behavior, same-key Nansen flow evidence, exact `timeframe`, truthful accumulation outcome, and the final conversation answer. Stage 1 is *not* accepted based on unit tests alone.
+
+## Stage 2 follow-on candidate
+
+See [MILESTONE-15-STAGE2.md](MILESTONE-15-STAGE2.md) and [MILESTONE-15-STAGE2-TESTING.md](MILESTONE-15-STAGE2-TESTING.md) for outbound request observability, provenance, cost-accounting limitations and new production acceptance steps. Stage 1 acceptance and its existing constraints remain recorded above.

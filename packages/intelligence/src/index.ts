@@ -4,6 +4,7 @@ import { normalizeTelegraphMappedInvocation } from '@agent-place/telegraph/runti
 import { pinnedTokenFor, pinnedTokenConflict, selectUnambiguousTokenCandidate, type TokenSearchCandidate } from './tokenIdentity.js';
 import { ProviderHttpError, retryAfterMilliseconds, withBoundedProviderRetry, singleFlight } from './providerReliability.js';
 import { extractNansenSmartMoneyUsdFlow, type SmartMoneyFlowSignal } from './flowSignals.js';
+import { ProviderRequestLedger, currentProviderRequestLedger, withProviderRequestLedger, classifyProviderFailure, type ProviderRequestOutcome } from './providerTelemetry.js';
 export { reconcileResearchRuntimeClaims } from './researchGrounding.js';
 
 export type IntelligenceSubjectKind = 'token' | 'wallet' | 'protocol' | 'stablecoin';
@@ -97,17 +98,30 @@ function headers(extra:Record<string,string>={}):HeadersInit { return { accept:'
 function timeoutMs():number { return Math.max(5000, Number.parseInt(env('INTELLIGENCE_PROVIDER_TIMEOUT_MS')||'20000',10)||20000); }
 async function fetchJson(url:string, init:RequestInit={}):Promise<unknown> {
   const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),timeoutMs());
+  const ledger=currentProviderRequestLedger();
+  const started=Date.now();
+  let statusCode:number|undefined;
+  let outcome:ProviderRequestOutcome='network_error';
   try {
-    const response=await fetch(url,{...init,signal:controller.signal}); const text=await response.text();
-    if(!response.ok) throw new ProviderHttpError(response.status, retryAfterMilliseconds(response.headers.get('retry-after')));
-    return text?JSON.parse(text) as unknown:{};
-  } finally { clearTimeout(timer); }
+    const response=await fetch(url,{...init,signal:controller.signal});
+    statusCode=response.status;
+    const text=await response.text();
+    if(!response.ok){outcome='http_error';throw new ProviderHttpError(response.status,retryAfterMilliseconds(response.headers.get('retry-after')));}
+    try {const result=text?JSON.parse(text) as unknown:{};outcome='ok';return result;}
+    catch(error){outcome='invalid_json';throw error;}
+  } catch(error) {
+    if(controller.signal.aborted) outcome='timeout';
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    ledger?.recordAttempt(url,outcome,Date.now()-started,statusCode);
+  }
 }
-
 /** Bounded transient retry for public DexScreener reads; never wait for a long 429 cooldown. */
 function dexScreenerJson(url:string):Promise<unknown> {
   return withBoundedProviderRetry(()=>fetchJson(url,{headers:headers()}),
-    {maxAttempts:2,maxWaitMs:1000,defaultWaitMs:400});
+    {maxAttempts:2,maxWaitMs:1000,defaultWaitMs:400,
+      onRetry:(waitMs)=>currentProviderRequestLedger()?.recordRetry('dexscreener',waitMs)});
 }
 
 async function rpcJson(url:string, method:string, params:unknown):Promise<JsonObject> {
@@ -190,6 +204,7 @@ function makeEvidence(base:ReturnType<typeof evidenceBase>, args:{status:Intelli
 async function dexScreener(invocation:IntelligenceInvocation, subject:IntelligenceSubject, base:ReturnType<typeof evidenceBase>, resolved:ResolvedToken|null, readCache:Map<string,Promise<unknown>>):Promise<IntelligenceEvidence> {
   if(!resolved) return makeEvidence(base,{status:'unavailable',summary:'Token address/network could not be resolved for DEX market data.',limitations:['A unique token/network or contract address is required.']});
   const url=`https://api.dexscreener.com/token-pairs/v1/${encodeURIComponent(dexscreenerNetwork(resolved.network))}/${encodeURIComponent(resolved.address)}`;
+  if(readCache.has(`dexscreener:${url}`)) currentProviderRequestLedger()?.recordReuse('dexscreener');
   const payload=await singleFlight(readCache,`dexscreener:${url}`,()=>dexScreenerJson(url));
   const rows=array(payload).map(object)
     .filter((row)=>[object(row.baseToken),object(row.quoteToken)].some((token)=>string(token.address)?.toLowerCase()===resolved.address.toLowerCase()))
@@ -197,7 +212,7 @@ async function dexScreener(invocation:IntelligenceInvocation, subject:Intelligen
   const top=rows[0]; if(!top) return makeEvidence(base,{status:'unavailable',summary:'DEX Screener returned no pools containing the resolved token mint.',sourceUrl:resolved.sourceUrl??url});
   const liquidity=number(object(top.liquidity).usd); const volume24h=number(object(top.volume).h24); const price=number(top.priceUsd); const marketCap=number(top.marketCap); const fdv=number(top.fdv);
   const matchedToken=[object(top.baseToken),object(top.quoteToken)].find((token)=>string(token.address)?.toLowerCase()===resolved.address.toLowerCase())!;
-  const snapshotFingerprint=createHash('sha256').update(`${base.jobId}:${base.taskId}:dexscreener:${url}`).digest('hex');
+  const snapshotFingerprint=createHash('sha256').update(`dexscreener:${url}:${JSON.stringify(payload)}`).digest('hex');
   const facts={symbol:string(matchedToken.symbol),tokenAddress:resolved.address,priceUsd:price,liquidityUsd:liquidity,volume24hUsd:volume24h,marketCapUsd:marketCap,fdvUsd:fdv,priceChange:top.priceChange,txns:top.txns,pairAddress:string(top.pairAddress),dexId:string(top.dexId),poolCount:rows.length,
     requestParameters:{endpoint:'/token-pairs/v1/{chainId}/{tokenAddress}',network:resolved.network,tokenAddress:resolved.address},snapshotFingerprint};
   return makeEvidence(base,{status:'verified',summary:`DEX market data: price ${price??'n/a'} USD; top-pool liquidity ${liquidity??'n/a'} USD; 24h volume ${volume24h??'n/a'} USD.`,data:facts,sourceUrl:string(top.url)??resolved.sourceUrl??url,limitations:['Liquidity and volume are pool/DEX observations and may not represent all venues.']});
@@ -258,6 +273,7 @@ async function nansen(invocation:IntelligenceInvocation, subject:IntelligenceSub
   // metered endpoint. A collection-local single-flight read avoids paying
   // twice for one identical snapshot and preserves that common lineage.
   const read=()=>fetchJson(endpoint,{method:'POST',headers:h,body:JSON.stringify(body)});
+  if(path==='/api/v1/tgm/flow-intelligence'&&readCache.has(requestKey)) currentProviderRequestLedger()?.recordReuse('nansen');
   const payload=path==='/api/v1/tgm/flow-intelligence'
     ? await singleFlight(readCache,requestKey,read)
     : await read();
@@ -266,7 +282,7 @@ async function nansen(invocation:IntelligenceInvocation, subject:IntelligenceSub
   const normalized:SmartMoneyFlowSignal|null=path==='/api/v1/tgm/flow-intelligence'
     ? extractNansenSmartMoneyUsdFlow(payload):null;
   const publicParameters={endpoint:path,chain:network,...(body.token_address?{tokenAddress:address}:{}),...(body.timeframe?{timeframe:body.timeframe}:{})};
-  const snapshotFingerprint=createHash('sha256').update(`${base.jobId}:${base.taskId}:${requestKey}:${JSON.stringify(payload)}`).digest('hex');
+  const snapshotFingerprint=createHash('sha256').update(`${requestKey}:${JSON.stringify(payload)}`).digest('hex');
   return makeEvidence(base,{status,summary:`Nansen ${invocation.capabilityId} returned ${rows.length||Object.keys(object(d.data)).length} structured record(s).`,
     data:{...jsonExcerpt(payload),requestParameters:publicParameters,snapshotFingerprint,...(normalized?{normalizedSmartMoneyFlow:normalized}:{})},
     sourceUrl:'https://app.nansen.ai',
@@ -361,7 +377,7 @@ async function alchemy(invocation:IntelligenceInvocation, subject:IntelligenceSu
     const concentration=totalSupplyRaw===undefined?{}:concentrationMetrics(balances,totalSupplyRaw);
     const topHolders=holders.slice(0,20).map((row)=>({holder:string(row.holder),owner:string(row.owner),balanceRaw:string(row.balanceRaw),balanceUi:string(row.balanceUi)}));
     const concentrationSummary=`top-1 ${number(concentration.top1Pct)??'n/a'}%; top-5 ${number(concentration.top5Pct)??'n/a'}%; top-10 ${number(concentration.top10Pct)??'n/a'}%; top-20 ${number(concentration.top20Pct)??'n/a'}%`;
-    return makeEvidence(base,{status:holders.length?'verified':'partial',summary:holders.length?`Alchemy returned ${holders.length} ranked Solana token holders; AgentPlace calculated ${concentrationSummary}.`:'Alchemy returned no holder rows for this Solana token.',data:{slot,totalSupplyRaw:string(supply.amount),decimals:number(supply.decimals),uiAmountString:string(supply.uiAmountString),concentration,topHolders},sourceUrl:'https://www.alchemy.com/docs/chains/solana/solana-api-endpoints/get-token-holders-at-slot',limitations:['Concentration is an AgentPlace deterministic calculation from provider-returned balances and token supply.','Holder addresses are not identity claims; program, LP, treasury, burn or exchange addresses are not automatically excluded.']});
+    return makeEvidence(base,{status:holders.length?'verified':'partial',summary:holders.length?`Alchemy returned ${holders.length} ranked Solana token holders; AgentPlace calculated ${concentrationSummary}.`:'Alchemy returned no holder rows for this Solana token.',data:{slot,totalSupplyRaw:string(supply.amount),decimals:number(supply.decimals),uiAmountString:string(supply.uiAmountString),concentration,topHolders,requestParameters:{provider:'alchemy',method:'getTokenHoldersAtSlot',mint:resolved.address,slot,limit:1000,sortBy:'balance_desc'}},sourceUrl:'https://www.alchemy.com/docs/chains/solana/solana-api-endpoints/get-token-holders-at-slot',limitations:['Concentration is an AgentPlace deterministic calculation from provider-returned balances and token supply.','Holder addresses are not identity claims; program, LP, treasury, burn or exchange addresses are not automatically excluded.']});
   }
   if(invocation.capabilityId==='wallet.profile') {
     const address=subject.address?.trim()||subject.query.trim(); if(!address) return makeEvidence(base,{status:'unavailable',summary:'Alchemy wallet profile requires an address.'});
@@ -468,12 +484,15 @@ async function invokeIntelligenceCandidate(args:{
 }
 
 export async function collectRoutedIntelligenceWithFallback(args:{ownerUserId:string;jobId:string;taskId:string;subjects:readonly IntelligenceSubject[];routes:readonly IntelligenceRouteInvocation[]}):Promise<IntelligenceEvidence[]> {
+  const ledger=new ProviderRequestLedger();
+  return withProviderRequestLedger(ledger,async()=>{
   const subjects=args.subjects.slice(0,12);
   const routes=[...args.routes.slice(0,24)].sort((left,right)=>intelligenceDependencyRank(left.capabilityId)-intelligenceDependencyRank(right.capabilityId));
   const out:IntelligenceEvidence[]=[];
   const resolution=new Map<string,ResolvedToken|null>();
   const readCache=new Map<string,Promise<unknown>>(); // one collection only; no cross-Job market staleness
   for(const subject of subjects) if(subject.kind==='token'||subject.kind==='stablecoin') {
+    const identityMark=ledger.checkpoint();
     const resolved=await resolveToken(subject).catch(()=>null);
     resolution.set(`${subject.kind}:${subject.query}:${subject.network??''}:${subject.address??''}`,resolved);
     if(resolved){
@@ -482,7 +501,7 @@ export async function collectRoutedIntelligenceWithFallback(args:{ownerUserId:st
         invocation:{capabilityId:'token.identity.resolve',implementationId:'agentplace-token-identity-v1',provider:'agentplace'},subject,resolved}),{
         status:pin?.address===resolved.address?'verified':'partial',
         summary:`Asset identity: ${subject.query} on ${resolved.network} is scoped to token ${resolved.address}.`,
-        data:{network:resolved.network,address:resolved.address,resolutionMethod:pin?.address===resolved.address?'pinned-reference':'explicit-address-or-unambiguous-search'},
+        data:{network:resolved.network,address:resolved.address,resolutionMethod:pin?.address===resolved.address?'pinned-reference':'explicit-address-or-unambiguous-search',requestTelemetry:ledger.since(identityMark)},
         ...(resolved.sourceUrl?{sourceUrl:resolved.sourceUrl}:{}),
         limitations:pin?.address===resolved.address?['This reference identifies the original token; market and wallet facts still require fresh provider data.']:['Search/explicit-address identity is not independently authenticated by AgentPlace.']
       });
@@ -521,12 +540,21 @@ export async function collectRoutedIntelligenceWithFallback(args:{ownerUserId:st
           await persistIntelligenceEvidence(args.ownerUserId,evidence);out.push(evidence);
           break;
         }
+        const mark=ledger.checkpoint();
         let evidence:IntelligenceEvidence;
         try {
           evidence=await invokeIntelligenceCandidate({ownerUserId:args.ownerUserId,jobId:args.jobId,taskId:args.taskId,invocation,subject,base,resolved,prior:out,readCache});
         } catch(error) {
-          evidence=makeEvidence(base,{status:'error',summary:`${invocation.provider} intelligence request failed.`,data:{error:error instanceof Error?error.message:String(error)},limitations:['Provider failure was preserved instead of being converted into a factual finding.']});
+          evidence=makeEvidence(base,{status:'error',summary:`${invocation.provider} intelligence request failed.`,
+            data:{failure:classifyProviderFailure(error)},
+            limitations:['Provider failure was preserved without recording provider response text or secret-bearing error messages.']});
         }
+        // Persist actual outbound attempts separately from inference and evidence status.
+        // Each route gets only its own interval, so shared reads appear as cache reuses.
+        // External Telegraph SDK calls are outside this fetchJson instrumented path;
+        // do not misrepresent them as zero outbound requests.
+        if(invocation.provider!=='telegraph')
+          evidence={...evidence,data:{...evidence.data,requestTelemetry:ledger.since(mark)}};
         await persistIntelligenceEvidence(args.ownerUserId,evidence);
         out.push(evidence);
         if(evidence.status==='verified'||evidence.status==='partial') break;
@@ -534,6 +562,7 @@ export async function collectRoutedIntelligenceWithFallback(args:{ownerUserId:st
     }
   }
   return out;
+  });
 }
 
 export async function collectRoutedIntelligence(args:{ownerUserId:string;jobId:string;taskId:string;subjects:readonly IntelligenceSubject[];invocations:readonly IntelligenceInvocation[]}):Promise<IntelligenceEvidence[]> {
@@ -561,6 +590,7 @@ export function intelligenceEvidencePrompt(evidence:readonly IntelligenceEvidenc
     `network=${item.network??'n/a'} address=${item.address??'n/a'} fetched_at=${item.fetchedAt} observed_at=${item.observedAt}`,
     `provider_source_url=${item.sourceUrl??'none'} request_parameters=${JSON.stringify(item.data.requestParameters??{})}`,
     `snapshot_fingerprint=${String(item.data.snapshotFingerprint??'none')} (same fingerprint means SAME provider observation, not independent confirmation)`,
+    `outbound_request_telemetry=${JSON.stringify(item.data.requestTelemetry??{})} (actual attempts, not a claim of billed API charges)`,
     `data=${JSON.stringify(item.data).slice(0,3500)}`,
     item.limitations.length?`limitations=${item.limitations.join(' | ')}`:'',
   ].filter(Boolean).join('\n')).join('\n\n');

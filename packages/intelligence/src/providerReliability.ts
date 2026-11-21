@@ -19,7 +19,7 @@ export function retryAfterMilliseconds(value: string | null, now = Date.now()): 
 
 export async function withBoundedProviderRetry<T>(
   operation: () => Promise<T>,
-  options: { maxAttempts: number; maxWaitMs: number; defaultWaitMs?: number; sleep?: (durationMs: number) => Promise<void> },
+  options: { maxAttempts: number; maxWaitMs: number; defaultWaitMs?: number; sleep?: (durationMs: number) => Promise<void>; onRetry?: (waitMs: number, statusCode: number) => void },
 ): Promise<T> {
   const attempts = Math.max(1, Math.min(3, Math.floor(options.maxAttempts)));
   const maxWait = Math.max(0, Math.min(3000, Math.floor(options.maxWaitMs)));
@@ -32,6 +32,7 @@ export async function withBoundedProviderRetry<T>(
       // Do not hammer a provider that requests a long cool-down; preserve the
       // failure so another configured provider may be considered by the router.
       if (waitMs > maxWait) throw error;
+      options.onRetry?.(waitMs, error.statusCode);
       await sleep(waitMs);
     }
   }

@@ -1,5 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 const required=[
+  'packages/intelligence/src/providerTelemetry.ts',
+  'apps/web/src/platform/providerRequestSummary.ts',
+  'tests/m15-stage2-provider-observability.test.mjs',
+  'docs/MILESTONE-15-STAGE2.md',
+  'docs/MILESTONE-15-STAGE2-TESTING.md',
   'packages/intelligence/src/providerReliability.ts',
   'packages/intelligence/src/flowSignals.ts',
   'packages/intelligence/src/researchGrounding.ts',
@@ -21,4 +26,8 @@ for(const filename of ['.env.example','config/environments/production-mainnet.en
   const env=readFileSync(filename,'utf8');
   for(const needle of ['MAINNET_EXECUTION_ENABLED=false','MAINNET_AUTONOMY_ENABLED=false'])if(!env.includes(needle))throw new Error(`M15 ${filename} violates Mainnet safety defaults`);
 }
-console.log('PASS: M15 Stage 1 candidate wires bounded provider retries, within-Job deduplication, explicit flow window, cohort-safe normalization, persisted evidence provenance and grounded synthesis while preserving Mainnet safety.');
+for(const needle of ['requestTelemetry:ledger.since(mark)','withProviderRequestLedger(ledger,async()=>{','recordAttempt(url,outcome','classifyProviderFailure(error)'])
+  if(!intel.includes(needle))throw new Error(`M15 Stage 2 evidence accounting missing ${needle}`);
+const ui=readFileSync('apps/web/src/components/JobWorkspace.tsx','utf8');
+if(!ui.includes('summarizeJobRequestMetrics(intelligenceEvidence)'))throw new Error('M15 Stage 2 missing evidence-inspector request activity');
+console.log('PASS: M15 Stage 1 preserved, Stage 2 adds owner-scoped provider-attempt observability, cache and retry counts, provenance and cost caveats without Mainnet safety changes.');
