@@ -520,7 +520,7 @@ Open the Job to inspect routing, evidence and the actual result. Passing this te
       await publishCreatorAsset('worker', assetId, 'private');
       const worker = await installDurableWorker(assetId);
       if (state.workers.some((item) => item.id === worker.id)) dispatch({ type: 'UPDATE_WORKER', workerId: worker.id, updates: worker });
-      else dispatch({ type: 'ADD_WORKER', worker });
+      else dispatch({ type: 'ADD_WORKER', worker, persisted: true });
       dispatch({ type: 'UPDATE_CREATOR_ASSET', assetId, updates: { visibility: 'private' } });
       setStep('private-saved');
       addBuilderMessage(`**${draftToSave.name}** is saved privately and added to your Workers.
@@ -556,6 +556,13 @@ You can keep editing or testing this Worker from Agent Builder.`);
   function openWorker() {
     dispatch({ type: 'SET_CREATOR_SURFACE', surface: null });
     dispatch({ type: 'SET_VIEW', view: 'workers' });
+  }
+
+  function giveCreatedWorkerWork() {
+    if (!savedAssetId || !state.workers.some((worker) => worker.id === savedAssetId)) return;
+    // Open a durable Worker conversation. Never auto-submit a paid task or
+    // turn publication into financial authority.
+    dispatch({ type: 'SET_ACTIVE_WORKER', id: savedAssetId });
   }
 
   function choose(label: string, action: () => void) {
@@ -603,6 +610,9 @@ You can keep editing or testing this Worker from Agent Builder.`);
     );
     if (step === 'private-saved') return (
       <div className="flex flex-wrap gap-2 pt-2">
+        {savedAssetId && state.workers.some((worker) => worker.id === savedAssetId) && (
+          <button onClick={giveCreatedWorkerWork} className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors">Give work →</button>
+        )}
         <button onClick={() => choose('Test Worker', handleLooksRight)} className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors">Test Worker</button>
         <button onClick={() => choose('Continue editing', handleContinueEditing)} className="px-4 py-2 text-xs font-medium border border-border text-text-sub rounded-lg hover:bg-panel-raised transition-colors">Continue editing</button>
         <button onClick={openWorker} className="px-4 py-2 text-xs font-medium border border-border text-text-sub rounded-lg hover:bg-panel-raised transition-colors">Open in Workers</button>

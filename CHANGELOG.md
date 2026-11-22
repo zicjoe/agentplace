@@ -1,3 +1,11 @@
+## Product Workstream 16 Stage 1 — Worker activation & first-task continuity (review candidate)
+
+- Added a direct **Give work** handoff from installed Discover Workers, private creator Workers and new Worker install confirmations to their real conversation, with no automatic task submission.
+- Hydrated backend-created owner-scoped Worker conversations immediately after installation and on-demand when missing; production Send fails closed rather than falling back to scripted preview chat.
+- Avoided repeat POST installations for already-persisted Workers; improved navigation overlay cleanup.
+- Added Worker-specific read-only draft task suggestions for nine first-party Worker definitions and cautious fallbacks for custom Workers.
+- No schema migration, new external dependencies, financial authority, Mainnet autonomy, billing or Scheduler changes. Deferred M15 telemetry UI remains open.
+
 ## M15 Stage 2 — Provider observability and provenance (review candidate; production unverified)
 
 - Added owner-scoped per-Job HTTP request attempt telemetry for intelligence providers: response outcomes, numeric status, latency, retry wait and cache reuse without raw URLs or secrets.

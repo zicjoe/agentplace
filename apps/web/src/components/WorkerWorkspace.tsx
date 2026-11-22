@@ -11,6 +11,8 @@ import { scrollConversationToEnd } from '../platform/scroll';
 import { applyAuthorityState, fetchAuthorityState, setDurableMandateStatus } from '../platform/authorityApi';
 import { MandateEditor } from './MandateEditor';
 import { createRoutineFromText } from '../platform/routineApi';
+import { fetchConversations } from '../platform/conversationApi';
+import { suggestedWorkerTasks } from '../platform/workerStarterTasks';
 
 interface LocalMessage {
   id: string;
@@ -649,6 +651,9 @@ export function WorkerWorkspace() {
   const [catalogWorker, setCatalogWorker] = useState<WorkerCatalogItem | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [conversationLoading, setConversationLoading] = useState(false);
+  const [conversationError, setConversationError] = useState<string | null>(null);
+  const [conversationRetry, setConversationRetry] = useState(0);
   const messageScrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
 
@@ -664,6 +669,29 @@ export function WorkerWorkspace() {
   const durableMessages: LocalMessage[] = durableConversation?.messages.map((m) => ({ id: m.id, role: m.role === 'user' ? 'user' : 'manager', content: m.content, jobId: m.jobId })) ?? [];
   const productionConversation = WEB_RUNTIME_SETTINGS.dataMode === 'api' && !!state.user;
   const displayMessages = productionConversation ? durableMessages : messages;
+
+  useEffect(() => {
+    if (!productionConversation || !installedWorker || durableConversation) {
+      setConversationLoading(false);
+      setConversationError(null);
+      return;
+    }
+    let cancelled = false;
+    setConversationLoading(true);
+    setConversationError(null);
+    void fetchConversations()
+      .then((conversations) => {
+        if (cancelled) return;
+        const conversation = conversations.find((entry) => entry.scope === 'worker' && entry.workerId === installedWorker.id);
+        if (conversation) dispatch({ type: 'UPSERT_PERSISTED_CONVERSATION', conversation });
+        else setConversationError('This Worker does not have a durable conversation yet. Please reopen it after refreshing.');
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setConversationError(error instanceof Error ? error.message : 'Could not load this Worker conversation.');
+      })
+      .finally(() => { if (!cancelled) setConversationLoading(false); });
+    return () => { cancelled = true; };
+  }, [productionConversation, installedWorker?.id, durableConversation?.id, conversationRetry, dispatch]);
 
   useEffect(() => {
     if (!activeWorkerId || installedWorker || !productionConversation) {
@@ -760,6 +788,9 @@ export function WorkerWorkspace() {
   function sendMessage() {
     if (!input.trim()) return;
     if (!worker) return;
+    // Never turn a production Worker task into a local fixture reply when the
+    // server-created, owner-scoped conversation has not loaded yet.
+    if (productionConversation && !durableConversation) return;
     const text = input.trim();
     setInput('');
 
@@ -937,24 +968,7 @@ export function WorkerWorkspace() {
                     Ask questions, give instructions, or request a comparison.
                   </p>
                   <div className="mt-5 flex flex-wrap gap-2 justify-center">
-                    {(worker.id === 'w-stablecoin'
-                      ? [
-                          "Check for better stablecoin opportunities every weekday morning. Don't bother me unless the net improvement is at least 1%.",
-                          "What's the current yield spread on Morpho vs Aave?",
-                          "Show me recent stablecoin reallocation opportunities.",
-                        ]
-                      : worker.id === 'w-portfolio'
-                      ? [
-                          "Monitor Treasury Watch and alert me if anything moves above $50,000.",
-                          "What's in the Treasury Watch wallet right now?",
-                          "Run a portfolio concentration check.",
-                        ]
-                      : [
-                          'Compare BONK, WIF and POPCAT and tell me which looks strongest.',
-                          "What's BONK doing right now?",
-                          'Set up monitoring for WIF entry signals.',
-                        ]
-                    ).map((prompt) => (
+                    {suggestedWorkerTasks(worker.id).map((prompt) => (
                       <button
                         key={prompt}
                         onClick={() => {
@@ -1022,6 +1036,20 @@ export function WorkerWorkspace() {
           {/* Input */}
           <div className="border-t border-border px-5 py-4 shrink-0">
             <div className="max-w-2xl mx-auto">
+              {productionConversation && !durableConversation && (
+                <div role="status" className="mb-3 text-xs text-warn border border-warn/30 bg-warn/5 rounded-lg px-3 py-2">
+                  {conversationLoading ? 'Opening your secure Worker conversation…' : conversationError ?? 'Preparing your Worker conversation…'}
+                  {!conversationLoading && (
+                    <button
+                      type="button"
+                      className="ml-2 text-primary underline"
+                      onClick={() => setConversationRetry((attempt) => attempt + 1)}
+                    >
+                      Retry
+                    </button>
+                  )}
+                </div>
+              )}
               {!productionConversation && WEB_RUNTIME_SETTINGS.dataMode === 'api' ? <p className="text-xs text-text-muted mb-2">Guest preview · sign in to use live AI. Preview replies are not generated by a model.</p> : null}
               <div className="relative rounded-lg border border-border bg-panel focus-within:border-primary/40 transition-colors">
                 <textarea
@@ -1035,6 +1063,7 @@ export function WorkerWorkspace() {
                     }
                   }}
                   placeholder={`Ask ${worker.name}...`}
+                  disabled={productionConversation && !durableConversation}
                   rows={2}
                   className="w-full bg-transparent resize-none px-4 pt-3 pb-2 text-sm text-text placeholder-text-muted outline-none leading-relaxed"
                 />
@@ -1042,7 +1071,7 @@ export function WorkerWorkspace() {
                   <div className="flex items-center gap-2"><span className="text-xs text-text-dim font-mono hidden md:inline">Shift+Enter for new line</span>{productionConversation && durableConversation && <ModelSelector conversationId={durableConversation.id} onChange={setModelSelection} />}</div>
                   <button
                     onClick={sendMessage}
-                    disabled={!input.trim() || isStreaming}
+                    disabled={!input.trim() || isStreaming || (productionConversation && !durableConversation)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all ${
                       input.trim() && !isStreaming
                         ? 'bg-primary text-white hover:bg-primary-hover'

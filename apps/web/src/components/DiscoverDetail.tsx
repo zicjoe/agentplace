@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAppState, useDispatch } from '../state/AppContext';
 import { installDurableWorker } from '../platform/workApi';
+import { fetchConversations } from '../platform/conversationApi';
 import { fetchDiscoverSupply, forkCreatorWorker, tryDiscoverWorker } from '../platform/creatorApi';
 import { acquireMarketplaceAsset, fetchMarketplaceQuote, money, type MarketplaceQuote } from '../platform/billingApi';
 
@@ -62,6 +63,12 @@ export function DiscoverDetail() {
     dispatch({ type: 'SET_ACTIVE_DISCOVER_ITEM', id: null });
   }
 
+  function openInstalledWorker() {
+    if (!installedWorkerId || !state.workers.some((worker) => worker.id === installedWorkerId)) return;
+    // Opening a Worker is not submitting a Job or granting financial authority.
+    dispatch({ type: 'SET_ACTIVE_WORKER', id: installedWorkerId });
+  }
+
   if (!item) return null;
 
   const installedWorkerId = item.type === 'worker' ? (item.workerDefinitionId ?? item.id.replace('ds-', 'w-')) : null;
@@ -91,16 +98,28 @@ export function DiscoverDetail() {
     void finalAdd();
   }
 
-  async function finalAdd() {
-    if (!item || !installedWorkerId) return;
-    if (item.readiness === 'unavailable') { setActionError(item.readinessReason ?? 'Worker is unavailable.'); return; }
+  async function finalAdd(): Promise<boolean> {
+    if (!item || !installedWorkerId) return false;
+    if (item.readiness === 'unavailable') { setActionError(item.readinessReason ?? 'Worker is unavailable.'); return false; }
     setAcquiring(true); setActionError(null);
     try {
       const worker = await installDurableWorker(installedWorkerId);
-      dispatch({ type: 'ADD_WORKER', worker });
+      dispatch({ type: 'ADD_WORKER', worker, persisted: true });
+      // Installation creates a durable Worker conversation on the API. Bring it
+      // into the current session so the first task cannot fall back to a demo reply.
+      try {
+        const conversations = await fetchConversations();
+        const workerConversation = conversations.find((conversation) => conversation.scope === 'worker' && conversation.workerId === worker.id);
+        if (workerConversation) dispatch({ type: 'UPSERT_PERSISTED_CONVERSATION', conversation: workerConversation });
+      } catch {
+        // Installation succeeded. WorkerWorkspace retries conversation loading
+        // and blocks sending until a real conversation is available.
+      }
       setAddedConfirm(true);
+      return true;
     } catch (value) {
       setActionError(value instanceof Error ? value.message : 'Worker installation failed');
+      return false;
     } finally { setAcquiring(false); }
   }
 
@@ -135,7 +154,15 @@ export function DiscoverDetail() {
       {showTry && (
         <SandboxTryPanel workerDefinitionId={installedWorkerId ?? ''} itemName={item.name} readiness={item.readiness} onClose={() => setShowTry(false)} onOpenJob={(jobId)=>dispatch({type:'SET_ACTIVE_JOB',id:jobId})} />
       )}
-      {showCheckout && item.creatorAssetId && <CheckoutModal item={{type:item.type,assetId:item.creatorAssetId,name:item.name}} onClose={()=>setShowCheckout(false)} onAcquired={async()=>{if(item.type==='worker')await finalAdd();const supply=await fetchDiscoverSupply();dispatch({type:'SET_DISCOVER_SUPPLY',items:supply});setAddedConfirm(true);}}/>}
+      {showCheckout && item.creatorAssetId && <CheckoutModal item={{type:item.type,assetId:item.creatorAssetId,name:item.name}} onClose={()=>setShowCheckout(false)} onAcquired={async()=>{
+        if(item.type==='worker'){
+          const installed=await finalAdd();
+          if(!installed)throw new Error('Marketplace access was acquired, but Worker installation did not complete. Retry adding the Worker; do not purchase access again.');
+        }
+        const supply=await fetchDiscoverSupply();
+        dispatch({type:'SET_DISCOVER_SUPPLY',items:supply});
+        if(item.type!=='worker')setAddedConfirm(true);
+      }}/>}
 
       {/* Header */}
       <div className="px-6 pt-6 pb-4 border-b border-border shrink-0">
@@ -367,6 +394,14 @@ export function DiscoverDetail() {
               <p className="text-xs text-text-sub">{item.type === 'worker' ? 'Authority: Research & recommend only · No permission to move funds.' : 'Commercial access is separate from execution authority.'}</p>
               <p className="text-xs text-text-dim mt-0.5">Financial authority is configured separately in Security & Authority.</p>
             </div>
+            {item.type === 'worker' && isAdded && (
+              <button
+                onClick={openInstalledWorker}
+                className="w-full py-2.5 text-sm bg-primary text-white rounded-lg font-medium hover:bg-primary-hover transition-colors"
+              >
+                Give {item.name} work →
+              </button>
+            )}
             <button onClick={goBack} className="w-full py-2 text-sm text-text-sub border border-border rounded hover:bg-panel-raised transition-colors">
               Back to Discover
             </button>
@@ -382,12 +417,12 @@ export function DiscoverDetail() {
                   Try
                 </button>
                 {isAdded ? (
-                  <span className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm text-accent border border-accent/20 rounded-lg bg-accent-dim/10">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Added
-                  </span>
+                  <button
+                    onClick={openInstalledWorker}
+                    className="flex-1 py-2.5 text-sm bg-primary text-white rounded-lg font-medium hover:bg-primary-hover transition-colors"
+                  >
+                    Give work →
+                  </button>
                 ) : (
                   <button
                     onClick={handleAdd}

@@ -957,6 +957,7 @@ const INITIAL_STATE: AppState = {
 export type Action =
   | { type: 'SET_USER'; user: User | null }
   | { type: 'SET_CONVERSATIONS'; conversations: Conversation[] }
+  | { type: 'UPSERT_PERSISTED_CONVERSATION'; conversation: Conversation }
   | { type: 'SET_WORKERS'; workers: Worker[] }
   | { type: 'SET_JOBS'; jobs: Job[] }
   | { type: 'SET_ACTIVITY_EVENTS'; events: ActivityEvent[] }
@@ -982,7 +983,7 @@ export type Action =
   | { type: 'PIN_CONV'; convId: string; pinned: boolean }
   | { type: 'ARCHIVE_CONV'; convId: string }
   | { type: 'UNARCHIVE_CONV'; convId: string }
-  | { type: 'ADD_WORKER'; worker: Worker }
+  | { type: 'ADD_WORKER'; worker: Worker; persisted?: boolean }
   | { type: 'UPDATE_WORKER'; workerId: string; updates: Partial<Worker> }
   | { type: 'ADD_JOB'; job: Job }
   | { type: 'UPDATE_JOB'; jobId: string; updates: Partial<Job> }
@@ -1111,9 +1112,13 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_ACTIVE_WORKER':
       return {
         ...state,
+        activeView: action.id ? 'workers' : state.activeView,
         activeWorkerId: action.id,
         activeJobId: null,
+        activeRoutineId: null,
         activeConversationId: null,
+        activeDiscoverItemId: null,
+        activeCreatorSurface: null,
         activeWalletId: null,
         activeActionId: null,
         routeNotFound: null,
@@ -1212,6 +1217,14 @@ function reducer(state: AppState, action: Action): AppState {
         conversations: state.conversations.map((c) =>
           c.id === action.convId ? { ...c, archived: false } : c
         ),
+      };
+
+    case 'UPSERT_PERSISTED_CONVERSATION':
+      return {
+        ...state,
+        conversations: state.conversations.some((conversation) => conversation.id === action.conversation.id)
+          ? state.conversations
+          : [action.conversation, ...state.conversations],
       };
 
     case 'ADD_WORKER':
@@ -1750,7 +1763,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const syncWorkAction = useCallback((action: Action, before: AppState) => {
     if (WEB_RUNTIME_SETTINGS.dataMode !== 'api' || !before.user) return;
     let task: Promise<unknown> | null = null;
-    if (action.type === 'ADD_WORKER' && action.worker.isOriginal) {
+    if (action.type === 'ADD_WORKER' && action.worker.isOriginal && !action.persisted) {
       task = installDurableWorker(action.worker.id);
     }
     if (action.type === 'ADD_JOB' && action.job.kind !== 'financial' && !action.job.actionId && !action.job.executionId) {
