@@ -7,6 +7,9 @@ import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
 import { fetchWorkState, fetchWorkerCatalog, updateDurableWorkerStatus, updateDurableWorkerVersion, type WorkerCatalogItem } from '../platform/workApi';
 import { ResearchMarkdown } from './ResearchMarkdown';
+import { ConversationResearchAnswer } from './ConversationResearchAnswer';
+import { JobReference } from './JobReference';
+import { workerResearchAnswerBody, workerResearchMessageView } from '../platform/workerResearchPresentation';
 import { scrollConversationToEnd } from '../platform/scroll';
 import { applyAuthorityState, fetchAuthorityState, setDurableMandateStatus } from '../platform/authorityApi';
 import { MandateEditor } from './MandateEditor';
@@ -44,6 +47,32 @@ const STATUS_DOT: Record<WorkerStatus, string> = {
   blocked: 'bg-danger',
   issue: 'bg-danger',
 };
+
+/** Match the Manager's compact, optionally expandable long user messages. */
+function WorkerUserMessage({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const longRequest = content.length > 450;
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[92%] sm:max-w-[80%] bg-panel-raised/80 border border-border-dim rounded-2xl px-4 py-3 min-w-0">
+        <p
+          className="text-[15px] text-text leading-relaxed whitespace-pre-wrap break-words"
+          style={longRequest && !expanded ? { display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : undefined}
+        >{content}</p>
+        {longRequest && (
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            aria-expanded={expanded}
+            className="mt-2 text-xs font-medium text-text-sub hover:text-text hover:underline underline-offset-2 rounded focus-visible:outline-2 focus-visible:outline-primary"
+          >
+            {expanded ? 'Show less' : 'Show full request'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function InlineJobCard({ jobId }: { jobId: string }) {
   const state = useAppState();
@@ -669,6 +698,11 @@ export function WorkerWorkspace() {
   const durableMessages: LocalMessage[] = durableConversation?.messages.map((m) => ({ id: m.id, role: m.role === 'user' ? 'user' : 'manager', content: m.content, jobId: m.jobId })) ?? [];
   const productionConversation = WEB_RUNTIME_SETTINGS.dataMode === 'api' && !!state.user;
   const displayMessages = productionConversation ? durableMessages : messages;
+  const completedResearchJobIds = new Set(
+    displayMessages
+      .filter((entry) => entry.role !== 'user' && entry.jobId && entry.id.startsWith('msg_origin_result_'))
+      .map((entry) => entry.jobId as string)
+  );
 
   useEffect(() => {
     if (!productionConversation || !installedWorker || durableConversation) {
@@ -722,6 +756,15 @@ export function WorkerWorkspace() {
   useEffect(() => {
     scrollConversationToEnd(messageScrollRef.current);
   }, [displayMessages.length, displayMessages.at(-1)?.isStreaming]);
+
+  // Keep the Worker composer as compact and responsive as the Manager's.
+  useEffect(() => {
+    const textarea = composerRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > 180 ? 'auto' : 'hidden';
+  }, [input, activeWorkerId]);
 
   if (!worker) {
     return (
@@ -958,7 +1001,7 @@ export function WorkerWorkspace() {
         {/* Conversation */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           <div ref={messageScrollRef} data-workspace-scroll className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
-            <div className="max-w-2xl mx-auto space-y-4">
+            <div className="max-w-3xl mx-auto space-y-5">
               {displayMessages.length === 0 && (
                 <div className="text-center py-12">
                   <p className="text-sm text-text-sub mb-1">
@@ -985,16 +1028,13 @@ export function WorkerWorkspace() {
 
               {displayMessages.map((msg) => {
                 if (msg.role === 'user') {
-                  return (
-                    <div key={msg.id} className="flex justify-end">
-                      <div className="max-w-xl bg-panel-raised border border-border rounded-lg px-4 py-3">
-                        <p className="text-sm text-text leading-relaxed">{msg.content}</p>
-                      </div>
-                    </div>
-                  );
+                  return <WorkerUserMessage key={msg.id} content={msg.content} />;
                 }
+                const linkedJob = msg.jobId ? state.jobs.find((job) => job.id === msg.jobId) : undefined;
+                const completedReportExists = !!linkedJob && completedResearchJobIds.has(linkedJob.id);
+                const researchView = workerResearchMessageView(msg, linkedJob, completedReportExists);
                 return (
-                  <div key={msg.id} className="flex gap-3">
+                  <div key={msg.id} className="flex gap-3 min-w-0">
                     <div className="w-6 h-6 rounded border border-border bg-panel-raised flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-[9px] font-mono font-medium text-text-sub">
                         {worker.name.slice(0, 2).toUpperCase()}
@@ -1007,6 +1047,22 @@ export function WorkerWorkspace() {
                           <span className="w-1 h-1 rounded-full bg-text-muted animate-pulse" style={{ animationDelay: '150ms' }} />
                           <span className="w-1 h-1 rounded-full bg-text-muted animate-pulse" style={{ animationDelay: '300ms' }} />
                         </span>
+                      ) : researchView === 'report' && linkedJob ? (
+                        <ConversationResearchAnswer
+                          text={workerResearchAnswerBody(msg.content, linkedJob.title)}
+                          title={linkedJob.title}
+                          complete={linkedJob.status === 'completed'}
+                          onViewWork={() => dispatch({ type: 'SET_ACTIVE_JOB', id: linkedJob.id, tab: 'result' })}
+                        />
+                      ) : researchView === 'completed-start' ? (
+                        <details className="text-xs text-text-muted">
+                          <summary className="cursor-pointer hover:text-text-sub w-fit py-1 focus-visible:outline-2 focus-visible:outline-primary rounded">
+                            Investigation started · View setup details
+                          </summary>
+                          <div className="mt-2"><ResearchMarkdown text={msg.content} /></div>
+                        </details>
+                      ) : researchView === 'running-start' && msg.jobId ? (
+                        <JobReference jobId={msg.jobId} />
                       ) : (
                         <>
                           <ResearchMarkdown text={msg.content} />
@@ -1034,8 +1090,8 @@ export function WorkerWorkspace() {
           </div>
 
           {/* Input */}
-          <div className="border-t border-border px-5 py-4 shrink-0">
-            <div className="max-w-2xl mx-auto">
+          <div className="border-t border-border-dim px-4 sm:px-6 py-3 shrink-0 bg-bg">
+            <div className="max-w-3xl mx-auto">
               {productionConversation && !durableConversation && (
                 <div role="status" className="mb-3 text-xs text-warn border border-warn/30 bg-warn/5 rounded-lg px-3 py-2">
                   {conversationLoading ? 'Opening your secure Worker conversation…' : conversationError ?? 'Preparing your Worker conversation…'}
@@ -1051,7 +1107,7 @@ export function WorkerWorkspace() {
                 </div>
               )}
               {!productionConversation && WEB_RUNTIME_SETTINGS.dataMode === 'api' ? <p className="text-xs text-text-muted mb-2">Guest preview · sign in to use live AI. Preview replies are not generated by a model.</p> : null}
-              <div className="relative rounded-lg border border-border bg-panel focus-within:border-primary/40 transition-colors">
+              <div className="relative rounded-2xl border border-border bg-panel focus-within:border-primary/50 transition-colors shadow-sm">
                 <textarea
                   ref={composerRef}
                   value={input}
@@ -1062,26 +1118,31 @@ export function WorkerWorkspace() {
                       sendMessage();
                     }
                   }}
+                  aria-label={`Message ${worker.name}`}
                   placeholder={`Ask ${worker.name}...`}
                   disabled={productionConversation && !durableConversation}
-                  rows={2}
-                  className="w-full bg-transparent resize-none px-4 pt-3 pb-2 text-sm text-text placeholder-text-muted outline-none leading-relaxed"
+                  rows={1}
+                  className="block w-full bg-transparent resize-none px-4 pt-3 pb-2 text-[15px] text-text placeholder-text-muted outline-none leading-relaxed min-h-[44px]"
                 />
-                <div className="flex items-center justify-between px-4 pb-3">
-                  <div className="flex items-center gap-2"><span className="text-xs text-text-dim font-mono hidden md:inline">Shift+Enter for new line</span>{productionConversation && durableConversation && <ModelSelector conversationId={durableConversation.id} onChange={setModelSelection} />}</div>
+                <div className="flex items-center justify-between gap-3 pl-3 pr-2 pb-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {productionConversation && durableConversation && <ModelSelector conversationId={durableConversation.id} onChange={setModelSelection} />}
+                    <span className="hidden lg:inline text-[11px] text-text-muted">Enter to send · Shift+Enter for new line</span>
+                  </div>
                   <button
+                    type="button"
                     onClick={sendMessage}
                     disabled={!input.trim() || isStreaming || (productionConversation && !durableConversation)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all ${
+                    aria-label="Send message"
+                    className={`flex items-center justify-center shrink-0 w-9 h-9 rounded-full transition-colors ${
                       input.trim() && !isStreaming
                         ? 'bg-primary text-white hover:bg-primary-hover'
-                        : 'bg-panel-raised text-text-dim cursor-not-allowed'
+                        : 'bg-panel-raised text-text-muted cursor-not-allowed'
                     }`}
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19V5m-7 7 7-7 7 7" />
                     </svg>
-                    Send
                   </button>
                 </div>
               </div>

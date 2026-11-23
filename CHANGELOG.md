@@ -1,5 +1,20 @@
 ## Product Workstream 16 Stage 1 — Worker activation & first-task continuity (review candidate)
 
+## M16 Worker conversation parity — saved Job discriminator TypeScript correction
+
+- Allowed the Worker research-display helper to receive the actual hydrated `Job` type, whose `kind` field is optional; condensed presentation still requires `kind === 'research'`.
+- Added regression coverage for legacy Jobs without a `kind`. No provider calls, persisted evidence, financial authority, schema, or Scheduler changes.
+- This candidate corrects the `WorkerWorkspace.tsx:1035` TS2345 failure encountered in the prior parity archive; full `pnpm check` remains the local release gate.
+
+## M16 Stage 1 — Worker conversation parity correction (review candidate)
+
+- Reused the accepted Manager `ConversationResearchAnswer` component in durable Worker research conversations: answer-first conclusion, expandable analysis, verification coverage and sources, with one direct "View work and evidence" action.
+- Folded completed research setup chatter into an optional detail disclosure and replaced the in-progress research job card with a compact persisted Job reference; prevented duplicate completed Job cards beneath the same Worker result.
+- Preserved the immutable report while hiding only an echoed matching bold Job title; long one-heading research findings remain intact under a disclosure, with a lead paragraph immediately visible.
+- Aligned the Worker chat composer and long user-message display with the compact Manager experience; did not change tasks, Worker permissions, scheduler, backend contracts, data model or financial execution.
+- Added Worker research parity regression tests and a no-new-paid-task live acceptance checklist. No migration required.
+
+
 - Added a direct **Give work** handoff from installed Discover Workers, private creator Workers and new Worker install confirmations to their real conversation, with no automatic task submission.
 - Hydrated backend-created owner-scoped Worker conversations immediately after installation and on-demand when missing; production Send fails closed rather than falling back to scripted preview chat.
 - Avoided repeat POST installations for already-persisted Workers; improved navigation overlay cleanup.

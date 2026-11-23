@@ -25,13 +25,34 @@ function removeSection(text: string, heading: RegExp, stopOnAnyHeading = false):
   return { without: [...lines.slice(0, begin), ...lines.slice(end)].join('\n').trim(), section };
 }
 
+/** Some specialist reports put every finding beneath a single "Bottom line"
+ * heading. Keep the actual first paragraph in the conversation and move the
+ * remaining original paragraphs to the disclosure; never summarize or delete
+ * content. For short conclusions, retain the entire original section. */
+function limitLongTakeaway(takeaway: string, analysis: string): { takeaway: string; analysis: string } {
+  if (takeaway.length <= 1100) return { takeaway, analysis };
+  const firstLineEnd = takeaway.indexOf('\n');
+  if (firstLineEnd < 0 || !/^#{1,3}\s/.test(takeaway)) return { takeaway, analysis };
+  const heading = takeaway.slice(0, firstLineEnd).trim();
+  const body = takeaway.slice(firstLineEnd + 1).trim();
+  const firstParagraphEnd = body.search(/\n\s*\n/);
+  if (firstParagraphEnd < 0 || firstParagraphEnd > 900) return { takeaway, analysis };
+  const lead = body.slice(0, firstParagraphEnd).trim();
+  const remaining = body.slice(firstParagraphEnd).trim();
+  if (!lead || !remaining) return { takeaway, analysis };
+  return {
+    takeaway: `${heading}\n\n${lead}`,
+    analysis: [remaining, analysis].filter(Boolean).join('\n\n').trim(),
+  };
+}
+
 /** Full-sentence leading conclusion detection is conservative: never infer or
  * reword market facts from arbitrary detail paragraphs. */
 function liftConclusion(text: string): { takeaway: string; analysis: string } {
   const sections = [/^#{1,3}\s+(?:bottom line|key takeaway|summary|conclusion|assessment)(?:\s*[:—–-].*)?\s*$/i];
   for (const pattern of sections) {
     const result = removeSection(text, pattern, true);
-    if (result.section) return { takeaway: result.section, analysis: result.without };
+    if (result.section) return limitLongTakeaway(result.section, result.without);
   }
   const paragraphs = text.split(/\n\s*\n/);
   const index = paragraphs.findIndex((part) => /^\*\*(?:conclusion|bottom line|my assessment|key takeaway)\b/i.test(part.trim()));
