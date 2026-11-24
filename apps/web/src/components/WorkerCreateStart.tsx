@@ -1,6 +1,9 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   WORKER_CREATION_STARTERS,
+  WORKER_CREATION_GOAL_LIMIT,
+  WORKER_CREATION_METHOD_LIMIT,
+  WORKER_CREATION_REQUEST_LIMIT,
   workerCreationBrief,
   type WorkerCreationPath,
 } from '../platform/workerCreationStart';
@@ -26,6 +29,11 @@ export function WorkerCreateStart({ onStart, disabled }: { onStart: (brief: stri
   const [method, setMethod] = useState('');
   const goal = goals[path];
   const brief = workerCreationBrief({ path, goal, ...(path === 'expertise' ? { method } : {}) });
+  // Do not silently clip a pasted long brief. Let the creator shorten it or
+  // save additional details for the subsequent Teach Mode conversation.
+  const goalTooLong = goal.trim().length > WORKER_CREATION_GOAL_LIMIT;
+  const methodTooLong = path === 'expertise' && method.trim().length > WORKER_CREATION_METHOD_LIMIT;
+  const combinedTooLong = !goalTooLong && !methodTooLong && goal.trim().length >= 12 && !brief;
 
   function chooseTemplate(id: string) {
     const starter = WORKER_CREATION_STARTERS.find((item) => item.id === id);
@@ -90,12 +98,15 @@ export function WorkerCreateStart({ onStart, disabled }: { onStart: (brief: stri
             id="worker-creation-goal"
             value={goal}
             onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setGoals((current) => ({ ...current, [path]: event.target.value }))}
-            maxLength={1800}
             rows={path === 'template' ? 6 : 4}
             disabled={disabled}
             placeholder={path === 'expertise' ? 'I analyze emerging projects for my community. The Worker should...' : 'I want a Worker that researches protocols and tells me what changed and why it matters...'}
+            aria-describedby="worker-creation-length-help"
             className="block w-full resize-y min-h-[100px] rounded-xl bg-panel-raised border border-border px-3 py-3 text-sm text-text placeholder:text-text-dim focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
           />
+          <p id="worker-creation-length-help" className={`mt-1 text-[11px] ${goalTooLong ? 'text-danger' : 'text-text-dim'}`}>
+            {goal.trim().length}/{WORKER_CREATION_GOAL_LIMIT} characters. Start with the main mission; add detailed rules in Teach Mode.
+          </p>
         </div>
 
         {path === 'expertise' && (
@@ -107,15 +118,22 @@ export function WorkerCreateStart({ onStart, disabled }: { onStart: (brief: stri
               id="worker-creation-method"
               value={method}
               onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setMethod(event.target.value)}
-              maxLength={1200}
               rows={3}
               disabled={disabled}
               placeholder="I check source quality before scores; I ignore signals that..."
               className="block w-full resize-y rounded-xl bg-panel-raised border border-border px-3 py-3 text-sm text-text placeholder:text-text-dim focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
             />
+            <p className={`mt-1 text-[11px] ${methodTooLong ? 'text-danger' : 'text-text-dim'}`}>
+              {method.trim().length}/{WORKER_CREATION_METHOD_LIMIT} characters. Teach additional rules in later turns.
+            </p>
           </div>
         )}
 
+        {(goalTooLong || methodTooLong || combinedTooLong) && (
+          <p role="alert" className="text-xs text-danger">
+            {combinedTooLong ? `This kickoff exceeds the ${WORKER_CREATION_REQUEST_LIMIT}-character Builder request limit.` : 'Your kickoff description exceeds the supported length.'} Shorten the opening brief, then teach the remaining requirements in the Builder conversation. Your text has not been cut.
+          </p>
+        )}
         <div className="rounded-lg border border-border-dim bg-panel px-3 py-3 text-xs text-text-sub leading-relaxed">
           <span className="font-medium text-text">Private draft first.</span> Agent Builder will interpret your brief and propose a Job Contract. Review, teach and sandbox-test before privately installing or publishing. No wallet authority is granted. Your input is processed by the AI service; do not paste passwords, private keys or API secrets.
         </div>

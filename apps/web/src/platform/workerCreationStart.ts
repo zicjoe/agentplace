@@ -4,6 +4,30 @@
  */
 export type WorkerCreationPath = 'describe' | 'template' | 'expertise';
 
+// The Builder API accepts at most 4,000 characters in a turn. Leave a small
+// allowance for the scaffold and prefer multi-turn teaching for long methods.
+export const WORKER_CREATION_GOAL_LIMIT = 3000;
+export const WORKER_CREATION_METHOD_LIMIT = 700;
+export const WORKER_CREATION_REQUEST_LIMIT = 3900;
+
+/**
+ * A kickoff is NOT a finished Job Contract. The entire brief goes to the Builder
+ * model and is retained in its transcript. The provisional persisted Creator
+ * draft only stores a bounded outline, respecting the 1,000-char responsibility
+ * field in the existing Creator validator.
+ */
+export function initialWorkerJobContract(brief: string): string {
+  const marker = 'Job I want the Worker to do:\n';
+  const position = brief.indexOf(marker);
+  const remainder = position >= 0 ? brief.slice(position + marker.length) : brief;
+  const nextSection = remainder.search(/\n\n(?:My initial decision rules or expertise:|Ask me follow-up questions in Teach Mode|Draft a clear Job Contract|Start with read-only research)/);
+  const goal = (nextSection >= 0 ? remainder.slice(0, nextSection) : remainder).trim();
+  const outline = goal.slice(0, 860).trimEnd();
+  const suffix = goal.length > 860 ? '\n\n[Initial outline; remaining brief is in the Builder conversation.]' : '';
+  return (outline + suffix).slice(0, 950);
+}
+
+
 export interface WorkerCreationStarter {
   id: string;
   name: string;
@@ -66,9 +90,9 @@ export interface WorkerCreationInput {
 /** No AI call, Worker, Job or authority is created by composing this brief. */
 export function workerCreationBrief(input: WorkerCreationInput): string | null {
   const goal = input.goal.trim();
-  if (goal.length < 12 || goal.length > 1800) return null;
+  if (goal.length < 12 || goal.length > WORKER_CREATION_GOAL_LIMIT) return null;
   const method = input.method?.trim() ?? '';
-  if (method.length > 1200) return null;
+  if (method.length > WORKER_CREATION_METHOD_LIMIT) return null;
   const purpose = input.path === 'expertise'
     ? 'Turn my expertise into a private Worker draft that follows a teachable method.'
     : input.path === 'template'
@@ -87,5 +111,6 @@ export function workerCreationBrief(input: WorkerCreationInput): string | null {
     'Draft a clear Job Contract, responsibilities, anti-jobs, inputs, outputs and only eligible capabilities. Ask for information you need rather than inventing live integrations.',
     'Start with read-only research and recommendations. No wallet signing, trading, financial permissions, automatic task submission or publication. Test and private installation are explicit later steps.',
   );
-  return sections.join('\n\n');
+  const brief = sections.join('\n\n');
+  return brief.length <= WORKER_CREATION_REQUEST_LIMIT ? brief : null;
 }

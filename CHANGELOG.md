@@ -1,3 +1,9 @@
+## M17 Stage 1 — Complex creator brief and retry hotfix (review candidate)
+
+- Correct oversized initial Creator seed that caused server-side responsibility/mission validation errors for complex briefs such as AEGIS.
+- Preserve the full accepted input for interpretation; show input limits instead of silently clipping pasted descriptions.
+- Add safe initial interpretation retry and clearer persistence/error messaging. No changes to financial authority or the Scheduler.
+
 # M17 Stage 1 — No-code Worker quick start (review candidate)
 
 - Added three creation paths (describe, editable templates, teach expertise) to the existing durable Agent Builder entry point, with six read-only starter briefs and private-draft-first language.

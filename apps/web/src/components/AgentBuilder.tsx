@@ -6,6 +6,7 @@ import type { WorkerDraftData, CollaboratorConfig } from '../state/types';
 import { createCreatorWorker, createCreatorWorkerVersion, fetchCreatorBuilderSession, interpretCreatorBuilderTurn, publishCreatorAsset, saveCreatorBuilderSession, testCreatorWorker, type CreatorBuilderTurnResult } from '../platform/creatorApi';
 import { installDurableWorker } from '../platform/workApi';
 import { WorkerCreateStart } from './WorkerCreateStart';
+import { initialWorkerJobContract } from '../platform/workerCreationStart';
 
 // ── Draft initial state ───────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ function seedDraftForBuilder(text:string):WorkerDraftData {
   return {
     ...EMPTY_DRAFT,
     name:'Untitled Creator Worker',
-    jobContract:text,
+    jobContract:initialWorkerJobContract(text),
     responsibilities:['Research the requested domain using available evidence','Separate observed evidence from inference','Return a concise result with limitations'],
     antiJobs:['Do not move funds or sign transactions','Do not present unsupported claims as facts'],
     capabilities:[],
@@ -260,6 +261,7 @@ export function AgentBuilder() {
   const [teachMode, setTeachMode] = useState(false);
   const [mobileTab, setMobileTab] = useState<'chat' | 'draft'>('chat');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [failedInitialBrief, setFailedInitialBrief] = useState<string | null>(null);
   const [sessionReady, setSessionReady] = useState(!state.activeCreationId);
   const messageScrollRef = useRef<HTMLDivElement>(null);
   const assetCreationPromiseRef = useRef<Promise<string> | null>(null);
@@ -403,8 +405,8 @@ export function AgentBuilder() {
     submitBuilderBrief(input);
   }
 
-  async function processBuilderTurn(text:string) {
-    const mode:'build'|'edit'|'teach'=step==='idle'?'build':(teachMode||step==='teach-prompt')?'teach':'edit';
+  async function processBuilderTurn(text:string, retryInitial = false) {
+    const mode:'build'|'edit'|'teach'=(step==='idle'||retryInitial)?'build':(teachMode||step==='teach-prompt')?'teach':'edit';
     const baseDraft=step==='idle'?seedDraftForBuilder(text):draft;
     if(step==='idle'){
       setDraft(baseDraft);
@@ -412,10 +414,13 @@ export function AgentBuilder() {
       setStep('initial-response');
     }
     setIsStreaming(true);
+    let seedPersisted = Boolean(savedAssetId);
     try {
       const assetId=await ensureSavedWorker(baseDraft);
+      seedPersisted = true;
       const result:CreatorBuilderTurnResult=await interpretCreatorBuilderTurn(assetId,{message:text,mode,draft:baseDraft,messages});
       setDraft(result.draft);
+      setFailedInitialBrief(null);
       // Initial creation is draft-only: even an unexpected model intent cannot
       // launch tests, install a Worker or publish a listing on the first turn.
       // Existing explicit creator actions remain available after draft review.
@@ -443,8 +448,11 @@ export function AgentBuilder() {
     } catch(value) {
       setIsStreaming(false);
       const detail=value instanceof Error?value.message:'Agent Builder intelligence is temporarily unavailable.';
-      addBuilderMessage(step==='idle'
-        ? `Agent Builder intelligence could not interpret that turn yet: ${detail}\n\nI kept only a minimal draft seed. Nothing was published, tested, or granted authority.`
+      if (mode === 'build') setFailedInitialBrief(text);
+      addBuilderMessage(mode==='build'
+        ? seedPersisted
+          ? `Agent Builder could not interpret the entire brief: ${detail}\n\nAn **initial private draft outline** was saved, but it is **not a completed Worker**. You can retry interpretation without creating another Worker. Nothing was tested, published or granted authority.`
+          : `Agent Builder could not save the first draft: ${detail}\n\nNo draft was saved. You can retry without retyping the brief. Nothing was tested, published or granted authority.`
         : `Agent Builder intelligence could not interpret that turn: ${detail}\n\nYour existing draft was not changed.`);
     }
   }
@@ -608,6 +616,12 @@ You can keep editing or testing this Worker from Agent Builder.`);
 
   function actionButtonsFor(messageId: string) {
     if (messageId !== latestBuilderMessageId || isStreaming || !sessionReady) return null;
+    if (step === 'initial-response' && failedInitialBrief) return (
+      <div className="flex flex-wrap gap-2 pt-2">
+        <button onClick={() => void processBuilderTurn(failedInitialBrief, true)} className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors">Retry interpreting my brief</button>
+        <button onClick={() => choose('Teach unique expertise', handleTeachExpertise)} className="px-4 py-2 text-xs font-medium border border-border text-text-sub rounded-lg hover:bg-panel-raised transition-colors">Teach in smaller steps</button>
+      </div>
+    );
     if (step === 'initial-response') return (
       <div className="flex flex-wrap gap-2 pt-2">
         <button onClick={() => choose('Use existing expertise', handleUseExistingExpertise)} className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors">Use existing expertise</button>

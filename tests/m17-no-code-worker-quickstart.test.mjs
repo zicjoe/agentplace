@@ -39,8 +39,8 @@ test('M17 describe and expertise start as private proposals with bounded input',
     const goal='Research governance proposals and provide a concise evidence-based briefing.';
     assert.equal(workerCreationBrief({path:'describe',goal:'   '}),null);
     assert.equal(workerCreationBrief({path:'expertise',goal:'brief'}),null);
-    assert.equal(workerCreationBrief({path:'describe',goal:'a'.repeat(1801)}),null);
-    assert.equal(workerCreationBrief({path:'expertise',goal,method:'x'.repeat(1201)}),null);
+    assert.equal(workerCreationBrief({path:'describe',goal:'a'.repeat(3001)}),null);
+    assert.equal(workerCreationBrief({path:'expertise',goal,method:'x'.repeat(701)}),null);
     const normal=workerCreationBrief({path:'describe',goal});
     assert.match(normal,/private Worker draft/);
     assert.match(normal,/Job Contract/);
