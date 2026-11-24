@@ -1,3 +1,8 @@
+## Unreleased — M16 Stage 2A My Workers & Continue Work (review candidate)
+
+- Introduce an everyday-use My Workers hub with accurate status triage, recent work, conversation continuation, and existing Job history deep-links; preserve all authority and deployment boundaries.
+- Add pure worker-summary selectors and regression tests; no API, migration, Scheduler or financial execution change.
+
 ## Product Workstream 16 Stage 1 — Worker activation & first-task continuity (review candidate)
 
 ## M16 Worker conversation parity — saved Job discriminator TypeScript correction
