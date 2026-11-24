@@ -1,0 +1,13 @@
+# M17 Stage 1 — Live Acceptance Checklist
+
+Run only **after** `pnpm check`, commit/push, and successful Vercel + Railway deployments. Do not perform separate local UX acceptance. No database migration.
+
+1. **Home → Create a Worker:** Open Home and click the **Create a Worker** action. The Agent Builder should open directly without starting a Manager conversation, a Job, or an AI request. Confirm empty Creator draft.
+2. **Describe a job:** Choose **Describe a job**; type a short, concrete read-only use case (for example "Compare the latest risk disclosures for two stablecoin issuers and summarize evidence gaps"). Click **Build my draft** once. If unauthenticated, sign in through the normal checkpoint. Confirm the real Creator LLM forms a named Job Contract and structured responsibilities and that the Creator asset is saved. Do not claim the draft's tools are live until verified.
+3. **Start with a template:** Open a new creation through Create → Worker. Choose **Start with a template**, select Prediction Market Analyst (or another template), review/edit the generated brief, then click **Build my draft**. Confirm changing the selected template only edits the form; no Job or Worker is created before submitting. Check that read-only anti-jobs remain in the interpreted draft. Do not place trades or bets.
+4. **Turn expertise into a Worker:** Open another new creation. Choose **Teach my expertise**; describe a method and optionally one decision rule. Submit. Use **Teach unique expertise** or **Continue teaching** to add further criteria. Confirm methodology remains in the structured draft and has not been publicly published.
+5. **Draft continuity:** Visit My creations, reopen the draft, edit its description, close and reopen. Confirm the durable Builder conversation and draft remain available. Check a narrow viewport and verify Chat/Draft tabs remain usable.
+6. **Safe test and installation:** Explicitly run a read-only sandbox test on a disposable draft, inspect the real Job, then select **Use privately**. Confirm the Worker appears in My Workers and **Give work** opens a real conversation; do not auto-submit another AI request. Do not publish the disposable Worker publicly.
+7. **Safety/regression:** No wallet signature, mandate, grant, network switch, payment, or automated task is requested merely by creating a draft. Existing Workers, Home/Discover statuses, Manager/Worker conversation-first UX and the Railway Scheduler remain unchanged. Do not paste API keys or confidential material into Creator AI prompts.
+
+Acceptance is **not** established by `pnpm check` alone. Report any failed step with the exact UI state/error. Production Creator LLM calls may consume model usage; don't repeat them unnecessarily.

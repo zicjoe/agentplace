@@ -23,7 +23,7 @@
     "test": "node --test tests/*.test.mjs",
     "verify:repo": "node scripts/verify-repository-foundation.mjs",
     "verify:milestone-1": "node scripts/verify-milestone-1.mjs",
-    "check": "pnpm clean && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm security:secrets && pnpm verify:repo && pnpm verify:milestone-1 && pnpm verify:milestone-2 && pnpm verify:milestone-3 && pnpm verify:milestone-4 && pnpm verify:milestone-5 && pnpm verify:milestone-5b1 && pnpm verify:milestone-5b2 && pnpm verify:milestone-6 && pnpm verify:milestone-7 && pnpm verify:milestone-8 && pnpm verify:milestone-9 && pnpm verify:milestone-10 && pnpm verify:milestone-11 && pnpm verify:milestone-12 && pnpm verify:milestone-13 && pnpm verify:milestone-14 && pnpm verify:milestone-15 && pnpm verify:milestone-16",
+    "check": "pnpm clean && pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm security:secrets && pnpm verify:repo && pnpm verify:milestone-1 && pnpm verify:milestone-2 && pnpm verify:milestone-3 && pnpm verify:milestone-4 && pnpm verify:milestone-5 && pnpm verify:milestone-5b1 && pnpm verify:milestone-5b2 && pnpm verify:milestone-6 && pnpm verify:milestone-7 && pnpm verify:milestone-8 && pnpm verify:milestone-9 && pnpm verify:milestone-10 && pnpm verify:milestone-11 && pnpm verify:milestone-12 && pnpm verify:milestone-13 && pnpm verify:milestone-14 && pnpm verify:milestone-15 && pnpm verify:milestone-16 && pnpm verify:milestone-17",
     "db:migrate": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db migrate",
     "auth:migrate": "pnpm --filter @agent-place/shared build && pnpm --filter @agent-place/db build && pnpm --filter @agent-place/auth migrate",
     "migrate": "pnpm db:migrate && pnpm auth:migrate",
@@ -52,7 +52,8 @@
     "security:secrets": "node scripts/security-secrets.mjs",
     "verify:milestone-14": "node scripts/verify-milestone-14.mjs",
     "verify:milestone-15": "node scripts/verify-milestone-15.mjs",
-    "verify:milestone-16": "node scripts/verify-milestone-16.mjs"
+    "verify:milestone-16": "node scripts/verify-milestone-16.mjs",
+    "verify:milestone-17": "node scripts/verify-milestone-17.mjs"
   },
   "devDependencies": {
     "@types/node": "22.19.17",

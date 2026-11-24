@@ -1,3 +1,10 @@
+# M17 Stage 1 — No-code Worker quick start (review candidate)
+
+- Added three creation paths (describe, editable templates, teach expertise) to the existing durable Agent Builder entry point, with six read-only starter briefs and private-draft-first language.
+- Connected Home Build and My Workers Create directly to the Creator workflow; preserved separate Discover Add Worker.
+- Collapsed long Builder briefs; kept durable Creator interpretation, review, session restoration, sandbox tests, versioning and explicit private/public actions.
+- Added M17 verification/tests, no migrations or new authority, Scheduler unchanged. Production acceptance pending.
+
 # M16 Stage 2B — Worker controls and cross-surface consistency (review candidate)
 
 - Shared, server-refreshed Worker lifecycle controls in My Workers and Worker workspace.

@@ -4,7 +4,7 @@ const CREATE_OPTIONS = [
   {
     id: 'worker',
     label: 'Worker',
-    description: 'Build a persistent specialist with a defined mandate, capabilities, and authority defaults.',
+    description: 'Describe a job, start from an editable template, or teach your method. Private draft first—no code required.',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <circle cx="9" cy="7" r="3" strokeWidth={1.8} />

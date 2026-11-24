@@ -5,6 +5,7 @@ import { scrollConversationToEnd } from '../platform/scroll';
 import type { WorkerDraftData, CollaboratorConfig } from '../state/types';
 import { createCreatorWorker, createCreatorWorkerVersion, fetchCreatorBuilderSession, interpretCreatorBuilderTurn, publishCreatorAsset, saveCreatorBuilderSession, testCreatorWorker, type CreatorBuilderTurnResult } from '../platform/creatorApi';
 import { installDurableWorker } from '../platform/workApi';
+import { WorkerCreateStart } from './WorkerCreateStart';
 
 // ── Draft initial state ───────────────────────────────────────────────────────
 
@@ -69,6 +70,27 @@ function DraftSection({ title, children, collapsible, defaultOpen = true }: {
         )}
       </button>
       {open && <div className="px-4 pb-3">{children}</div>}
+    </div>
+  );
+}
+
+function CreatorUserMessage({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const longBrief = content.length > 450;
+  return (
+    <div className="rounded-xl px-4 py-3 text-sm leading-relaxed bg-primary text-white rounded-br-sm min-w-0">
+      <div
+        className="whitespace-pre-wrap break-words"
+        style={longBrief && !expanded ? { display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : undefined}
+      >
+        {content}
+      </div>
+      {longBrief && (
+        <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}
+          className="text-xs font-medium mt-2 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-white">
+          {expanded ? 'Show less' : 'Show full brief'}
+        </button>
+      )}
     </div>
   );
 }
@@ -357,9 +379,9 @@ export function AgentBuilder() {
     });
   }
 
-  function handleSend() {
-    if (!input.trim() || isStreaming || step === 'testing' || !sessionReady) return;
-    const text = input.trim();
+  function submitBuilderBrief(brief: string) {
+    if (!brief.trim() || isStreaming || step === 'testing' || !sessionReady) return;
+    const text = brief.trim();
     setInput('');
     const userMessage:BuilderMessage={ id: uid(), role: 'user', content: text };
     setMessages((prev) => [...prev, userMessage]);
@@ -377,6 +399,10 @@ export function AgentBuilder() {
     void processBuilderTurn(text);
   }
 
+  function handleSend() {
+    submitBuilderBrief(input);
+  }
+
   async function processBuilderTurn(text:string) {
     const mode:'build'|'edit'|'teach'=step==='idle'?'build':(teachMode||step==='teach-prompt')?'teach':'edit';
     const baseDraft=step==='idle'?seedDraftForBuilder(text):draft;
@@ -390,7 +416,11 @@ export function AgentBuilder() {
       const assetId=await ensureSavedWorker(baseDraft);
       const result:CreatorBuilderTurnResult=await interpretCreatorBuilderTurn(assetId,{message:text,mode,draft:baseDraft,messages});
       setDraft(result.draft);
-      const intent=result.intent;
+      // Initial creation is draft-only: even an unexpected model intent cannot
+      // launch tests, install a Worker or publish a listing on the first turn.
+      // Existing explicit creator actions remain available after draft review.
+      const initialActionAttempt = mode === 'build' && (result.intent === 'TEST' || result.intent === 'SAVE_PRIVATE' || result.intent === 'PUBLISH');
+      const intent = initialActionAttempt ? 'MODIFY_DRAFT' : result.intent;
       if(intent==='TEACH'){
         setTeachMode(true);
         setStep('teach-response');
@@ -400,7 +430,9 @@ export function AgentBuilder() {
         else if(mode==='build'&&intent!=='TEST'&&intent!=='SAVE_PRIVATE'&&intent!=='PUBLISH')setStep('initial-response');
         else setStep('editing');
       }
-      addBuilderMessage(result.reply);
+      addBuilderMessage(initialActionAttempt
+        ? `I've prepared the initial private draft for **${result.draft.name}**. Review the Job Contract, capabilities, and anti-jobs first. You can explicitly choose a sandbox test, private installation, or publication after reviewing it.`
+        : result.reply);
       if(intent==='TEST'){
         await runTests(result.draft,result.testScenario||undefined,result.testExpected||undefined);
       }else if(intent==='SAVE_PRIVATE'){
@@ -643,40 +675,42 @@ You can keep editing or testing this Worker from Agent Builder.`);
 
       <div ref={messageScrollRef} data-workspace-scroll className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
         {!sessionReady && <div className="py-8 text-center"><p className="text-sm text-text-muted">Restoring Builder conversation…</p></div>}
-        {sessionReady && messages.length === 0 && (
-          <div className="py-8 text-center">
-            <p className="text-sm text-text-sub mb-1">Describe the Worker you want to build.</p>
-            <p className="text-xs text-text-muted">Agent Builder will form a Live Draft as you talk.</p>
-          </div>
+        {sessionReady && step === 'idle' && messages.length === 0 && !savedAssetId && (
+          <WorkerCreateStart onStart={submitBuilderBrief} disabled={isStreaming} />
         )}
         {messages.map((message) => (
           <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className="max-w-[85%]">
-              <div className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${message.role === 'user' ? 'bg-primary text-white rounded-br-sm' : 'bg-panel-raised border border-border text-text-sub rounded-bl-sm'}`}>
-                <ResearchMarkdown text={message.content} />
-              </div>
+              {message.role === 'user' ? (
+                <CreatorUserMessage content={message.content} />
+              ) : (
+                <div className="rounded-xl px-4 py-3 text-sm leading-relaxed bg-panel-raised border border-border text-text-sub rounded-bl-sm">
+                  <ResearchMarkdown text={message.content} />
+                </div>
+              )}
               {message.role === 'builder' && actionButtonsFor(message.id)}
             </div>
           </div>
         ))}
       </div>
 
-      <div className="px-5 py-4 border-t border-border shrink-0">
-        {step === 'idle' && <p className="text-xs text-text-dim mb-2">Example: "Build me a whale-driven meme scout."</p>}
-        <div className="flex gap-2">
-          <input
-            className="flex-1 bg-panel-raised border border-border rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-dim focus:outline-none focus:border-primary/50 disabled:opacity-50"
-            placeholder={teachMode ? 'Describe your criteria…' : savedAssetId ? 'Describe what you want to change or add…' : 'Describe what you want to build…'}
-            value={input}
-            disabled={!sessionReady || step === 'testing'}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => event.key === 'Enter' && !event.shiftKey && handleSend()}
-          />
-          <button onClick={handleSend} disabled={!canSend} className="px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover disabled:opacity-40 transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-          </button>
+      {(messages.length > 0 || step !== 'idle' || savedAssetId) && (
+        <div className="px-5 py-4 border-t border-border shrink-0">
+          <div className="flex gap-2">
+            <input
+              className="flex-1 bg-panel-raised border border-border rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-dim focus:outline-none focus:border-primary/50 disabled:opacity-50"
+              placeholder={teachMode ? 'Describe your criteria…' : savedAssetId ? 'Describe what you want to change or add…' : 'Describe what you want to build…'}
+              value={input}
+              disabled={!sessionReady || step === 'testing'}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && !event.shiftKey && handleSend()}
+            />
+            <button onClick={handleSend} disabled={!canSend} className="px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover disabled:opacity-40 transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 

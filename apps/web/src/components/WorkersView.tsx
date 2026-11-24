@@ -179,18 +179,28 @@ export function WorkersView() {
             <h1 className="text-2xl font-semibold text-text tracking-tight">My Workers</h1>
             <p className="text-sm text-text-sub mt-1">Your workforce, ongoing work, and where to pick up.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => dispatch({ type: 'SET_VIEW', view: 'discover' })}
-            className="px-3.5 py-2 text-xs font-medium rounded-lg border border-border text-text-sub hover:bg-panel hover:text-text transition-colors shrink-0 focus-visible:outline-2 focus-visible:outline-primary"
-          >+ Add Worker</button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => { dispatch({ type: 'SET_ACTIVE_CREATION', id: null }); dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'agent-builder' }); }}
+              className="px-3.5 py-2 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors focus-visible:outline-2 focus-visible:outline-primary"
+            >+ Create Worker</button>
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'SET_VIEW', view: 'discover' })}
+              className="px-3.5 py-2 text-xs font-medium rounded-lg border border-border text-text-sub hover:bg-panel hover:text-text transition-colors focus-visible:outline-2 focus-visible:outline-primary"
+            >+ Add Worker</button>
+          </div>
         </header>
 
         {summaries.length === 0 ? (
           <section className="rounded-xl border border-border bg-panel text-center py-12 px-5">
             <h2 className="text-base font-semibold text-text mb-2">Your workforce starts here</h2>
-            <p className="text-sm text-text-muted max-w-md mx-auto mb-5">Discover a specialist, add it, and start working together. Installed Workers and their conversations will appear here.</p>
-            <button onClick={() => dispatch({ type: 'SET_VIEW', view: 'discover' })} className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg">Explore Workers →</button>
+            <p className="text-sm text-text-muted max-w-md mx-auto mb-5">Discover a specialist or create your own. Installed Workers and their conversations appear here.</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <button onClick={() => { dispatch({ type: 'SET_ACTIVE_CREATION', id: null }); dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'agent-builder' }); }} className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm rounded-lg">Create my Worker →</button>
+              <button onClick={() => dispatch({ type: 'SET_VIEW', view: 'discover' })} className="px-4 py-2 border border-border hover:bg-panel-raised text-text-sub text-sm rounded-lg">Explore Workers</button>
+            </div>
           </section>
         ) : (
           <>

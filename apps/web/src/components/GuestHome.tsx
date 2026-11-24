@@ -257,6 +257,13 @@ function Composer({ compact = false }: { compact?: boolean }) {
   }
 
   function handleChip(chip: string) {
+    // Creating a Worker is a Creator workflow, not a paid Manager research prompt.
+    // The Builder will persist the draft only after the user submits a brief.
+    if (chip === 'Create a Worker') {
+      dispatch({ type: 'SET_ACTIVE_CREATION', id: null });
+      dispatch({ type: 'SET_CREATOR_SURFACE', surface: 'agent-builder' });
+      return;
+    }
     void createAndSend(CHIP_PROMPTS[chip] ?? chip);
   }
 
