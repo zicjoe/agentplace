@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAppState, useDispatch } from '../state/AppContext';
 import type { DiscoverSupplyItem } from '../state/types';
+import { summarizeWorker } from '../platform/workerEverydayWork';
 
 type Tab = 'for-you' | 'workers' | 'workflows' | 'builders';
 
@@ -50,7 +51,9 @@ function SupplyItemCard({ item }: { item: DiscoverSupplyItem }) {
     dispatch({ type: 'SET_ACTIVE_DISCOVER_ITEM', id: item.id });
   }
 
-  const isAdded = item.type === 'worker' && !!item.workerDefinitionId && state.workers.some((w) => w.id === item.workerDefinitionId);
+  const installedWorker = item.type === 'worker' ? state.workers.find((w) => w.id === (item.workerDefinitionId ?? item.id.replace('ds-', 'w-'))) : undefined;
+  const installedSummary = installedWorker ? summarizeWorker(installedWorker, state.jobs, state.conversations) : undefined;
+  const isAdded = !!installedWorker;
 
   return (
     <button
@@ -95,7 +98,7 @@ function SupplyItemCard({ item }: { item: DiscoverSupplyItem }) {
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              Added
+              Added{installedSummary ? ` · ${installedSummary.status === 'standing-by' ? 'Standing by' : installedSummary.status === 'needs-you' ? 'Needs you' : installedSummary.status === 'paused' ? 'Paused' : installedSummary.status === 'working' ? 'Working' : 'Monitoring'}` : ''}
             </span>
           )}
           <svg className="w-4 h-4 text-text-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -155,7 +158,7 @@ function ForYouTab() {
   const recommendations: Array<{ item: DiscoverSupplyItem; reason: string }> = [];
 
   supply.filter((s) => s.type === 'worker').forEach((item) => {
-    if (state.workers.some((w) => w.id === item.id.replace('ds-', 'w-'))) return;
+    if (state.workers.some((w) => w.id === (item.workerDefinitionId ?? item.id.replace('ds-', 'w-')))) return;
     if (workerNames.includes('Meme Scout') && (item.name === 'Whale Signal Analyst' || item.name === 'Smart Money Tracker')) {
       recommendations.push({ item, reason: 'Useful with your BONK monitoring' });
     } else if (workerNames.includes('Portfolio Guardian') && item.name === 'Stablecoin Manager') {

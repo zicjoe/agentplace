@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAppState, useDispatch } from '../state/AppContext';
 import { matchesWorkerFilter, summarizeWorker, workerSummarySort, type WorkerEverydaySummary, type WorkerWorkFilter, type WorkerWorkState } from '../platform/workerEverydayWork';
 import type { Job, Worker } from '../state/types';
+import { WorkerLifecycleControls } from './WorkerLifecycleControls';
 
 const STATE_DISPLAY: Record<WorkerWorkState, { label: string; color: string; dot: string }> = {
   working: { label: 'Working', color: 'text-accent', dot: 'bg-accent' },
@@ -40,6 +41,7 @@ function jobStatus(status: Job['status']): string {
 function WorkerTile({ summary, createdByYou }: { summary: WorkerEverydaySummary; createdByYou: boolean }) {
   const dispatch = useDispatch();
   const [showHistory, setShowHistory] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   const { worker, status, attentionJob, activeJob, recentJob, canContinue, work } = summary;
   const badge = STATE_DISPLAY[status];
   const priority = attentionJob ?? activeJob ?? recentJob;
@@ -74,6 +76,8 @@ function WorkerTile({ summary, createdByYou }: { summary: WorkerEverydaySummary;
               {note}
             </p>
             {priority && <p className="text-[11px] text-text-muted mt-1">{jobStatus(priority.status)} · {lastUpdated(priority.updatedAt)}</p>}
+            {summary.needsAction && !attentionJob && status !== 'needs-you' &&
+              <p className="text-[11px] text-warn mt-1">Needs attention · review Worker status</p>}
             {worker.updateAvailable && <p className="text-[11px] text-primary mt-1">Worker update available · open Worker to review</p>}
             {!priority && summary.lastActivityAt && <p className="text-[11px] text-text-muted mt-1">Conversation updated {lastUpdated(summary.lastActivityAt)}</p>}
           </div>
@@ -91,6 +95,10 @@ function WorkerTile({ summary, createdByYou }: { summary: WorkerEverydaySummary;
               className="px-3 py-2 rounded-lg border border-border text-xs font-medium text-text-sub hover:text-text hover:bg-panel-raised focus-visible:outline-2 focus-visible:outline-primary"
             >{attentionJob ? 'Review work' : activeJob ? 'View progress' : 'View last Job'}</button>
           )}
+          <button type="button" onClick={() => setShowControls((value) => !value)} aria-expanded={showControls}
+            aria-controls={`worker-controls-${worker.id}`}
+            className="px-2 py-2 text-xs text-text-muted hover:text-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-primary rounded"
+          >{showControls ? 'Hide controls' : 'Manage'}</button>
           {work.length > 0 && (
             <button
               type="button"
@@ -100,6 +108,13 @@ function WorkerTile({ summary, createdByYou }: { summary: WorkerEverydaySummary;
             >{showHistory ? 'Hide work history' : `Work history (${work.length})`}</button>
           )}
         </div>
+        {showControls && (
+          <div id={`worker-controls-${worker.id}`} className="mt-3 rounded-lg border border-border-dim bg-panel-raised/40 px-3 py-3">
+            <p className="text-[11px] font-medium text-text mb-2">Worker controls</p>
+            <WorkerLifecycleControls worker={worker} />
+            <p className="text-[11px] text-text-muted mt-2">Check Security for independent authority grants and Routines for ongoing schedules.</p>
+          </div>
+        )}
         {isPaused && <p className="mt-2 text-[11px] text-text-muted">This Worker is paused. Open it to review status and resume if appropriate. Pausing does not reverse submitted transactions.</p>}
       </div>
       {showHistory && work.length > 0 && (
@@ -152,7 +167,7 @@ export function WorkersView() {
   const counts = {
     all: summaries.length,
     working: summaries.filter((summary) => summary.status === 'working').length,
-    'needs-you': summaries.filter((summary) => summary.status === 'needs-you').length,
+    'needs-you': summaries.filter((summary) => summary.needsAction).length,
     paused: summaries.filter((summary) => summary.status === 'paused').length,
   };
 

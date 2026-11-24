@@ -29,12 +29,15 @@ test('Milestone 3 rehydrates Workers, Jobs and Activity after interactive sign-i
 test('Milestone 3 exposes durable pause, resume and remove Worker controls', () => {
   const api = readFileSync('apps/web/src/platform/workApi.ts','utf8');
   const workspace = readFileSync('apps/web/src/components/WorkerWorkspace.tsx','utf8');
+  const controls = readFileSync('apps/web/src/components/WorkerLifecycleControls.tsx','utf8');
+  const safety = readFileSync('apps/web/src/platform/workerLifecycle.ts','utf8');
   assert.match(api, /updateDurableWorkerStatus/);
   assert.match(api, /method:'PATCH'/);
-  assert.match(workspace, /Pause Worker/);
-  assert.match(workspace, /Resume Worker/);
-  assert.match(workspace, /Remove Worker/);
-  assert.match(workspace, /Existing Job and conversation history will be kept/);
-  assert.match(workspace, /SET_ACTIVITY_EVENTS/);
+  assert.match(workspace, /<WorkerLifecycleControls worker=\{worker\}/);
+  assert.match(controls, /Pause Worker/);
+  assert.match(controls, /Resume Worker/);
+  assert.match(controls, /Remove Worker/);
+  assert.match(controls, /updateDurableWorkerStatus\(worker\.id, target\)/);
+  assert.match(safety, /saved Job and conversation history/);
+  assert.match(controls, /SET_ACTIVITY_EVENTS/);
 });
-

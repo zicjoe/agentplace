@@ -72,7 +72,8 @@ export function DiscoverDetail() {
   if (!item) return null;
 
   const installedWorkerId = item.type === 'worker' ? (item.workerDefinitionId ?? item.id.replace('ds-', 'w-')) : null;
-  const isAdded = installedWorkerId ? state.workers.some((w) => w.id === installedWorkerId) : false;
+  const installedWorker = installedWorkerId ? state.workers.find((w) => w.id === installedWorkerId) : undefined;
+  const isAdded = !!installedWorker;
 
   function handleAdd() {
     if (!state.user) {
@@ -421,7 +422,7 @@ export function DiscoverDetail() {
                     onClick={openInstalledWorker}
                     className="flex-1 py-2.5 text-sm bg-primary text-white rounded-lg font-medium hover:bg-primary-hover transition-colors"
                   >
-                    Give work →
+                    {installedWorker?.status === 'paused' ? 'Review paused Worker →' : 'Give work →'}
                   </button>
                 ) : (
                   <button

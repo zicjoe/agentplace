@@ -1,11 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { useAppState, useDispatch, runGenericManagerResponse, uid } from '../state/AppContext';
-import type { ChatMessage, Conversation, Worker, WorkerStatus } from '../state/types';
+import type { ChatMessage, Conversation } from '../state/types';
 import { createDurableConversation } from '../platform/conversationApi';
 import { fetchLatestIntelligenceTask, submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
 import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { ModelSelector } from './ModelSelector';
 import { conversationTitleFromPrompt } from '../platform/conversationNavigation';
+import { summarizeWorker, workerSummarySort, type WorkerEverydaySummary } from '../platform/workerEverydayWork';
 
 const QUICK_ACTIONS = [
   {
@@ -64,39 +65,6 @@ const CHIP_PROMPTS: Record<string, string> = {
   Bridge: "Bridge 500 USDC from Arbitrum to Base using the best route.",
   Perps: "I want to open a leveraged position. Walk me through the risks first.",
   'Create a Worker': "I want to create a new specialist Worker. Where do I start?",
-};
-
-const STATUS_LABEL: Record<WorkerStatus, string> = {
-  working: 'Working',
-  monitoring: 'Monitoring',
-  standby: 'Standing by',
-  'needs-you': 'Needs you',
-  paused: 'Paused',
-  limited: 'Limited',
-  blocked: 'Blocked',
-  issue: 'Issue detected',
-};
-
-const STATUS_COLOR: Record<WorkerStatus, string> = {
-  working: 'text-accent',
-  monitoring: 'text-primary',
-  standby: 'text-text-muted',
-  'needs-you': 'text-warn',
-  paused: 'text-text-muted',
-  limited: 'text-warn',
-  blocked: 'text-danger',
-  issue: 'text-danger',
-};
-
-const STATUS_DOT: Record<WorkerStatus, string> = {
-  working: 'bg-accent',
-  monitoring: 'bg-primary',
-  standby: 'bg-text-dim',
-  'needs-you': 'bg-warn',
-  paused: 'bg-text-dim',
-  limited: 'bg-warn',
-  blocked: 'bg-danger',
-  issue: 'bg-danger',
 };
 
 // ── Intent launcher icons ─────────────────────────────────────────────────────
@@ -358,40 +326,27 @@ function Composer({ compact = false }: { compact?: boolean }) {
 
 // ── Worker row for Active Workforce ──────────────────────────────────────────
 
-function WorkforceRow({ worker }: { worker: Worker }) {
+function WorkforceRow({ summary }: { summary: WorkerEverydaySummary }) {
   const dispatch = useDispatch();
-  const job = (useAppState().jobs ?? []).find((j) => j.id === worker.currentJobId);
-
+  const { worker, status, recentJob, activeJob, attentionJob, canContinue } = summary;
+  const label = status === 'standing-by' ? 'Standing by' : status === 'needs-you' ? 'Needs you' : status === 'paused' ? 'Paused' : status === 'working' ? 'Working' : 'Monitoring';
+  const note = attentionJob ?? activeJob ?? recentJob;
   return (
-    <button
-      onClick={() => dispatch({ type: 'SET_ACTIVE_WORKER', id: worker.id })}
-      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-panel transition-colors text-left group"
-    >
+    <button type="button" onClick={() => dispatch({ type: 'SET_ACTIVE_WORKER', id: worker.id })}
+      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-panel transition-colors text-left group focus-visible:outline-2 focus-visible:outline-primary">
       <div className="w-7 h-7 rounded bg-panel-raised border border-border flex items-center justify-center shrink-0">
-        <span className="text-[10px] font-mono font-medium text-text-sub">
-          {worker.name.slice(0, 2).toUpperCase()}
-        </span>
+        <span className="text-[10px] font-mono font-medium text-text-sub">{worker.name.slice(0, 2).toUpperCase()}</span>
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium text-text">{worker.name}</span>
-          <span className={`flex items-center gap-1 text-xs ${STATUS_COLOR[worker.status]}`}>
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[worker.status]}`} />
-            {STATUS_LABEL[worker.status]}
+          <span className={`text-xs ${summary.needsAction ? 'text-warn' : status === 'working' ? 'text-accent' : 'text-text-muted'}`}>
+            {label}{summary.needsAction && status === 'paused' ? ' · Needs attention' : ''}
           </span>
         </div>
-        <p className="text-xs text-text-muted truncate">
-          {job
-            ? job.title
-            : worker.currentFocus ?? worker.tagline}
-        </p>
+        <p className="text-xs text-text-muted truncate">{note?.title ?? worker.currentFocus ?? worker.tagline}</p>
       </div>
-      <svg
-        className="w-3.5 h-3.5 text-text-dim group-hover:text-text-muted transition-colors shrink-0"
-        fill="none" stroke="currentColor" viewBox="0 0 24 24"
-      >
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 18l6-6-6-6" />
-      </svg>
+      <span className="text-[11px] text-primary shrink-0">{status === 'paused' ? 'Open' : canContinue ? 'Continue' : 'Give work'} →</span>
     </button>
   );
 }
@@ -402,7 +357,8 @@ function PersistentHome() {
   const state = useAppState();
   const dispatch = useDispatch();
 
-  const needsAttention = (state.workers ?? []).filter((w) => w.status === 'needs-you');
+  const workforce = state.workers.map((worker) => summarizeWorker(worker, state.jobs, state.conversations)).sort(workerSummarySort);
+  const needsAttention = workforce.filter((summary) => summary.needsAction);
   const attentionItems = (state.attentionItems ?? []);
   const recentOutcomes = (state.outcomes ?? []).slice(0, 3);
 
@@ -469,15 +425,19 @@ function PersistentHome() {
             <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 px-1">
               Needs your attention
             </p>
-            {needsAttention.map((w) => (
+            {needsAttention.map((summary) => (
               <button
-                key={w.id}
-                onClick={() => dispatch({ type: 'SET_ACTIVE_WORKER', id: w.id })}
+                key={summary.worker.id}
+                onClick={() => summary.attentionJob
+                  ? dispatch({ type: 'SET_ACTIVE_JOB', id: summary.attentionJob.id, tab: 'result' })
+                  : dispatch({ type: 'SET_ACTIVE_WORKER', id: summary.worker.id })}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg bg-warn/5 border border-warn/20 hover:bg-warn/10 transition-colors text-left mb-2"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-warn shrink-0" />
-                <span className="text-sm text-text">{w.name}</span>
-                <span className="text-xs text-warn ml-auto">Needs you</span>
+                <span className="min-w-0 flex-1 text-left"><span className="text-sm text-text block">{summary.worker.name}</span>
+                  <span className="text-xs text-text-sub block truncate">{summary.attentionJob?.title ?? 'Worker requires attention'}</span>
+                </span>
+                <span className="text-xs text-warn shrink-0">{summary.attentionJob ? 'Review work' : 'Open Worker'} →</span>
               </button>
             ))}
             {attentionItems.map((item) => {
@@ -574,8 +534,8 @@ function PersistentHome() {
               </button>
             </div>
             <div className="space-y-0.5">
-              {state.workers.map((w) => (
-                <WorkforceRow key={w.id} worker={w} />
+              {workforce.map((summary) => (
+                <WorkforceRow key={summary.worker.id} summary={summary} />
               ))}
             </div>
           </div>

@@ -5,7 +5,7 @@ import { WEB_RUNTIME_SETTINGS } from '../platform/runtime';
 import { submitIntelligence, type ModelSelection } from '../platform/intelligenceApi';
 import { ModelSelector } from './ModelSelector';
 import { IntelligenceTaskStatus } from './IntelligenceTaskStatus';
-import { fetchWorkState, fetchWorkerCatalog, updateDurableWorkerStatus, updateDurableWorkerVersion, type WorkerCatalogItem } from '../platform/workApi';
+import { fetchWorkerCatalog, updateDurableWorkerVersion, type WorkerCatalogItem } from '../platform/workApi';
 import { ResearchMarkdown } from './ResearchMarkdown';
 import { ConversationResearchAnswer } from './ConversationResearchAnswer';
 import { JobReference } from './JobReference';
@@ -16,6 +16,7 @@ import { MandateEditor } from './MandateEditor';
 import { createRoutineFromText } from '../platform/routineApi';
 import { fetchConversations } from '../platform/conversationApi';
 import { suggestedWorkerTasks } from '../platform/workerStarterTasks';
+import { WorkerLifecycleControls } from './WorkerLifecycleControls';
 
 interface LocalMessage {
   id: string;
@@ -380,7 +381,7 @@ function ContextualWorkerWorkspace({
 function WorkerSideRail({ workerId, onSetupRoutine }: { workerId: string; onSetupRoutine: () => void }) {
   const state = useAppState();
   const dispatch = useDispatch();
-  const [workerControlBusy, setWorkerControlBusy] = useState<'pause' | 'resume' | 'remove' | 'update-version' | null>(null);
+  const [workerControlBusy, setWorkerControlBusy] = useState<'update-version' | null>(null);
   const [workerControlError, setWorkerControlError] = useState<string | null>(null);
   const [showAuthorityEditor, setShowAuthorityEditor] = useState(false);
   const [authorityBusy, setAuthorityBusy] = useState(false);
@@ -391,39 +392,6 @@ function WorkerSideRail({ workerId, onSetupRoutine }: { workerId: string; onSetu
 
   const activeJob = (state.jobs ?? []).find((j) => j.id === currentWorker.currentJobId);
 
-  async function changeWorkerStatus(status: 'paused' | 'standby' | 'removed') {
-    const action = status === 'paused' ? 'pause' : status === 'removed' ? 'remove' : 'resume';
-    if (
-      status === 'removed' &&
-      !window.confirm(`Remove ${currentWorker.name} from your workforce? Existing Job and conversation history will be kept.`)
-    ) {
-      return;
-    }
-
-    setWorkerControlBusy(action);
-    setWorkerControlError(null);
-    try {
-      if (WEB_RUNTIME_SETTINGS.dataMode === 'api') {
-        await updateDurableWorkerStatus(currentWorker.id, status);
-        const work = await fetchWorkState();
-        dispatch({ type: 'SET_WORKERS', workers: work.workers });
-        dispatch({ type: 'SET_JOBS', jobs: work.jobs });
-        dispatch({ type: 'SET_ACTIVITY_EVENTS', events: work.activity });
-      } else if (status === 'removed') {
-        dispatch({ type: 'SET_WORKERS', workers: state.workers.filter((item) => item.id !== currentWorker.id) });
-      } else {
-        dispatch({ type: 'UPDATE_WORKER', workerId: currentWorker.id, updates: { status } });
-      }
-
-      if (status === 'removed') {
-        dispatch({ type: 'SET_ACTIVE_WORKER', id: null });
-      }
-    } catch (error) {
-      setWorkerControlError(error instanceof Error ? error.message : 'Worker update failed.');
-    } finally {
-      setWorkerControlBusy(null);
-    }
-  }
   async function updateWorkerVersion() {
     if (!currentWorker.updateAvailable) return;
     setWorkerControlBusy('update-version');
@@ -466,33 +434,9 @@ function WorkerSideRail({ workerId, onSetupRoutine }: { workerId: string; onSetu
           {worker.currentFocus && (
             <p className="text-xs text-text-muted mt-1">{worker.currentFocus}</p>
           )}
-          <div className="flex items-center gap-3 mt-2">
-            <button
-              type="button"
-              disabled={workerControlBusy !== null}
-              onClick={() => void changeWorkerStatus(worker.status === 'paused' ? 'standby' : 'paused')}
-              className="text-xs text-primary hover:underline disabled:text-text-dim disabled:no-underline"
-            >
-              {workerControlBusy === 'pause'
-                ? 'Pausing…'
-                : workerControlBusy === 'resume'
-                  ? 'Resuming…'
-                  : worker.status === 'paused'
-                    ? 'Resume Worker'
-                    : 'Pause Worker'}
-            </button>
-            <button
-              type="button"
-              disabled={workerControlBusy !== null}
-              onClick={() => void changeWorkerStatus('removed')}
-              className="text-xs text-text-muted hover:text-danger disabled:text-text-dim transition-colors"
-            >
-              {workerControlBusy === 'remove' ? 'Removing…' : 'Remove Worker'}
-            </button>
+          <div className="mt-3">
+            <WorkerLifecycleControls worker={worker} onRemoved={() => dispatch({ type: 'SET_ACTIVE_WORKER', id: null })} />
           </div>
-          {workerControlError && (
-            <p className="text-xs text-danger mt-2">{workerControlError}</p>
-          )}
         </div>
 
         {/* Version */}

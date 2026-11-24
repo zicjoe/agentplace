@@ -1,3 +1,10 @@
+# M16 Stage 2B — Worker controls and cross-surface consistency (review candidate)
+
+- Shared, server-refreshed Worker lifecycle controls in My Workers and Worker workspace.
+- Safer pause/remove confirmations explaining independent grants, routines, and in-flight Jobs.
+- Unified Home/My Workers/Discover Worker state and Job-derived attention, including paused Workers with pending owned Jobs.
+- No database migrations, new financial authority, or Scheduler changes. Production acceptance pending.
+
 ## Unreleased — M16 Stage 2A My Workers & Continue Work (review candidate)
 
 - Introduce an everyday-use My Workers hub with accurate status triage, recent work, conversation continuation, and existing Job history deep-links; preserve all authority and deployment boundaries.

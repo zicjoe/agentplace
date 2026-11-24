@@ -35,6 +35,7 @@ export interface WorkerEverydaySummary {
   activeJob?: Job;
   conversation?: Conversation;
   canContinue: boolean;
+  needsAction: boolean;
   lastActivityAt?: Date;
 }
 
@@ -64,12 +65,13 @@ export function summarizeWorker(worker: Worker, jobs: readonly Job[], conversati
     ...(activeJob ? { activeJob } : {}),
     ...(conversation ? { conversation } : {}),
     canContinue: !!conversation && conversation.messages.length > 0,
+    needsAction: needsAttention,
     ...(lastActivityAt ? { lastActivityAt } : {}),
   };
 }
 
 export function matchesWorkerFilter(summary: WorkerEverydaySummary, filter: WorkerWorkFilter): boolean {
-  return filter === 'all' || summary.status === filter;
+  return filter === 'all' || summary.status === filter || (filter === 'needs-you' && summary.needsAction);
 }
 
 export function workerSummarySort(a: WorkerEverydaySummary, b: WorkerEverydaySummary): number {
