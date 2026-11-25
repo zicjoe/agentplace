@@ -139,6 +139,7 @@ export async function testCreatorCapabilityRead(input:{importType:'openapi';endp
 
 
 
+export const CREATOR_BUILDER_MESSAGE_LIMIT = 8000;
 export type CreatorBuilderIntent = 'DISCUSS'|'MODIFY_DRAFT'|'TEACH'|'TEST'|'SAVE_PRIVATE'|'PUBLISH'|'UNDO'|'USE_EXISTING_EXPERTISE';
 export interface CreatorBuilderTurnResult {
   intent:CreatorBuilderIntent;
@@ -152,6 +153,8 @@ export interface CreatorBuilderTurnResult {
 }
 
 export async function interpretCreatorBuilderTurn(workerId:string,input:{message:string;mode:'build'|'edit'|'teach';draft:WorkerDraftData;messages:Array<{role:'user'|'builder';content:string}>}):Promise<CreatorBuilderTurnResult>{
+  if(!input.message.trim())throw new Error('Enter an instruction before continuing.');
+  if(input.message.length>CREATOR_BUILDER_MESSAGE_LIMIT)throw new Error('Teaching instructions exceed 8,000 characters. Split them into smaller turns; no draft changes were made.');
   const data=await request<{intent:CreatorBuilderIntent;reply:string;draft:ApiWorkerDraft;appliedOperations:Array<{type:string}>;rejectedOperations:Array<{type:string;reason:string}>;testScenario:string;testExpected:string;model:{label:string;provider:string;model:string}}>(`/api/v1/creator/workers/${encodeURIComponent(workerId)}/builder-turn`,{method:'POST',body:JSON.stringify({message:input.message,mode:input.mode,draft:toWorkerDraft(input.draft),messages:input.messages.slice(-12)})});
   return {intent:data.intent,reply:data.reply,draft:workerDraft(data.draft),appliedOperations:data.appliedOperations,rejectedOperations:data.rejectedOperations,testScenario:data.testScenario,testExpected:data.testExpected,model:data.model};
 }

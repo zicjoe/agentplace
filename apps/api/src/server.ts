@@ -404,6 +404,8 @@ CONVERSATION RULES
 - For removal requests use the matching REMOVE_* operation with target containing the item to remove.
 - For collaborators, use ADD_COLLABORATOR only with an exact allowed workerId. AgentPlace will impose the authority boundary.
 - Keep reply concise and conversational. Describe what you understood, not hidden reasoning.
+- For complex teaching, propose concise, distinct method rules (each no more than 1,000 characters). Preserve numeric thresholds, exceptions and evidence requirements accurately. Never pretend omitted rules were saved.
+- Do not repeat the full creator brief in SET_MISSION; preserve unrelated fields and prefer targeted method operations for a teach turn.
 
 MODE: ${args.mode}
 CURRENT DRAFT:
@@ -1123,7 +1125,10 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     const asset = assets.find((item) => item.type === 'worker' && item.id === workerId);
     if (!asset?.worker) return writeJson(res, 404, { error: 'not_found', message: 'Creator Worker not found.', requestId });
     const body=asRecord(await readJson(req));
-    const message=requiredString(body.message,'INVALID_CREATOR_BUILDER_MESSAGE',4000).trim();
+    const rawMessage=body.message;
+    if(typeof rawMessage!=='string'||!rawMessage.trim())return writeJson(res,400,{error:'invalid_builder_message',message:'Enter a teaching instruction before continuing.',requestId});
+    if(rawMessage.length>8000)return writeJson(res,413,{error:'builder_message_too_long',message:'This teaching message exceeds 8,000 characters. Your draft was not changed. Split the methodology into smaller teaching turns.',requestId});
+    const message=rawMessage.trim();
     const mode=body.mode==='teach'?'teach':body.mode==='build'?'build':'edit';
     const beforeDraft=validateCreatorWorkerDraft(body.draft as CreatorWorkerDraft);
     const recentMessages=creatorBuilderRecentMessages(body.messages);
@@ -1163,6 +1168,10 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
     } catch(error) {
       if(error instanceof ModelGatewayError){
         return writeJson(res,503,{error:error.code,message:'Agent Builder intelligence is temporarily unavailable. Your draft was not changed.',requestId});
+      }
+      if(error instanceof Error&&/^(INVALID_CREATOR_BUILDER_|INVALID_CREATOR_LIST|INVALID_WORKER_|INVALID_CREATOR_LIST$)/.test(error.message)){
+        logger.warn('Creator Builder rejected proposed draft edit', { error:error.message, workerId, mode, requestId });
+        return writeJson(res,422,{error:'builder_edit_validation',message:'Builder could not apply this complex edit within its structured draft limits. Your draft was not changed. Teach the method in smaller sections, preserving the exact rules.',requestId});
       }
       throw error;
     }

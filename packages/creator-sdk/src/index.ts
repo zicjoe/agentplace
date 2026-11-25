@@ -298,7 +298,7 @@ export function applyCreatorBuilderOperations(args: {
       case 'SET_MISSION': {
         if (!value) { reject(operation,'Job Contract cannot be empty.'); break; }
         const mission=value.slice(0,2000);
-        draft = {...draft,mission,responsibility:mission,tagline:mission.slice(0,240)}; apply(operation); break;
+        draft = {...draft,mission,responsibility:mission.slice(0,1000),tagline:mission.slice(0,240)}; apply(operation); break;
       }
       case 'SET_RESPONSIBILITIES': draft={...draft,responsibilities:creatorUniqueStrings(values)}; apply(operation); break;
       case 'ADD_RESPONSIBILITY': if(value){draft={...draft,responsibilities:creatorUniqueStrings([...draft.responsibilities,value])};apply(operation);}else reject(operation,'Responsibility cannot be empty.'); break;

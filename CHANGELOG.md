@@ -1,3 +1,10 @@
+## M17 complex Teach Mode turn recovery (2026-11-24)
+
+- Expanded existing Builder teaching turns to 8,000 characters end to end, with a required PostgreSQL constraint migration 0026.
+- Replaced opaque oversized-input errors with explicit validation and a multiline composer/visible limit.
+- Bounded generated mission-to-responsibility updates to canonical contract limits and added retry for failed teach/edit turns.
+- Added safe validation responses, regression tests and AEGIS persistence acceptance guidance.
+
 ## M17 Stage 1 — Complex creator brief and retry hotfix (review candidate)
 
 - Correct oversized initial Creator seed that caused server-side responsibility/mission validation errors for complex briefs such as AEGIS.

@@ -3,7 +3,7 @@ import { useAppState, useDispatch, uid } from '../state/AppContext';
 import { ResearchMarkdown } from './ResearchMarkdown';
 import { scrollConversationToEnd } from '../platform/scroll';
 import type { WorkerDraftData, CollaboratorConfig } from '../state/types';
-import { createCreatorWorker, createCreatorWorkerVersion, fetchCreatorBuilderSession, interpretCreatorBuilderTurn, publishCreatorAsset, saveCreatorBuilderSession, testCreatorWorker, type CreatorBuilderTurnResult } from '../platform/creatorApi';
+import { createCreatorWorker, createCreatorWorkerVersion, fetchCreatorBuilderSession, interpretCreatorBuilderTurn, publishCreatorAsset, saveCreatorBuilderSession, testCreatorWorker, type CreatorBuilderTurnResult, CREATOR_BUILDER_MESSAGE_LIMIT } from '../platform/creatorApi';
 import { installDurableWorker } from '../platform/workApi';
 import { WorkerCreateStart } from './WorkerCreateStart';
 import { initialWorkerJobContract } from '../platform/workerCreationStart';
@@ -262,6 +262,7 @@ export function AgentBuilder() {
   const [mobileTab, setMobileTab] = useState<'chat' | 'draft'>('chat');
   const [isStreaming, setIsStreaming] = useState(false);
   const [failedInitialBrief, setFailedInitialBrief] = useState<string | null>(null);
+  const [failedBuilderTurn, setFailedBuilderTurn] = useState<{ text:string; mode:'teach'|'edit' } | null>(null);
   const [sessionReady, setSessionReady] = useState(!state.activeCreationId);
   const messageScrollRef = useRef<HTMLDivElement>(null);
   const assetCreationPromiseRef = useRef<Promise<string> | null>(null);
@@ -384,6 +385,8 @@ export function AgentBuilder() {
   function submitBuilderBrief(brief: string) {
     if (!brief.trim() || isStreaming || step === 'testing' || !sessionReady) return;
     const text = brief.trim();
+    if(text.length>CREATOR_BUILDER_MESSAGE_LIMIT)return;
+    setFailedBuilderTurn(null);
     setInput('');
     const userMessage:BuilderMessage={ id: uid(), role: 'user', content: text };
     setMessages((prev) => [...prev, userMessage]);
@@ -405,8 +408,8 @@ export function AgentBuilder() {
     submitBuilderBrief(input);
   }
 
-  async function processBuilderTurn(text:string, retryInitial = false) {
-    const mode:'build'|'edit'|'teach'=(step==='idle'||retryInitial)?'build':(teachMode||step==='teach-prompt')?'teach':'edit';
+  async function processBuilderTurn(text:string, retryInitial = false, retryMode?:'teach'|'edit') {
+    const mode:'build'|'edit'|'teach'=retryMode??((step==='idle'||retryInitial)?'build':(teachMode||step==='teach-prompt')?'teach':'edit');
     const baseDraft=step==='idle'?seedDraftForBuilder(text):draft;
     if(step==='idle'){
       setDraft(baseDraft);
@@ -418,9 +421,11 @@ export function AgentBuilder() {
     try {
       const assetId=await ensureSavedWorker(baseDraft);
       seedPersisted = true;
-      const result:CreatorBuilderTurnResult=await interpretCreatorBuilderTurn(assetId,{message:text,mode,draft:baseDraft,messages});
+      const previousMessages=messages[ messages.length-1 ]?.role==='user'&&messages[ messages.length-1 ]?.content===text?messages.slice(0,-1):messages;
+      const result:CreatorBuilderTurnResult=await interpretCreatorBuilderTurn(assetId,{message:text,mode,draft:baseDraft,messages:previousMessages});
       setDraft(result.draft);
       setFailedInitialBrief(null);
+      setFailedBuilderTurn(null);
       // Initial creation is draft-only: even an unexpected model intent cannot
       // launch tests, install a Worker or publish a listing on the first turn.
       // Existing explicit creator actions remain available after draft review.
@@ -449,6 +454,7 @@ export function AgentBuilder() {
       setIsStreaming(false);
       const detail=value instanceof Error?value.message:'Agent Builder intelligence is temporarily unavailable.';
       if (mode === 'build') setFailedInitialBrief(text);
+      else setFailedBuilderTurn({text,mode});
       addBuilderMessage(mode==='build'
         ? seedPersisted
           ? `Agent Builder could not interpret the entire brief: ${detail}\n\nAn **initial private draft outline** was saved, but it is **not a completed Worker**. You can retry interpretation without creating another Worker. Nothing was tested, published or granted authority.`
@@ -612,10 +618,16 @@ You can keep editing or testing this Worker from Agent Builder.`);
   }
 
   const latestBuilderMessageId = [...messages].reverse().find((message) => message.role === 'builder' && message.content.trim())?.id;
-  const canSend = input.trim().length > 0 && !isStreaming && step !== 'testing' && sessionReady;
+  const canSend = input.trim().length > 0 && input.length <= CREATOR_BUILDER_MESSAGE_LIMIT && !isStreaming && step !== 'testing' && sessionReady;
 
   function actionButtonsFor(messageId: string) {
     if (messageId !== latestBuilderMessageId || isStreaming || !sessionReady) return null;
+    if (failedBuilderTurn) return (
+      <div className="flex flex-wrap gap-2 pt-2">
+        <button onClick={() => void processBuilderTurn(failedBuilderTurn.text, false, failedBuilderTurn.mode)} className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors">Retry this {failedBuilderTurn.mode === 'teach' ? 'teaching' : 'editing'} turn</button>
+        <span className="text-xs text-text-muted self-center">The saved Worker draft remains unchanged if interpretation fails. Retrying may use AI credits.</span>
+      </div>
+    );
     if (step === 'initial-response' && failedInitialBrief) return (
       <div className="flex flex-wrap gap-2 pt-2">
         <button onClick={() => void processBuilderTurn(failedInitialBrief, true)} className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors">Retry interpreting my brief</button>
@@ -711,18 +723,25 @@ You can keep editing or testing this Worker from Agent Builder.`);
       {(messages.length > 0 || step !== 'idle' || savedAssetId) && (
         <div className="px-5 py-4 border-t border-border shrink-0">
           <div className="flex gap-2">
-            <input
-              className="flex-1 bg-panel-raised border border-border rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-dim focus:outline-none focus:border-primary/50 disabled:opacity-50"
-              placeholder={teachMode ? 'Describe your criteria…' : savedAssetId ? 'Describe what you want to change or add…' : 'Describe what you want to build…'}
+            <textarea
+              rows={2}
+              aria-label="Worker Builder instructions"
+              aria-describedby="creator-builder-input-limit"
+              className="flex-1 min-w-0 max-h-48 resize-y bg-panel-raised border border-border rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-dim focus:outline-none focus:border-primary/50 disabled:opacity-50"
+              placeholder={teachMode ? 'Teach AEGIS a rule or paste a methodology section…' : savedAssetId ? 'Describe what you want to change or add…' : 'Describe what you want to build…'}
               value={input}
               disabled={!sessionReady || step === 'testing'}
               onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => event.key === 'Enter' && !event.shiftKey && handleSend()}
+              onKeyDown={(event) => { if(event.key === 'Enter' && !event.shiftKey){ event.preventDefault(); handleSend(); } }}
             />
             <button onClick={handleSend} disabled={!canSend} className="px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover disabled:opacity-40 transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
             </button>
           </div>
+          <p id="creator-builder-input-limit" role={input.length > CREATOR_BUILDER_MESSAGE_LIMIT ? 'alert' : undefined} className={`mt-2 text-xs ${input.length > CREATOR_BUILDER_MESSAGE_LIMIT ? 'text-red-400' : 'text-text-dim'}`}>
+            {input.length.toLocaleString()} / {CREATOR_BUILDER_MESSAGE_LIMIT.toLocaleString()} characters · Shift+Enter for a new line.
+            {input.length > CREATOR_BUILDER_MESSAGE_LIMIT ? ' This message is too long; split the methodology into teaching turns. Your text has not been cut.' : input.length > 4000 ? ' For complex rules, shorter teaching sections can be easier to review and verify.' : ''}
+          </p>
         </div>
       )}
     </div>

@@ -527,7 +527,7 @@ export async function recordCreatorBuilderTurn(ownerUserId: string, workerId: st
   const beforeDraft=validateCreatorWorkerDraft(input.beforeDraft);
   const afterDraft=validateCreatorWorkerDraft(input.afterDraft);
   const sourceMessage=input.sourceMessage.trim();
-  if(!sourceMessage||sourceMessage.length>4000)throw new Error('INVALID_CREATOR_BUILDER_SOURCE_MESSAGE');
+  if(!sourceMessage||sourceMessage.length>8000)throw new Error('INVALID_CREATOR_BUILDER_SOURCE_MESSAGE');
   const sessionId=builderSessionId(ownerUserId,workerId);
   let result:CreatorBuilderTurnRecord={turnId:''};
   await withTransaction(async(client)=>{
@@ -595,7 +595,7 @@ export async function undoCreatorBuilderDraft(ownerUserId: string, workerId: str
     const turnOrdinalResult=await client.query<{next:number}>(`SELECT COALESCE(MAX(ordinal),-1)::int+1 AS next FROM creator_builder_turn WHERE session_id=$1`,[row.id]);
     const turnId=id('cbt');
     await client.query(`INSERT INTO creator_builder_turn(id,session_id,ordinal,source_message,intent,estimated_cost_usd,applied_operations,rejected_operations) VALUES($1,$2,$3,$4,'UNDO',0,'[]'::jsonb,'[]'::jsonb)`,
-      [turnId,row.id,turnOrdinalResult.rows[0]?.next??0,sourceMessage.trim().slice(0,4000)]);
+      [turnId,row.id,turnOrdinalResult.rows[0]?.next??0,sourceMessage.trim().slice(0,8000)]);
     await client.query(`UPDATE creator_builder_session SET draft_snapshot=$2::jsonb,active_revision_no=$3,updated_at=now() WHERE id=$1`,[row.id,JSON.stringify(draft),parentRevision]);
     output={draft,turnId,activeRevisionNo:parentRevision};
   });

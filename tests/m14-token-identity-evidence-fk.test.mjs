@@ -18,9 +18,12 @@ test('Phase 2 read-only token identity has a canonical capability before FK-prot
   assert.doesNotMatch(migration, /INSERT INTO capability_implementation|INSERT INTO authority_grant|ALTER TABLE/i);
 });
 
-test('the token identity registry repair is the next numbered migration and works with the existing migrator', () => {
+test('the token identity registry repair follows migration 0024 and remains valid when later migrations are added', () => {
   const migrations = readdirSync('packages/db/migrations').filter((name) => /^\d+_.+\.sql$/.test(name)).sort();
-  assert.equal(migrations.at(-1), '0025_token_identity_evidence_capability.sql');
+  const tokenIdentityIndex = migrations.indexOf('0025_token_identity_evidence_capability.sql');
+  assert.ok(tokenIdentityIndex > 0, 'token identity migration must be present');
+  assert.equal(migrations[tokenIdentityIndex - 1], '0024_manager_collaboration_steps.sql');
+  assert.ok(migrations.indexOf('0026_creator_builder_teaching_message_limit.sql') > tokenIdentityIndex);
   const runner = file('packages/db/src/migrate.ts');
   assert.match(runner, /readdir\(migrationsDirectory\)/);
   assert.match(runner, /SELECT filename FROM schema_migration WHERE filename = \$1/);
