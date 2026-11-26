@@ -82,7 +82,7 @@ test('M17 new Worker brief goes through existing durable Creator validator, not 
   assert.match(builder,/result.intent === 'PUBLISH'/);
   assert.match(builder,/result.intent === 'SAVE_PRIVATE'/);
   assert.match(builder,/result.intent === 'TEST'/);
-  assert.match(builder,/initialActionAttempt \? 'MODIFY_DRAFT' : result.intent/);
+  assert.match(builder,/initialActionAttempt \|\| explicitActionOnly \? 'MODIFY_DRAFT' : result.intent/);
   assert.match(builder,/CreatorUserMessage/);
   assert.match(builder,/Show full brief/);
   assert.match(api,/\/api\/v1\/creator\/workers/);

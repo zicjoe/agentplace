@@ -6,7 +6,8 @@ import type { WorkerDraftData, CollaboratorConfig } from '../state/types';
 import { createCreatorWorker, createCreatorWorkerVersion, fetchCreatorBuilderSession, interpretCreatorBuilderTurn, publishCreatorAsset, saveCreatorBuilderSession, testCreatorWorker, type CreatorBuilderTurnResult, CREATOR_BUILDER_MESSAGE_LIMIT } from '../platform/creatorApi';
 import { installDurableWorker } from '../platform/workApi';
 import { WorkerCreateStart } from './WorkerCreateStart';
-import { initialWorkerJobContract } from '../platform/workerCreationStart';
+import { initialWorkerJobContract, WORKER_CREATION_STARTERS } from '../platform/workerCreationStart';
+import { appendBuilderSuggestion, builderInputProblem, builderTemplateInstruction, builderTurnMode } from '../platform/builderConversation';
 
 // ── Draft initial state ───────────────────────────────────────────────────────
 
@@ -259,19 +260,32 @@ export function AgentBuilder() {
   const [testJobId, setTestJobId] = useState<string | undefined>();
   const [step, setStep] = useState<BuilderStep>(initialAsset?.workerDraft ? stepForVisibility(initialAsset.visibility) : 'idle');
   const [teachMode, setTeachMode] = useState(false);
+  const [showDetailedSetup, setShowDetailedSetup] = useState(false);
+  const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
+  const [composerNotice, setComposerNotice] = useState('');
+  const [saveStatus, setSaveStatus] = useState<'unsaved' | 'saving' | 'saved' | 'error'>('unsaved');
   const [mobileTab, setMobileTab] = useState<'chat' | 'draft'>('chat');
   const [isStreaming, setIsStreaming] = useState(false);
   const [failedInitialBrief, setFailedInitialBrief] = useState<string | null>(null);
   const [failedBuilderTurn, setFailedBuilderTurn] = useState<{ text:string; mode:'teach'|'edit' } | null>(null);
   const [sessionReady, setSessionReady] = useState(!state.activeCreationId);
   const messageScrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const assetCreationPromiseRef = useRef<Promise<string> | null>(null);
   const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const saveSequenceRef = useRef(0);
   const lastPersistedDraftSignatureRef = useRef(initialAsset?.workerDraft ? draftSignature(initialAsset.workerDraft) : '');
 
   useEffect(() => {
     scrollConversationToEnd(messageScrollRef.current);
-  }, [messages]);
+  }, [messages, showTemplateLibrary]);
+
+  useEffect(() => {
+    if (!input.trim()) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [input]);
 
   useEffect(() => {
     const assetId = state.activeCreationId;
@@ -297,7 +311,9 @@ export function AgentBuilder() {
         setStep(normalizeBuilderStep(session.step, asset.visibility, Boolean(session.testJobId)));
         setTeachMode(session.teachMode);
         setTestJobId(session.testJobId);
+        setSaveStatus('saved');
       } else {
+        setSaveStatus('unsaved');
         setMessages([{
           id: uid(),
           role: 'builder',
@@ -310,6 +326,7 @@ export function AgentBuilder() {
     }).catch((error) => {
       if (cancelled) return;
       console.error('Could not restore Agent Builder conversation', error);
+      setSaveStatus('error');
       setMessages([{
         id: uid(),
         role: 'builder',
@@ -325,12 +342,17 @@ export function AgentBuilder() {
   useEffect(() => {
     if (!sessionReady || !savedAssetId || !state.user || isStreaming) return;
     if (messages.some((message) => !message.content.trim())) return;
+    const saveSequence = ++saveSequenceRef.current;
+    setSaveStatus('saving');
     const timer = window.setTimeout(() => {
       const snapshot = { step, teachMode, ...(testJobId ? { testJobId } : {}), draft, messages };
-      saveQueueRef.current = saveQueueRef.current
-        .catch(() => undefined)
-        .then(() => saveCreatorBuilderSession(savedAssetId, snapshot))
-        .catch((error) => { console.error('Could not persist Agent Builder conversation', error); });
+      saveQueueRef.current = saveQueueRef.current.catch(() => undefined).then(async () => {
+        await saveCreatorBuilderSession(savedAssetId, snapshot);
+        if (saveSequence === saveSequenceRef.current) setSaveStatus('saved');
+      }).catch((error) => {
+        console.error('Could not persist Agent Builder conversation', error);
+        if (saveSequence === saveSequenceRef.current) setSaveStatus('error');
+      });
     }, 350);
     return () => window.clearTimeout(timer);
   }, [sessionReady, savedAssetId, state.user, isStreaming, messages, draft, step, teachMode, testJobId]);
@@ -383,9 +405,12 @@ export function AgentBuilder() {
   }
 
   function submitBuilderBrief(brief: string) {
-    if (!brief.trim() || isStreaming || step === 'testing' || !sessionReady) return;
+    if (isStreaming || step === 'testing' || !sessionReady) return;
     const text = brief.trim();
-    if(text.length>CREATOR_BUILDER_MESSAGE_LIMIT)return;
+    const problem = builderInputProblem(text, Boolean(savedAssetId), CREATOR_BUILDER_MESSAGE_LIMIT);
+    if (problem) { setComposerNotice(problem); return; }
+    setComposerNotice('');
+    setShowDetailedSetup(false);
     setFailedBuilderTurn(null);
     setInput('');
     const userMessage:BuilderMessage={ id: uid(), role: 'user', content: text };
@@ -396,20 +421,20 @@ export function AgentBuilder() {
         checkpoint:{
           reason:'creator-builder',
           feature:'use Agent Builder intelligence and keep your Worker draft durable',
-          onComplete:(user)=>{ dispatch({type:'SET_USER',user}); void processBuilderTurn(text); },
+          onComplete:(user)=>{ dispatch({type:'SET_USER',user}); void processBuilderTurn(text, false, undefined, userMessage); },
         },
       });
       return;
     }
-    void processBuilderTurn(text);
+    void processBuilderTurn(text, false, undefined, userMessage);
   }
 
   function handleSend() {
     submitBuilderBrief(input);
   }
 
-  async function processBuilderTurn(text:string, retryInitial = false, retryMode?:'teach'|'edit') {
-    const mode:'build'|'edit'|'teach'=retryMode??((step==='idle'||retryInitial)?'build':(teachMode||step==='teach-prompt')?'teach':'edit');
+  async function processBuilderTurn(text:string, retryInitial = false, retryMode?:'teach'|'edit', submittedMessage?: BuilderMessage) {
+    const mode:'build'|'edit'|'teach'=retryMode??builderTurnMode(text, step !== 'idle' && !retryInitial, teachMode || step === 'teach-prompt');
     const baseDraft=step==='idle'?seedDraftForBuilder(text):draft;
     if(step==='idle'){
       setDraft(baseDraft);
@@ -421,7 +446,23 @@ export function AgentBuilder() {
     try {
       const assetId=await ensureSavedWorker(baseDraft);
       seedPersisted = true;
+      // Save the exact user's message before consuming a model request. A reload
+      // during interpretation must not erase a successfully persisted input.
       const previousMessages=messages[ messages.length-1 ]?.role==='user'&&messages[ messages.length-1 ]?.content===text?messages.slice(0,-1):messages;
+      if (submittedMessage) {
+        const submittedMessages = [...previousMessages, submittedMessage];
+        await saveQueueRef.current.catch(() => undefined);
+        const saveSequence = ++saveSequenceRef.current;
+        setSaveStatus('saving');
+        await saveCreatorBuilderSession(assetId, {
+          step: mode === 'build' ? 'initial-response' : step,
+          teachMode: mode === 'teach',
+          ...(testJobId ? {testJobId} : {}),
+          draft: baseDraft,
+          messages: submittedMessages,
+        });
+        if (saveSequence === saveSequenceRef.current) setSaveStatus('saved');
+      }
       const result:CreatorBuilderTurnResult=await interpretCreatorBuilderTurn(assetId,{message:text,mode,draft:baseDraft,messages:previousMessages});
       setDraft(result.draft);
       setFailedInitialBrief(null);
@@ -430,7 +471,10 @@ export function AgentBuilder() {
       // launch tests, install a Worker or publish a listing on the first turn.
       // Existing explicit creator actions remain available after draft review.
       const initialActionAttempt = mode === 'build' && (result.intent === 'TEST' || result.intent === 'SAVE_PRIVATE' || result.intent === 'PUBLISH');
-      const intent = initialActionAttempt ? 'MODIFY_DRAFT' : result.intent;
+      // Model-proposed intents never dispatch expensive tests or change visibility.
+      // Those are reserved for the explicit user controls below in every mode.
+      const explicitActionOnly = result.intent === 'TEST' || result.intent === 'SAVE_PRIVATE' || result.intent === 'PUBLISH';
+      const intent = initialActionAttempt || explicitActionOnly ? 'MODIFY_DRAFT' : result.intent;
       if(intent==='TEACH'){
         setTeachMode(true);
         setStep('teach-response');
@@ -440,16 +484,11 @@ export function AgentBuilder() {
         else if(mode==='build'&&intent!=='TEST'&&intent!=='SAVE_PRIVATE'&&intent!=='PUBLISH')setStep('initial-response');
         else setStep('editing');
       }
-      addBuilderMessage(initialActionAttempt
-        ? `I've prepared the initial private draft for **${result.draft.name}**. Review the Job Contract, capabilities, and anti-jobs first. You can explicitly choose a sandbox test, private installation, or publication after reviewing it.`
+      addBuilderMessage(explicitActionOnly
+        ? `${result.reply}
+
+**Review the draft and use the explicit controls** to test, install privately, or publish. A chat interpretation cannot perform those actions for you.`
         : result.reply);
-      if(intent==='TEST'){
-        await runTests(result.draft,result.testScenario||undefined,result.testExpected||undefined);
-      }else if(intent==='SAVE_PRIVATE'){
-        await finalizePrivate(result.draft);
-      }else if(intent==='PUBLISH'){
-        await handlePublish(result.draft);
-      }
     } catch(value) {
       setIsStreaming(false);
       const detail=value instanceof Error?value.message:'Agent Builder intelligence is temporarily unavailable.';
@@ -596,6 +635,7 @@ You can keep editing or testing this Worker from Agent Builder.`);
   }
 
   function closeSurface() {
+    if (input.trim() && !window.confirm('You have unsent Builder instructions. Leave without sending or copying them?')) return;
     dispatch({ type: 'SET_CREATOR_SURFACE', surface: null });
   }
 
@@ -611,6 +651,55 @@ You can keep editing or testing this Worker from Agent Builder.`);
     dispatch({ type: 'SET_ACTIVE_WORKER', id: savedAssetId });
   }
 
+  async function copyCompleteInput() {
+    try {
+      await navigator.clipboard.writeText(input);
+      setComposerNotice('The full unsent text was copied. It has not been submitted or saved as Worker expertise.');
+    } catch {
+      setComposerNotice('Copy was blocked by your browser. The full text is still in the editor; select and copy it manually.');
+      composerRef.current?.focus();
+    }
+  }
+
+  function stageSuggestion(suggestion: string) {
+    const prepared = appendBuilderSuggestion(input, suggestion, CREATOR_BUILDER_MESSAGE_LIMIT);
+    if (!prepared.fits) {
+      setComposerNotice('Your unsent instructions are preserved. This combination exceeds the current per-message limit; review the input before adding another template.');
+      return;
+    }
+    setInput(prepared.text);
+    setComposerNotice('Review the suggested text, then send it when you are ready. Nothing has been applied.');
+    setShowTemplateLibrary(false);
+    composerRef.current?.focus();
+  }
+
+  function stageTemplate(starter: (typeof WORKER_CREATION_STARTERS)[number]) {
+    setTeachMode(false);
+    if (savedAssetId) setStep('editing');
+    stageSuggestion(builderTemplateInstruction(starter, Boolean(savedAssetId)));
+  }
+
+  function startTeaching() {
+    setTeachMode(true);
+    setStep('teach-prompt');
+    setComposerNotice('Teach a rule, share an example or describe an exception. You can switch back to editing in the very next message.');
+    composerRef.current?.focus();
+  }
+
+  function retrySavingSession() {
+    if (!savedAssetId || isStreaming) return;
+    const saveSequence = ++saveSequenceRef.current;
+    setSaveStatus('saving');
+    const snapshot={step,teachMode,...(testJobId?{testJobId}:{}),draft,messages};
+    saveQueueRef.current=saveQueueRef.current.catch(()=>undefined).then(async()=>{
+      await saveCreatorBuilderSession(savedAssetId,snapshot);
+      if (saveSequence === saveSequenceRef.current) setSaveStatus('saved');
+    }).catch((error)=>{
+      console.error('Could not save conversation',error);
+      if (saveSequence === saveSequenceRef.current) setSaveStatus('error');
+    });
+  }
+
   function choose(label: string, action: () => void) {
     if (isStreaming) return;
     addUserChoice(label);
@@ -618,7 +707,7 @@ You can keep editing or testing this Worker from Agent Builder.`);
   }
 
   const latestBuilderMessageId = [...messages].reverse().find((message) => message.role === 'builder' && message.content.trim())?.id;
-  const canSend = input.trim().length > 0 && input.length <= CREATOR_BUILDER_MESSAGE_LIMIT && !isStreaming && step !== 'testing' && sessionReady;
+  const canSend = builderInputProblem(input, Boolean(savedAssetId), CREATOR_BUILDER_MESSAGE_LIMIT) === null && !isStreaming && step !== 'testing' && sessionReady;
 
   function actionButtonsFor(messageId: string) {
     if (messageId !== latestBuilderMessageId || isStreaming || !sessionReady) return null;
@@ -692,9 +781,13 @@ You can keep editing or testing this Worker from Agent Builder.`);
       <div className="px-5 py-4 border-b border-border shrink-0 flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold text-text">Agent Builder</p>
-          <p className="text-xs text-text-muted">{teachMode ? 'Teach Mode active · AgentPlace Auto' : savedAssetId ? 'AgentPlace Auto · structured conversational editing' : 'AgentPlace Auto · design your Worker conversationally'}</p>
+          <p className="text-xs text-text-muted">One conversation · describe, teach, adapt or refine anytime</p>
+          <p className={`text-[11px] mt-0.5 ${saveStatus==='error'?'text-danger':'text-text-dim'}`} aria-live="polite">
+            {input.trim() ? 'Unsent input — not saved yet' : saveStatus==='error' ? 'Could not save conversation — retry' : saveStatus==='saving' ? 'Saving conversation…' : saveStatus==='saved' ? 'Conversation saved' : savedAssetId ? 'Draft not yet synchronized' : 'A private draft is created only when you send your first message'}
+          </p>
         </div>
-        <button onClick={closeSurface} className="text-text-muted hover:text-text p-1 rounded transition-colors">
+        {saveStatus==='error' && savedAssetId && <button type="button" onClick={retrySavingSession} className="text-xs text-danger border border-danger/30 rounded px-2 py-1">Retry save</button>}
+        <button onClick={closeSurface} className="text-text-muted hover:text-text p-1 rounded transition-colors" aria-label="Close Builder">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
       </div>
@@ -702,7 +795,19 @@ You can keep editing or testing this Worker from Agent Builder.`);
       <div ref={messageScrollRef} data-workspace-scroll className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
         {!sessionReady && <div className="py-8 text-center"><p className="text-sm text-text-muted">Restoring Builder conversation…</p></div>}
         {sessionReady && step === 'idle' && messages.length === 0 && !savedAssetId && (
-          <WorkerCreateStart onStart={submitBuilderBrief} disabled={isStreaming} />
+          <div className="max-w-2xl mx-auto w-full space-y-4">
+            <div className="rounded-2xl bg-panel-raised border border-border px-4 py-4 text-text-sub text-sm leading-relaxed">
+              <p className="text-base font-semibold text-text mb-1">What would you like your Worker to do?</p>
+              Tell me naturally. You can start with one sentence, use a template, paste a detailed brief, or teach your method over time. All of it belongs to the same private Builder conversation.
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => stageSuggestion('I want a read-only Worker that researches a topic, verifies sources, and explains its findings. Help me define its responsibilities and ask what else I need.')} className="px-3 py-2 text-xs border border-border rounded-lg hover:bg-panel-raised">Start with a description</button>
+              <button type="button" onClick={() => setShowTemplateLibrary((value)=>!value)} aria-expanded={showTemplateLibrary} className="px-3 py-2 text-xs border border-border rounded-lg hover:bg-panel-raised">Browse templates</button>
+              <button type="button" onClick={() => stageSuggestion('I want to turn my own expertise into a private Worker. Ask me about my approach, examples, exceptions and decision rules.')} className="px-3 py-2 text-xs border border-border rounded-lg hover:bg-panel-raised">Teach my expertise</button>
+            </div>
+            <button type="button" className="text-xs text-text-muted underline underline-offset-2" onClick={() => setShowDetailedSetup((value)=>!value)} aria-expanded={showDetailedSetup}>Detailed setup (optional)</button>
+            {showDetailedSetup && <WorkerCreateStart onStart={submitBuilderBrief} disabled={isStreaming} />}
+          </div>
         )}
         {messages.map((message) => (
           <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -718,20 +823,43 @@ You can keep editing or testing this Worker from Agent Builder.`);
             </div>
           </div>
         ))}
+        {showTemplateLibrary && (
+          <div className="max-w-2xl w-full mx-auto border border-border rounded-xl bg-panel p-3" role="group" aria-label="Editable Worker templates">
+            <p className="text-xs font-semibold text-text mb-1">Choose an editable starting point</p>
+            <p className="text-xs text-text-muted mb-3">Choosing fills your message for review. It does not replace an existing Worker, connect a tool, or send an AI request.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {WORKER_CREATION_STARTERS.map((starter) => (
+                <button type="button" key={starter.id} onClick={() => stageTemplate(starter)} className="rounded-lg border border-border-dim hover:bg-panel-raised text-left p-3">
+                  <span className="block text-xs font-semibold text-text">{starter.name}</span>
+                  <span className="block text-[11px] text-text-muted mt-1">{starter.description}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {(messages.length > 0 || step !== 'idle' || savedAssetId) && (
-        <div className="px-5 py-4 border-t border-border shrink-0">
+      {sessionReady && (
+        <div className="px-5 py-3 border-t border-border shrink-0">
+          {(messages.length > 0 || savedAssetId) && (
+            <div className="flex flex-wrap gap-2 mb-2" aria-label="Builder conversation shortcuts">
+              <button type="button" onClick={() => setShowTemplateLibrary((value)=>!value)} className="px-2 py-1 text-xs border border-border-dim rounded-lg hover:bg-panel-raised" aria-expanded={showTemplateLibrary}>Browse templates</button>
+              <button type="button" onClick={startTeaching} className="px-2 py-1 text-xs border border-border-dim rounded-lg hover:bg-panel-raised">Teach a rule</button>
+              <button type="button" onClick={() => { setTeachMode(false); setStep('editing'); setComposerNotice('Tell me what you want to add, remove, combine, or replace.'); composerRef.current?.focus(); }} className="px-2 py-1 text-xs border border-border-dim rounded-lg hover:bg-panel-raised">Edit or combine</button>
+              <button type="button" onClick={() => setMobileTab('draft')} className="md:hidden px-2 py-1 text-xs border border-border-dim rounded-lg">Review draft</button>
+            </div>
+          )}
           <div className="flex gap-2">
             <textarea
+              ref={composerRef}
               rows={2}
               aria-label="Worker Builder instructions"
               aria-describedby="creator-builder-input-limit"
               className="flex-1 min-w-0 max-h-48 resize-y bg-panel-raised border border-border rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-dim focus:outline-none focus:border-primary/50 disabled:opacity-50"
-              placeholder={teachMode ? 'Teach AEGIS a rule or paste a methodology section…' : savedAssetId ? 'Describe what you want to change or add…' : 'Describe what you want to build…'}
+              placeholder={savedAssetId ? 'Describe, teach a rule, adapt a template, or change the draft…' : 'Describe the Worker you want to create…'}
               value={input}
               disabled={!sessionReady || step === 'testing'}
-              onChange={(event) => setInput(event.target.value)}
+              onChange={(event) => { setInput(event.target.value); setComposerNotice(''); }}
               onKeyDown={(event) => { if(event.key === 'Enter' && !event.shiftKey){ event.preventDefault(); handleSend(); } }}
             />
             <button onClick={handleSend} disabled={!canSend} className="px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover disabled:opacity-40 transition-colors">
@@ -740,8 +868,12 @@ You can keep editing or testing this Worker from Agent Builder.`);
           </div>
           <p id="creator-builder-input-limit" role={input.length > CREATOR_BUILDER_MESSAGE_LIMIT ? 'alert' : undefined} className={`mt-2 text-xs ${input.length > CREATOR_BUILDER_MESSAGE_LIMIT ? 'text-red-400' : 'text-text-dim'}`}>
             {input.length.toLocaleString()} / {CREATOR_BUILDER_MESSAGE_LIMIT.toLocaleString()} characters · Shift+Enter for a new line.
-            {input.length > CREATOR_BUILDER_MESSAGE_LIMIT ? ' This message is too long; split the methodology into teaching turns. Your text has not been cut.' : input.length > 4000 ? ' For complex rules, shorter teaching sections can be easier to review and verify.' : ''}
+            {input.length > CREATOR_BUILDER_MESSAGE_LIMIT ? ' Your text has not been cut or sent. The current release cannot store it as a private source; keep editing or copy the full text before leaving.' : input.length > 4000 ? ' Detailed instructions are welcome; the current per-message limit still applies.' : ''}
           </p>
+          {input.length > CREATOR_BUILDER_MESSAGE_LIMIT && (
+            <button type="button" onClick={() => { void copyCompleteInput(); }} className="mt-2 px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-panel-raised">Copy full unsent text</button>
+          )}
+          {composerNotice && <p role="status" className="mt-1 text-xs text-text-muted">{composerNotice}</p>}
         </div>
       )}
     </div>

@@ -403,6 +403,10 @@ CONVERSATION RULES
 - For "do not/never" behavior that limits what the Worker should do, prefer ADD_ANTI_JOB. For evidence/judgment criteria, prefer ADD_METHOD_RULE.
 - For removal requests use the matching REMOVE_* operation with target containing the item to remove.
 - For collaborators, use ADD_COLLABORATOR only with an exact allowed workerId. AgentPlace will impose the authority boundary.
+- Creation entry paths are not workflow locks: a user may alternate ordinary dialogue, long detailed briefs, templates, personal methodology, and changes of direction in the same Worker draft. The mode is a routing hint, not a ban on other kinds of edits.
+- Ask at most one or two genuinely useful follow-up questions when essential requirements are missing. If a detailed brief answers them, do not force the creator through a generic questionnaire.
+- When the creator cites a template or document, treat it as reference text; do not assume external source contents, file ingestion, connected tools, or rights that are not actually available.
+- Do not silently replace prior accepted mission, methods, anti-jobs or safety boundaries when adding a new template or expertise. Surface conflicts instead of inventing a resolution.
 - Keep reply concise and conversational. Describe what you understood, not hidden reasoning.
 - For complex teaching, propose concise, distinct method rules (each no more than 1,000 characters). Preserve numeric thresholds, exceptions and evidence requirements accurately. Never pretend omitted rules were saved.
 - Do not repeat the full creator brief in SET_MISSION; preserve unrelated fields and prefer targeted method operations for a teach turn.
@@ -1143,6 +1147,13 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, re
       });
       const proposal=parseCreatorBuilderProposal(modelRun.value);
       if(proposal.intent==='UNDO'){
+        // Draft rollback requires a direct creator instruction, not an AI-inferred
+        // intent from a question or an imported methodology.
+        const explicitUndoRequest=/^(?:please\s+)?(?:undo|revert|restore)\b/i.test(message);
+        if(!explicitUndoRequest){
+          writeJson(res,200,{intent:'DISCUSS',reply:'Undo requires an explicit request such as “Undo the last draft change.” Nothing was changed.',draft:beforeDraft,appliedOperations:[],rejectedOperations:[],testScenario:'',testExpected:'',model:{label:'AgentPlace Auto',provider:modelRun.provider,model:modelRun.model}});
+          return;
+        }
         try {
           const undone=await undoCreatorBuilderDraft(identity.appUserId,workerId,message);
           writeJson(res,200,{intent:'UNDO',reply:proposal.reply,draft:undone.draft,appliedOperations:[],rejectedOperations:[],testScenario:'',testExpected:'',model:{label:'AgentPlace Auto',provider:modelRun.provider,model:modelRun.model}});

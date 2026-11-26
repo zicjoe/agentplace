@@ -52,7 +52,7 @@ test('M17 teach composer exposes visible limits, multiline input and recovery wi
   assert.match(builder, /setFailedBuilderTurn\(\{text,mode\}\)/);
   assert.match(builder, /Retry this \{failedBuilderTurn\.mode/);
   assert.match(builder, /setFailedBuilderTurn\(null\)/);
-  assert.match(builder, /input\.length <= CREATOR_BUILDER_MESSAGE_LIMIT/);
+  assert.match(builder, /builderInputProblem\(input, Boolean\(savedAssetId\), CREATOR_BUILDER_MESSAGE_LIMIT\)/);
 });
 
 test('M17 API maps invalid model-proposed edits to clear non-500 errors, without changing draft', () => {

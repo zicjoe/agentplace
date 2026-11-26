@@ -1,3 +1,13 @@
+## Milestone 17 Stage 2A — Unified Conversational Builder (review candidate)
+
+- Builder opens as a conversation; detailed kickoff form is optional and existing drafts remain durable.
+- Starter templates can be reviewed and adapted in the **same** Builder conversation, including after the Worker exists, without silently replacing accepted instructions or granting capabilities.
+- Creator can teach, refine, rename, and combine ideas in subsequent turns; the intended turn mode is inferred conservatively from the instruction instead of being fixed by entry path.
+- Accepted chat turns are persisted to the existing owner-scoped Builder session **before** AI interpretation, with visible save, error and retry states. Existing transcript and Worker versioning are retained.
+- An oversized message remains intact in the editor, is not submitted, and can be copied. Private document/source ingestion is explicitly **not** implemented by this stage.
+- Model-generated intentions cannot automatically launch tests, install, or publish Workers; server also requires an explicit user instruction to undo draft revisions.
+- No new database migration, financial permissions or Scheduler changes. API limit remains 8,000 characters per Builder message until private-source ingestion is implemented.
+
 ## M17 complex Teach Mode turn recovery (2026-11-24)
 
 - Expanded existing Builder teaching turns to 8,000 characters end to end, with a required PostgreSQL constraint migration 0026.
